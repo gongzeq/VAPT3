@@ -1,0 +1,52 @@
+name: vuln_scan
+display_name: 漏洞扫描
+description: |
+  Run template-based vulnerability scans (nuclei) and / or fingerprint-based
+  weakness checks (fscan) against services discovered by port_scan. Findings
+  are written to the CMDB and surfaced in the final report.
+
+system_prompt_file: ./prompts/vuln_scan.md
+
+scoped_skills:
+  - nuclei-template-scan
+  - fscan-vuln-scan
+
+max_iterations: 6
+emit_plan_steps: true
+
+input_schema:
+  type: object
+  required: [services]
+  properties:
+    services:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [host, port]
+        properties:
+          host:     {type: string}
+          port:     {type: integer}
+          protocol: {type: string, enum: [tcp, udp]}
+          service:  {type: string}
+    severity_floor:
+      type: string
+      enum: [info, low, medium, high, critical]
+      default: medium
+
+output_schema:
+  type: object
+  required: [findings]
+  properties:
+    findings:
+      type: array
+      items:
+        type: object
+        required: [host, severity, title]
+        properties:
+          host:     {type: string}
+          port:     {type: integer}
+          severity: {type: string, enum: [info, low, medium, high, critical]}
+          title:    {type: string}
+          cve_id:   {type: string}
+          template: {type: string}

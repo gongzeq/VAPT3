@@ -1,0 +1,38 @@
+name: report
+display_name: 报告生成
+description: |
+  Render a deliverable scan report from CMDB data in the requested format
+  (Markdown, DOCX or PDF). Markdown is the canonical intermediate; DOCX /
+  PDF derive from the same Markdown source.
+
+system_prompt_file: ./prompts/report.md
+
+scoped_skills:
+  - report-markdown
+  - report-pdf
+  - report-docx
+
+max_iterations: 4
+emit_plan_steps: false
+
+input_schema:
+  type: object
+  required: [scan_id, format]
+  properties:
+    scan_id:
+      type: string
+      description: ULID of the scan to report on
+    format:
+      type: string
+      enum: [markdown, pdf, docx]
+    template:
+      type: string
+      description: Optional template name from templates/report/
+
+output_schema:
+  type: object
+  required: [path, format]
+  properties:
+    path:   {type: string, description: Filesystem path of the rendered report}
+    format: {type: string, enum: [markdown, pdf, docx]}
+    bytes:  {type: integer}

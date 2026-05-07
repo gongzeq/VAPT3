@@ -1,0 +1,45 @@
+name: asset_discovery
+display_name: 资产探测
+description: |
+  Discover live hosts, services and basic asset inventory under a target
+  CIDR / IP / domain. Use BEFORE port_scan or vuln_scan. Also exposes
+  read/write helpers for the local CMDB so the orchestrator can record
+  newly discovered assets and query historical scans.
+
+system_prompt_file: ./prompts/asset_discovery.md
+
+scoped_skills:
+  - nmap-host-discovery
+  - fscan-asset-discovery
+  - masscan-discovery
+  - cmdb-add-target
+  - cmdb-list-assets
+  - cmdb-history-query
+
+max_iterations: 8
+emit_plan_steps: true
+
+input_schema:
+  type: object
+  required: [target]
+  properties:
+    target:
+      type: string
+      description: CIDR / IP / domain
+    label:
+      type: string
+      description: Optional human label written into CMDB
+
+output_schema:
+  type: object
+  required: [assets]
+  properties:
+    assets:
+      type: array
+      items:
+        type: object
+        required: [target, kind]
+        properties:
+          target: {type: string}
+          kind:   {type: string, enum: [cidr, ip, domain]}
+          label:  {type: string}

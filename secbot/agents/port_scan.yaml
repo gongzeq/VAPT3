@@ -1,0 +1,49 @@
+name: port_scan
+display_name: 端口与服务扫描
+description: |
+  Enumerate open ports and identify running services / banners on hosts
+  produced by asset_discovery. Use AFTER asset_discovery and BEFORE
+  vuln_scan.
+
+system_prompt_file: ./prompts/port_scan.md
+
+scoped_skills:
+  - nmap-port-scan
+  - nmap-service-fingerprint
+  - fscan-port-scan
+
+max_iterations: 8
+emit_plan_steps: true
+
+input_schema:
+  type: object
+  required: [targets]
+  properties:
+    targets:
+      type: array
+      items: {type: string}
+      minItems: 1
+      description: List of IPs / hostnames to scan
+    ports:
+      type: string
+      description: Optional port spec, e.g. "1-1024" or "top-1000"
+    rate:
+      type: string
+      enum: [slow, normal, fast]
+      default: normal
+
+output_schema:
+  type: object
+  required: [services]
+  properties:
+    services:
+      type: array
+      items:
+        type: object
+        required: [host, port, protocol]
+        properties:
+          host:     {type: string}
+          port:     {type: integer}
+          protocol: {type: string, enum: [tcp, udp]}
+          service:  {type: string}
+          version:  {type: string}
