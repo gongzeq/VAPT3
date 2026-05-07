@@ -1,0 +1,1 @@
+- [VAPT3 rename target (supersedes secbot)](project_vapt3_rename.md) — Project renames nanobot→vapt3 (not secbot); PRD `secbot` references are stale, use `vapt3` (lowercase pkg/CLI) and `VAPT3` (branding)

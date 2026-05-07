@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "通用质量与跨层校验入口"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "审查是否过度造轮、是否复用既有 agent/tools/skills 资产"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "校验后端 WS/REST 契约与前端消费的一致性"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范汇总，作为 spec compliance 检查表"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "lint / typecheck / 测试覆盖等核心质量门"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验 subprocess 与高危拒绝路径异常处理是否符合规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "校验原始日志落盘与 LLM 摘要分离是否合规"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "校验 SQLite schema/migration/repository 实现"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "校验 secbot 包目录与模块布局是否合规"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端 Hard Rule + Pre-Implementation Checklist 校验入口"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "校验：禁裸 hex、--primary 必须为海蓝 #1E90FF、severity 5 档完整"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "校验 MessageBubble 三件套结构 + 高危 AlertDialog + user_denied 回灌契约"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "校验 chart/graph 库白名单（react-flow + recharts），拒绝黑名单依赖"}

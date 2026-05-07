@@ -1,0 +1,19 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "通用开发指引入口，跨层任务入场必读"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "PR1/PR5/PR6 强复用现有 agent loop / subagent / tools / skills，避免重写"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务跨 backend(Python) + frontend(webui)，需关注 WS 协议与契约一致性"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范入口，覆盖 PR1/PR2/PR4-PR7/PR10"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "PR1 全仓 nanobot→secbot 重命名涉及包目录与模块布局约束"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "PR6 skill 内 subprocess 调用与高危确认拒绝路径需统一异常处理"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "R5 上下文裁剪：原始日志落盘与 LLM 摘要分离，需遵循日志规范"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PR4 SQLite CMDB schema/migrations/repository 层"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "全 PR 通用质量门：lint/typecheck/测试覆盖"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范入口，覆盖 PR8/PR9 的 4 条 Hard Rule 与 Pre-Implementation Checklist"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "PR8 安全主题落地：海蓝 --primary #1E90FF + severity 5 档 + globals.css 契约"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "PR8 MessageBubble 三件套（ToolCallCard/ScanResultTable/PlanTimeline）+ 流式 + 高危确认 AlertDialog 契约"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "PR9 Assets/ScanHistory 视图依赖 react-flow + recharts 白名单"}
+{"file": ".trellis/tasks/05-07-cybersec-agent-platform/research/assistant-ui-integration.md", "reason": "PR8 接入 @assistant-ui/react 与现有 WS streaming 协议的对接路径"}
+{"file": ".trellis/tasks/05-07-cybersec-agent-platform/research/security-tool-functions.md", "reason": "PR6 skill 函数清单与 CLI/JSON 输出 schema 的权威来源"}
+{"file": ".trellis/tasks/05-07-cybersec-agent-platform/research/cybersec-ui-patterns.md", "reason": "PR8/PR9 主题/严重度/可视化决策原始溯源（spec/frontend/* 的 rationale）"}
+{"file": ".trellis/spec/backend/removed-im-channels.md", "reason": "PR3 新增：13 个 IM 通道 + bridge + tests 删除清单 + 反回滚 rationale + reviewer 验证 checklist（PRD §R1 + Locked Decision #5）"}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "PR3 新增：WebUI 视图层级导航中心（Sidebar / ChatPane / Assets / ScanHistory / Reports），不重复 sub-spec 内容，仅做 cross-reference"}
+{"file": ".trellis/spec/secbot/index.md", "reason": "PR3 新增：secbot spec 入口与跨目录交叉引用索引（按 Architecture / Agents & Skills / Lifecycle / WebUI / Quality 五大关注分组）"}
