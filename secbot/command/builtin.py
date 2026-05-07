@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 
@@ -64,6 +65,13 @@ BUILTIN_COMMAND_SPECS: tuple[BuiltinCommandSpec, ...] = (
         "Print the last N persisted conversation messages.",
         "history",
         "[n]",
+    ),
+    BuiltinCommandSpec(
+        "/model",
+        "Select model",
+        "List or switch the default model on the configured OpenAI-compatible endpoint.",
+        "bot",
+        "[name]",
     ),
     BuiltinCommandSpec(
         "/dream",
@@ -459,6 +467,159 @@ async def cmd_help(ctx: CommandContext) -> OutboundMessage:
     )
 
 
+# ---------------------------------------------------------------------------
+# /model command
+# ---------------------------------------------------------------------------
+
+_MODEL_LIST_CACHE_TTL_SECONDS = 60.0
+_MODEL_LIST_MAX_BUTTONS = 20
+# Cache keyed by ``(base_url, api_key)``. The key includes the API key so that
+# rotating the key invalidates the cache even if the endpoint URL stays the
+# same (otherwise a fresh key with different model quota would still show the
+# old list).
+_MODEL_LIST_CACHE: dict[tuple[str, str], tuple[float, list[str]]] = {}
+
+
+def _normalize_base_url(base: str) -> str:
+    """Trim trailing slashes so the ``/models`` suffix joins cleanly."""
+    return base.rstrip("/")
+
+
+async def _fetch_openai_models(base_url: str, api_key: str) -> list[str]:
+    """Call ``GET {base}/models`` and return sorted model ids.
+
+    The OpenAI convention (and every clone we target — LM Studio, Ollama,
+    vLLM, OpenRouter, Together) returns ``{"data": [{"id": "..."}, ...]}``.
+    Raises on HTTP / parse errors so the caller can surface a useful message.
+    """
+    import httpx
+
+    url = f"{_normalize_base_url(base_url)}/models"
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        payload = response.json()
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise ValueError("unexpected /models response: missing 'data' array")
+    ids = [
+        str(item.get("id"))
+        for item in data
+        if isinstance(item, dict) and item.get("id")
+    ]
+    return sorted(set(ids))
+
+
+async def _get_cached_models(base_url: str, api_key: str) -> list[str]:
+    """Return models list with a 60s TTL cache to avoid hammering the endpoint."""
+    key = (base_url, api_key)
+    now = time.monotonic()
+    cached = _MODEL_LIST_CACHE.get(key)
+    if cached and now - cached[0] < _MODEL_LIST_CACHE_TTL_SECONDS:
+        return cached[1]
+    ids = await _fetch_openai_models(base_url, api_key)
+    _MODEL_LIST_CACHE[key] = (now, ids)
+    return ids
+
+
+async def cmd_model(ctx: CommandContext) -> OutboundMessage:
+    """List or switch the default model.
+
+    - ``/model``          → fetch ``GET {base}/models`` and return a picker.
+    - ``/model <name>``   → write ``defaults.model`` so the next turn picks it up
+      via :class:`AgentLoop`'s signature-based hot reload (no restart needed).
+    """
+    from secbot.config.loader import load_config, save_config
+
+    msg = ctx.msg
+    args = ctx.args.strip()
+    config = load_config()
+    custom = config.providers.custom
+
+    if args:
+        # Switch mode: args may contain trailing noise (e.g. from a button that
+        # includes a label); take the first token as the model id.
+        new_model = args.split()[0]
+        current = config.agents.defaults.model
+        if current == new_model:
+            content = f"Model is already `{new_model}`."
+        else:
+            config.agents.defaults.model = new_model
+            save_config(config)
+            content = (
+                f"Switched default model to `{new_model}`.\n\n"
+                "The next message uses the new model automatically — no restart required."
+            )
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=content,
+            metadata={**dict(msg.metadata or {}), "render_as": "text"},
+        )
+
+    # List mode. Requires a configured OpenAI-compatible endpoint.
+    base_url = (custom.api_base or "").strip()
+    if not base_url:
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=(
+                "No OpenAI-compatible endpoint configured yet.\n\n"
+                "Open Settings → *OpenAI-compatible endpoint* and set a Base URL "
+                "(e.g. `https://api.openai.com/v1`), then re-run `/model`.\n\n"
+                "Or switch directly with `/model <name>` if you already know the id."
+            ),
+            metadata={**dict(msg.metadata or {}), "render_as": "text"},
+        )
+
+    api_key = (custom.api_key or "").strip()
+    current_model = config.agents.defaults.model
+    try:
+        ids = await _get_cached_models(base_url, api_key)
+    except Exception as exc:
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=(
+                f"Couldn't fetch models from `{base_url}/models`: {exc}\n\n"
+                "You can still switch manually with `/model <name>`."
+            ),
+            metadata={**dict(msg.metadata or {}), "render_as": "text"},
+        )
+
+    if not ids:
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=(
+                f"Endpoint `{base_url}` returned no models.\n\n"
+                "Use `/model <name>` to set one manually."
+            ),
+            metadata={**dict(msg.metadata or {}), "render_as": "text"},
+        )
+
+    visible = ids[:_MODEL_LIST_MAX_BUTTONS]
+    # Buttons become quick-reply actions: clicking re-sends the label as a new
+    # message, which lands in the ``/model <id>`` prefix route above.
+    buttons = [[f"/model {mid}"] for mid in visible]
+    lines = [
+        f"Current model: `{current_model}`",
+        f"Available models on `{base_url}` ({len(ids)} total):",
+    ]
+    if len(ids) > len(visible):
+        lines.append(f"_Showing the first {len(visible)}. Use `/model <name>` for any other._")
+    return OutboundMessage(
+        channel=msg.channel,
+        chat_id=msg.chat_id,
+        content="\n".join(lines),
+        metadata={**dict(msg.metadata or {}), "render_as": "text"},
+        buttons=buttons,
+    )
+
+
 def build_help_text() -> str:
     """Build canonical help text shared across channels."""
     lines = ["🐈 secbot commands:"]
@@ -479,6 +640,8 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/status", cmd_status)
     router.exact("/history", cmd_history)
     router.prefix("/history ", cmd_history)
+    router.exact("/model", cmd_model)
+    router.prefix("/model ", cmd_model)
     router.exact("/dream", cmd_dream)
     router.exact("/dream-log", cmd_dream_log)
     router.prefix("/dream-log ", cmd_dream_log)
