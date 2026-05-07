@@ -78,6 +78,16 @@ export interface SettingsPayload {
     name: string;
     label: string;
   }>;
+  /**
+   * OpenAI-compatible custom endpoint. ``api_base`` is plain text (non-sensitive);
+   * ``api_key_masked`` is shaped like ``sk-****abcd`` so the UI can confirm a
+   * key is saved without exposing it.
+   */
+  custom: {
+    api_base: string;
+    api_key_masked: string;
+    has_api_key: boolean;
+  };
   runtime: {
     config_path: string;
   };
@@ -87,6 +97,14 @@ export interface SettingsPayload {
 export interface SettingsUpdate {
   model?: string;
   provider?: string;
+  /** OpenAI-compatible endpoint URL, e.g. ``https://api.openai.com/v1``. */
+  api_base?: string;
+  /**
+   * OpenAI-compatible API key. Sent over the ``X-Settings-Api-Key`` request
+   * header (never in the URL). Omit the field to keep the existing key;
+   * empty string clears it.
+   */
+  api_key?: string;
 }
 
 export interface SlashCommand {

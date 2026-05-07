@@ -143,5 +143,17 @@ export async function updateSettings(
   const query = new URLSearchParams();
   if (update.model !== undefined) query.set("model", update.model);
   if (update.provider !== undefined) query.set("provider", update.provider);
-  return request<SettingsPayload>(`${base}/api/settings/update?${query}`, token);
+  if (update.api_base !== undefined) query.set("api_base", update.api_base);
+  // ``api_key`` MUST travel via a request header, never the URL, so it does
+  // not leak into access logs or browser history. Keeping the field undefined
+  // means "don't touch the saved key"; an empty string means "clear it".
+  const headers: Record<string, string> = {};
+  if (update.api_key !== undefined) {
+    headers["X-Settings-Api-Key"] = update.api_key;
+  }
+  return request<SettingsPayload>(
+    `${base}/api/settings/update?${query}`,
+    token,
+    { headers },
+  );
 }

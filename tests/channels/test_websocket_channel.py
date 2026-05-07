@@ -545,6 +545,13 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert {"name": "auto", "label": "Auto"} in body["providers"]
         assert body["agent"]["has_api_key"] is True
         assert "secret-key" not in settings.text
+        # Hot reload is always available — UI never needs to prompt for restart.
+        assert body["requires_restart"] is False
+        assert body["custom"] == {
+            "api_base": "",
+            "api_key_masked": "",
+            "has_api_key": False,
+        }
 
         updated = await _http_get(
             "http://127.0.0.1:"
@@ -553,7 +560,8 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
             headers={"Authorization": "Bearer tok"},
         )
         assert updated.status_code == 200
-        assert updated.json()["requires_restart"] is True
+        # Hot reload is always supported; restart prompts are never needed.
+        assert updated.json()["requires_restart"] is False
 
         saved = load_config(config_path)
         assert saved.agents.defaults.model == "openrouter/test"
@@ -605,6 +613,95 @@ def test_settings_payload_normalizes_camel_case_provider(
     body = _ch(bus)._settings_payload()
 
     assert body["agent"]["provider"] == "minimax_anthropic"
+
+
+@pytest.mark.asyncio
+async def test_settings_update_custom_endpoint_via_header_and_query(
+    bus: MagicMock,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """OpenAI-compatible custom endpoint: api_key via header, api_base via query.
+
+    Verifies tri-state semantics (absent/empty/value) plus masking and the
+    non-disclosure guarantee (plaintext key never lands in the response body).
+    """
+    port = 29893
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.providers.custom.api_key = "sk-existing-abcd1234"
+    config.providers.custom.api_base = "https://old.example.com/v1"
+    save_config(config, config_path)
+    monkeypatch.setattr("secbot.config.loader._current_config_path", config_path)
+
+    channel = _ch(bus, port=port)
+    channel._api_tokens["tok"] = time.monotonic() + 300
+
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+
+    try:
+        # --- GET /api/settings should mask the key and never leak plaintext
+        get_resp = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert get_resp.status_code == 200
+        assert "sk-existing-abcd1234" not in get_resp.text
+        body = get_resp.json()
+        assert body["custom"]["api_base"] == "https://old.example.com/v1"
+        assert body["custom"]["has_api_key"] is True
+        assert body["custom"]["api_key_masked"].startswith("sk-")
+        assert body["custom"]["api_key_masked"].endswith("1234")
+        assert "*" in body["custom"]["api_key_masked"]
+
+        # --- Update: change api_base via query, rotate api_key via header
+        new_key = "sk-new-XXXXyyyy9999"
+        updated = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/update"
+            "?api_base=https%3A%2F%2Fapi.openai.com%2Fv1",
+            headers={
+                "Authorization": "Bearer tok",
+                "X-Settings-Api-Key": new_key,
+            },
+        )
+        assert updated.status_code == 200
+        # Response must not leak the plaintext key.
+        assert new_key not in updated.text
+        saved = load_config(config_path)
+        assert saved.providers.custom.api_base == "https://api.openai.com/v1"
+        assert saved.providers.custom.api_key == new_key
+
+        # --- Omitted header = keep existing key; api_base query absent = keep.
+        noop = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/update?model={saved.agents.defaults.model}",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert noop.status_code == 200
+        kept = load_config(config_path)
+        assert kept.providers.custom.api_key == new_key
+        assert kept.providers.custom.api_base == "https://api.openai.com/v1"
+
+        # --- Empty header / empty api_base clear each field.
+        cleared = await _http_get(
+            f"http://127.0.0.1:{port}/api/settings/update?api_base=",
+            headers={
+                "Authorization": "Bearer tok",
+                "X-Settings-Api-Key": "",
+            },
+        )
+        assert cleared.status_code == 200
+        blank = load_config(config_path)
+        assert blank.providers.custom.api_key is None
+        assert blank.providers.custom.api_base is None
+        assert cleared.json()["custom"] == {
+            "api_base": "",
+            "api_key_masked": "",
+            "has_api_key": False,
+        }
+    finally:
+        await channel.stop()
+        await server_task
 
 
 @pytest.mark.asyncio

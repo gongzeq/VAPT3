@@ -167,11 +167,31 @@ def _read_webui_model_name() -> str | None:
         return None
 
 
+def _mask_api_key(key: str | None) -> str:
+    """Return a display-safe representation of *key*.
+
+    Keeps a short prefix/suffix so users can visually confirm which key is
+    saved without exposing the secret. Shape: ``sk-****abcd``. Returns empty
+    string when no key is configured.
+    """
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return f"{key[:3]}****{key[-4:]}"
+
+
 def _parse_request_path(path_with_query: str) -> tuple[str, dict[str, list[str]]]:
-    """Parse normalized path and query parameters in one pass."""
+    """Parse normalized path and query parameters in one pass.
+
+    ``keep_blank_values=True`` preserves explicitly empty values (``?foo=``) so
+    callers can distinguish "key absent" from "key empty" — used by
+    ``/api/settings/update`` for tri-state semantics (absent = keep,
+    empty = clear, value = set).
+    """
     parsed = urlparse("ws://x" + path_with_query)
     path = _strip_trailing_slash(parsed.path or "/")
-    return path, parse_qs(parsed.query)
+    return path, parse_qs(parsed.query, keep_blank_values=True)
 
 
 def _normalize_http_path(path_with_query: str) -> str:
@@ -688,6 +708,7 @@ class WebSocketChannel(BaseChannel):
         if defaults.provider != "auto":
             spec = find_by_name(defaults.provider)
             selected_provider = spec.name if spec else provider_name
+        custom = config.providers.custom
         return {
             "agent": {
                 "model": defaults.model,
@@ -701,10 +722,20 @@ class WebSocketChannel(BaseChannel):
                 {"name": spec.name, "label": spec.label}
                 for spec in PROVIDERS
             ],
+            "custom": {
+                # OpenAI-compatible endpoint. ``api_base`` is non-sensitive so we
+                # return it plain; the key is masked (last 4 visible) so the UI
+                # can show it was set without exposing the secret.
+                "api_base": custom.api_base or "",
+                "api_key_masked": _mask_api_key(custom.api_key),
+                "has_api_key": bool(custom.api_key),
+            },
             "runtime": {
                 "config_path": str(get_config_path().expanduser()),
             },
-            "requires_restart": requires_restart,
+            # Hot reload is always available: AgentLoop re-reads config and
+            # rebuilds the provider snapshot at the start of every turn.
+            "requires_restart": False,
         }
 
     def _handle_settings(self, request: WsRequest) -> Response:
@@ -726,6 +757,7 @@ class WebSocketChannel(BaseChannel):
         query = _parse_query(request.path)
         config = load_config()
         defaults = config.agents.defaults
+        custom = config.providers.custom
         changed = False
 
         model = _query_first(query, "model")
@@ -744,6 +776,25 @@ class WebSocketChannel(BaseChannel):
                 return _http_error(400, "unknown provider")
             if defaults.provider != provider:
                 defaults.provider = provider
+                changed = True
+
+        # ``api_base`` is non-sensitive — allowed in URL query.
+        # Semantics: key absent = keep; empty string = clear; non-empty = set.
+        api_base_raw = _query_first(query, "api_base")
+        if api_base_raw is not None:
+            new_api_base = api_base_raw.strip() or None
+            if custom.api_base != new_api_base:
+                custom.api_base = new_api_base
+                changed = True
+
+        # ``api_key`` is sensitive — MUST come via the custom request header
+        # so it never lands in URL query strings, access logs, or browser
+        # history. Same tri-state semantics as api_base.
+        if "X-Settings-Api-Key" in request.headers:
+            api_key_raw = request.headers.get("X-Settings-Api-Key") or ""
+            new_api_key = api_key_raw.strip() or None
+            if custom.api_key != new_api_key:
+                custom.api_key = new_api_key
                 changed = True
 
         if changed:
