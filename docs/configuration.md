@@ -373,6 +373,14 @@ Official model names include `LongCat-Flash-Chat`, `LongCat-Flash-Thinking`,
 
 Connects directly to any OpenAI-compatible endpoint — llama.cpp, Together AI, Fireworks, Azure OpenAI, or any self-hosted server. Model name is passed as-is.
 
+> **Tip — configure from the Web UI without editing config.json**:
+> open the webui, click **Settings** → *OpenAI-compatible endpoint*, then
+> fill in **Base URL** and **API Key**. The form writes to
+> `providers.custom` and takes effect on the next message (no restart).
+> Inside chat, use `/model` to pick from the endpoint's `GET /v1/models`
+> listing, or `/model <name>` to switch directly. See
+> [chat-commands.md](chat-commands.md#choosing-a-model-with-model).
+
 ```json
 {
   "providers": {

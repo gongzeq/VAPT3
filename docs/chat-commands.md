@@ -13,7 +13,24 @@ These commands work inside chat channels and interactive agent sessions:
 | `/dream-log <sha>` | Show a specific Dream memory change |
 | `/dream-restore` | List recent Dream memory versions |
 | `/dream-restore <sha>` | Restore memory to the state before a specific change |
+| `/model` | List models from the configured OpenAI-compatible endpoint |
+| `/model <name>` | Switch the default model (takes effect on the next message, no restart) |
 | `/help` | Show available in-chat commands |
+
+## Choosing a Model with `/model`
+
+`/model` works against the OpenAI-compatible endpoint configured in
+Web UI → **Settings** → *OpenAI-compatible endpoint* (Base URL + API Key).
+
+- **`/model`** — fetches `GET {base}/v1/models` (cached for 60 seconds) and
+  returns a quick-reply picker. Click a button to switch.
+- **`/model <name>`** — switches directly without hitting the endpoint. Useful
+  when you already know the id, or when `/v1/models` is not reachable.
+
+The selected model is written to `agents.defaults.model` in `config.json`.
+[AgentLoop](../secbot/agent/loop.py) re-reads the config and rebuilds its
+provider on the **next** user turn, so you never need to restart after a
+switch. In-flight turns keep the previous model until they finish.
 
 ## Periodic Tasks
 
