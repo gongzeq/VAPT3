@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["hosts_up"],
+  "additionalProperties": true,
+  "properties": {
+    "hosts_up": {
+      "type": "array",
+      "items": {"type": "string"},
+      "maxItems": 200
+    },
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"}
+  }
+}

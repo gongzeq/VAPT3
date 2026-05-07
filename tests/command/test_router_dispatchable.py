@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nanobot.command.builtin import register_builtin_commands
-from nanobot.command.router import CommandContext, CommandRouter
+from secbot.command.builtin import register_builtin_commands
+from secbot.command.router import CommandContext, CommandRouter
 
 
 class TestIsDispatchableCommand:

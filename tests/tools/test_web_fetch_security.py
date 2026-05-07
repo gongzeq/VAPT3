@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nanobot.agent.tools.web import WebFetchTool
-from nanobot.config.schema import WebFetchConfig
+from secbot.agent.tools.web import WebFetchTool
+from secbot.config.schema import WebFetchConfig
 
 
 def _fake_resolve_private(hostname, port, family=0, type_=0):
@@ -23,7 +23,7 @@ def _fake_resolve_public(hostname, port, family=0, type_=0):
 @pytest.mark.asyncio
 async def test_web_fetch_blocks_private_ip():
     tool = WebFetchTool()
-    with patch("nanobot.security.network.socket.getaddrinfo", _fake_resolve_private):
+    with patch("secbot.security.network.socket.getaddrinfo", _fake_resolve_private):
         result = await tool.execute(url="http://169.254.169.254/computeMetadata/v1/")
     data = json.loads(result)
     assert "error" in data
@@ -35,7 +35,7 @@ async def test_web_fetch_blocks_localhost():
     tool = WebFetchTool()
     def _resolve_localhost(hostname, port, family=0, type_=0):
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))]
-    with patch("nanobot.security.network.socket.getaddrinfo", _resolve_localhost):
+    with patch("secbot.security.network.socket.getaddrinfo", _resolve_localhost):
         result = await tool.execute(url="http://localhost/admin")
     data = json.loads(result)
     assert "error" in data
@@ -60,7 +60,7 @@ async def test_web_fetch_result_contains_untrusted_flag():
     async def _fake_get(self, url, **kwargs):
         return FakeResponse()
 
-    with patch("nanobot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+    with patch("secbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
          patch("httpx.AsyncClient.get", _fake_get):
         result = await tool.execute(url="https://example.com/page")
 
@@ -73,7 +73,7 @@ async def test_web_fetch_result_contains_untrusted_flag():
 async def test_web_fetch_can_skip_jina_and_use_custom_user_agent(monkeypatch):
     tool = WebFetchTool(
         config=WebFetchConfig(use_jina_reader=False),
-        user_agent="nanobot-test-agent",
+        user_agent="secbot-test-agent",
     )
     seen_headers: list[dict] = []
 
@@ -118,16 +118,16 @@ async def test_web_fetch_can_skip_jina_and_use_custom_user_agent(monkeypatch):
             return FakeResponse()
 
     monkeypatch.setattr(tool, "_fetch_jina", _fail_jina)
-    monkeypatch.setattr("nanobot.agent.tools.web.httpx.AsyncClient", FakeClient)
+    monkeypatch.setattr("secbot.agent.tools.web.httpx.AsyncClient", FakeClient)
 
-    with patch("nanobot.security.network.socket.getaddrinfo", _fake_resolve_public):
+    with patch("secbot.security.network.socket.getaddrinfo", _fake_resolve_public):
         result = await tool.execute(url="https://example.com/page")
 
     data = json.loads(result)
     assert data["extractor"] == "readability"
     assert [headers["User-Agent"] for headers in seen_headers] == [
-        "nanobot-test-agent",
-        "nanobot-test-agent",
+        "secbot-test-agent",
+        "secbot-test-agent",
     ]
 
 
@@ -165,9 +165,9 @@ async def test_web_fetch_blocks_private_redirect_before_returning_image(monkeypa
         def stream(self, method, url, headers=None):
             return FakeStreamResponse()
 
-    monkeypatch.setattr("nanobot.agent.tools.web.httpx.AsyncClient", FakeClient)
+    monkeypatch.setattr("secbot.agent.tools.web.httpx.AsyncClient", FakeClient)
 
-    with patch("nanobot.security.network.socket.getaddrinfo", _fake_resolve_public):
+    with patch("secbot.security.network.socket.getaddrinfo", _fake_resolve_public):
         result = await tool.execute(url="https://example.com/image.png")
 
     data = json.loads(result)

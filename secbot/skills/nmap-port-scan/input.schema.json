@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["targets"],
+  "additionalProperties": false,
+  "properties": {
+    "targets": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 256},
+    "ports": {"type": "string", "default": "1-1024"}
+  }
+}

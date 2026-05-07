@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from nanobot.agent.tools.message import MessageTool
-from nanobot.bus.events import OutboundMessage
-from nanobot.config.paths import get_workspace_path
+from secbot.agent.tools.message import MessageTool
+from secbot.bus.events import OutboundMessage
+from secbot.config.paths import get_workspace_path
 
 
 @pytest.mark.asyncio

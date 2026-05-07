@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nanobot.agent.context import ContextBuilder
-from nanobot.agent.loop import AgentLoop
-from nanobot.bus.events import InboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.providers.base import LLMResponse
-from nanobot.session.manager import Session
-from nanobot.utils.webui_titles import (
+from secbot.agent.context import ContextBuilder
+from secbot.agent.loop import AgentLoop
+from secbot.bus.events import InboundMessage
+from secbot.bus.queue import MessageBus
+from secbot.providers.base import LLMResponse
+from secbot.session.manager import Session
+from secbot.utils.webui_titles import (
     WEBUI_SESSION_METADATA_KEY,
     WEBUI_TITLE_METADATA_KEY,
     maybe_generate_webui_title,
@@ -19,7 +19,7 @@ from nanobot.utils.webui_titles import (
 
 def _mk_loop() -> AgentLoop:
     loop = AgentLoop.__new__(AgentLoop)
-    from nanobot.config.schema import AgentDefaults
+    from secbot.config.schema import AgentDefaults
 
     loop.max_tool_result_chars = AgentDefaults().max_tool_result_chars
     return loop
@@ -502,8 +502,8 @@ async def test_next_turn_after_crash_closes_pending_user_turn_before_new_input(t
 
 @pytest.mark.asyncio
 async def test_stop_preserves_runtime_checkpoint_for_next_turn(tmp_path: Path) -> None:
-    from nanobot.command.builtin import cmd_stop
-    from nanobot.command.router import CommandContext
+    from secbot.command.builtin import cmd_stop
+    from secbot.command.router import CommandContext
 
     loop = _make_full_loop(tmp_path)
     loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]

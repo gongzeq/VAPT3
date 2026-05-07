@@ -13,8 +13,8 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 from websockets.frames import Close
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.channels.websocket import (
+from secbot.bus.events import OutboundMessage
+from secbot.channels.websocket import (
     WebSocketChannel,
     WebSocketConfig,
     _is_valid_chat_id,
@@ -26,8 +26,8 @@ from nanobot.channels.websocket import (
     _parse_query,
     _parse_request_path,
 )
-from nanobot.config.loader import load_config, save_config
-from nanobot.config.schema import Config
+from secbot.config.loader import load_config, save_config
+from secbot.config.schema import Config
 
 # -- Shared helpers (aligned with test_websocket_integration.py) ---------------
 
@@ -153,7 +153,7 @@ def test_issue_route_secret_matches_bearer_and_header() -> None:
     secret = "my-secret"
     bearer_headers = Headers([("Authorization", "Bearer my-secret")])
     assert _issue_route_secret_matches(bearer_headers, secret) is True
-    x_headers = Headers([("X-Nanobot-Auth", "my-secret")])
+    x_headers = Headers([("X-Secbot-Auth", "my-secret")])
     assert _issue_route_secret_matches(x_headers, secret) is True
     wrong = Headers([("Authorization", "Bearer other")])
     assert _issue_route_secret_matches(wrong, secret) is False
@@ -241,7 +241,7 @@ async def test_send_stages_external_media_as_signed_url(monkeypatch, tmp_path) -
     def fake_media_dir(channel: str | None = None):
         return ws_media if channel == "websocket" else media_root
 
-    monkeypatch.setattr("nanobot.channels.websocket.get_media_dir", fake_media_dir)
+    monkeypatch.setattr("secbot.channels.websocket.get_media_dir", fake_media_dir)
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
     mock_ws = AsyncMock()
     channel._attach(mock_ws, "chat-1")
@@ -462,7 +462,7 @@ async def test_wrong_path_returns_404(bus: MagicMock) -> None:
 
 
 def test_registry_discovers_websocket_channel() -> None:
-    from nanobot.channels.registry import load_channel_class
+    from secbot.channels.registry import load_channel_class
 
     cls = load_channel_class("websocket")
     assert cls.name == "websocket"
@@ -525,7 +525,7 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
     config.agents.defaults.model = "openai/gpt-4o"
     config.providers.openai.api_key = "secret-key"
     save_config(config, config_path)
-    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("secbot.config.loader._current_config_path", config_path)
 
     channel = _ch(bus, port=port)
     channel._api_tokens["tok"] = time.monotonic() + 300
@@ -600,7 +600,7 @@ def test_settings_payload_normalizes_camel_case_provider(
     config = Config()
     config.agents.defaults.provider = "minimaxAnthropic"
     save_config(config, config_path)
-    monkeypatch.setattr("nanobot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("secbot.config.loader._current_config_path", config_path)
 
     body = _ch(bus)._settings_payload()
 

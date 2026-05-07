@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nanobot.config.schema import AgentDefaults
+from secbot.config.schema import AgentDefaults
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
@@ -15,9 +15,9 @@ _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 @pytest.mark.asyncio
 async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
     """allowed_env_keys from ExecToolConfig must be forwarded to the subagent's ExecTool."""
-    from nanobot.agent.subagent import SubagentManager, SubagentStatus
-    from nanobot.bus.queue import MessageBus
-    from nanobot.config.schema import ExecToolConfig
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.bus.queue import MessageBus
+    from secbot.config.schema import ExecToolConfig
 
     bus = MessageBus()
     provider = MagicMock()
@@ -57,8 +57,8 @@ async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
 @pytest.mark.asyncio
 async def test_subagent_uses_configured_max_iterations(tmp_path):
     """Subagents should honor the configured tool-iteration limit."""
-    from nanobot.agent.subagent import SubagentManager, SubagentStatus
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -96,9 +96,9 @@ async def test_subagent_uses_configured_max_iterations(tmp_path):
 @pytest.mark.asyncio
 async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
     """SpawnTool should return an error string when the concurrency limit is reached."""
-    from nanobot.agent.subagent import SubagentManager
-    from nanobot.agent.tools.spawn import SpawnTool
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -145,8 +145,8 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
 
 def test_subagent_default_max_concurrent_matches_agent_defaults(tmp_path):
     """Direct SubagentManager construction should use the agent default concurrency limit."""
-    from nanobot.agent.subagent import SubagentManager
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.subagent import SubagentManager
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -164,8 +164,8 @@ def test_subagent_default_max_concurrent_matches_agent_defaults(tmp_path):
 
 def test_subagent_default_max_iterations_matches_agent_defaults(tmp_path):
     """Direct SubagentManager construction should use the agent default limit."""
-    from nanobot.agent.subagent import SubagentManager
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.subagent import SubagentManager
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -183,8 +183,8 @@ def test_subagent_default_max_iterations_matches_agent_defaults(tmp_path):
 
 def test_agent_loop_passes_max_iterations_to_subagents(tmp_path):
     """AgentLoop's configured limit should be shared with spawned subagents."""
-    from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -204,8 +204,8 @@ def test_agent_loop_passes_max_iterations_to_subagents(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
     """Runtime max_iterations changes should be reflected before tool execution."""
-    from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -245,10 +245,10 @@ async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_blocks_while_subagents_running(tmp_path):
     """_drain_pending should block when no messages are available but sub-agents are still running."""
-    from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.events import InboundMessage
-    from nanobot.bus.queue import MessageBus
-    from nanobot.session.manager import Session
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.events import InboundMessage
+    from secbot.bus.queue import MessageBus
+    from secbot.session.manager import Session
 
     bus = MessageBus()
     provider = MagicMock()
@@ -337,8 +337,8 @@ async def test_drain_pending_blocks_while_subagents_running(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_no_block_when_no_subagents(tmp_path):
     """_drain_pending should not block when no sub-agents are running."""
-    from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -383,9 +383,9 @@ async def test_drain_pending_no_block_when_no_subagents(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_timeout(tmp_path):
     """_drain_pending should return empty after timeout when sub-agents hang."""
-    from nanobot.agent.loop import AgentLoop
-    from nanobot.bus.queue import MessageBus
-    from nanobot.session.manager import Session
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
+    from secbot.session.manager import Session
 
     bus = MessageBus()
     provider = MagicMock()
@@ -432,7 +432,7 @@ async def test_drain_pending_timeout(tmp_path):
     assert injection_callback is not None
 
     # Patch the timeout to be very short for testing
-    with patch("nanobot.agent.loop.asyncio.wait_for") as mock_wait:
+    with patch("secbot.agent.loop.asyncio.wait_for") as mock_wait:
         mock_wait.side_effect = asyncio.TimeoutError
         results = await injection_callback()
         assert results == []

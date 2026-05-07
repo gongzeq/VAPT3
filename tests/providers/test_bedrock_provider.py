@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from nanobot.config.schema import Config, ProvidersConfig
-from nanobot.providers.bedrock_provider import BedrockProvider
-from nanobot.providers.registry import find_by_name
+from secbot.config.schema import Config, ProvidersConfig
+from secbot.providers.bedrock_provider import BedrockProvider
+from secbot.providers.registry import find_by_name
 
 
 class FakeClient:

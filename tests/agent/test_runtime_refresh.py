@@ -2,9 +2,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from nanobot.agent.loop import AgentLoop
-from nanobot.bus.queue import MessageBus
-from nanobot.providers.factory import ProviderSnapshot
+from secbot.agent.loop import AgentLoop
+from secbot.bus.queue import MessageBus
+from secbot.providers.factory import ProviderSnapshot
 
 
 def _provider(default_model: str, max_tokens: int = 123) -> MagicMock:

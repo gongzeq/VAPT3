@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nanobot.cli import commands
+from secbot.cli import commands
 
 
 @pytest.mark.asyncio
@@ -20,7 +20,7 @@ async def test_interactive_retry_wait_is_rendered_as_progress_even_when_progress
     async def fake_print(text: str, active_thinking: object | None) -> None:
         calls.append((text, active_thinking))
 
-    with patch("nanobot.cli.commands._print_interactive_progress_line", side_effect=fake_print):
+    with patch("secbot.cli.commands._print_interactive_progress_line", side_effect=fake_print):
         handled = await commands._maybe_print_interactive_progress(
             msg,
             thinking,

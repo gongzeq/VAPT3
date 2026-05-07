@@ -2,8 +2,8 @@
 
 import pytest
 
-from nanobot.heartbeat.service import HeartbeatService
-from nanobot.providers.base import LLMResponse, ToolCallRequest
+from secbot.heartbeat.service import HeartbeatService
+from secbot.providers.base import LLMResponse, ToolCallRequest
 
 # ---------------------------------------------------------------------------
 # _is_deliverable unit tests
@@ -84,7 +84,7 @@ async def test_tick_suppresses_finalization_fallback(tmp_path, monkeypatch) -> N
     """Finalization fallback should be caught before the evaluator runs."""
     (tmp_path / "HEARTBEAT.md").write_text("- [ ] check inbox", encoding="utf-8")
 
-    from nanobot.providers.base import LLMProvider
+    from secbot.providers.base import LLMProvider
 
     class StubProvider(LLMProvider):
         async def chat(self, **kwargs) -> LLMResponse:
@@ -118,7 +118,7 @@ async def test_tick_suppresses_finalization_fallback(tmp_path, monkeypatch) -> N
         evaluator_called = True
         return True
 
-    monkeypatch.setattr("nanobot.utils.evaluator.evaluate_response", _eval_always_notify)
+    monkeypatch.setattr("secbot.utils.evaluator.evaluate_response", _eval_always_notify)
 
     service = HeartbeatService(
         workspace=tmp_path,
@@ -139,7 +139,7 @@ async def test_tick_suppresses_leaked_reasoning(tmp_path, monkeypatch) -> None:
     """Leaked internal reasoning should be caught before the evaluator runs."""
     (tmp_path / "HEARTBEAT.md").write_text("- [ ] check status", encoding="utf-8")
 
-    from nanobot.providers.base import LLMProvider
+    from secbot.providers.base import LLMProvider
 
     class StubProvider(LLMProvider):
         async def chat(self, **kwargs) -> LLMResponse:
@@ -167,7 +167,7 @@ async def test_tick_suppresses_leaked_reasoning(tmp_path, monkeypatch) -> None:
     async def _eval_always_notify(*a, **kw):
         return True
 
-    monkeypatch.setattr("nanobot.utils.evaluator.evaluate_response", _eval_always_notify)
+    monkeypatch.setattr("secbot.utils.evaluator.evaluate_response", _eval_always_notify)
 
     service = HeartbeatService(
         workspace=tmp_path,
@@ -187,7 +187,7 @@ async def test_tick_delivers_normal_report(tmp_path, monkeypatch) -> None:
     """Normal reports should pass through deliverability and evaluator."""
     (tmp_path / "HEARTBEAT.md").write_text("- [ ] check inbox", encoding="utf-8")
 
-    from nanobot.providers.base import LLMProvider
+    from secbot.providers.base import LLMProvider
 
     class StubProvider(LLMProvider):
         async def chat(self, **kwargs) -> LLMResponse:
@@ -215,7 +215,7 @@ async def test_tick_delivers_normal_report(tmp_path, monkeypatch) -> None:
     async def _eval_always_notify(*a, **kw):
         return True
 
-    monkeypatch.setattr("nanobot.utils.evaluator.evaluate_response", _eval_always_notify)
+    monkeypatch.setattr("secbot.utils.evaluator.evaluate_response", _eval_always_notify)
 
     service = HeartbeatService(
         workspace=tmp_path,

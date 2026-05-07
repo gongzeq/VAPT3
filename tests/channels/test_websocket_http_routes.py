@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from nanobot.channels.websocket import WebSocketChannel
-from nanobot.session.manager import Session, SessionManager
+from secbot.channels.websocket import WebSocketChannel
+from secbot.session.manager import Session, SessionManager
 
 _PORT = 29900
 
@@ -434,7 +434,7 @@ def test_wildcard_ipv6_without_auth_raises(bus: MagicMock) -> None:
 def test_wildcard_ipv6_with_secret_is_valid(bus: MagicMock) -> None:
     channel = _ch(bus, host="::", tokenIssueSecret="s3cret")
     resp = channel._handle_webui_bootstrap(
-        _REMOTE, _FakeReq({"X-Nanobot-Auth": "s3cret"})
+        _REMOTE, _FakeReq({"X-Secbot-Auth": "s3cret"})
     )
     assert resp.status_code == 200
 
@@ -477,7 +477,7 @@ def test_bootstrap_accepts_remote_with_valid_secret(bus: MagicMock) -> None:
 def test_bootstrap_accepts_x_nanobot_auth_header(bus: MagicMock) -> None:
     channel = _ch(bus, host="0.0.0.0", tokenIssueSecret="s3cret")
     resp = channel._handle_webui_bootstrap(
-        _REMOTE, _FakeReq({"X-Nanobot-Auth": "s3cret"})
+        _REMOTE, _FakeReq({"X-Secbot-Auth": "s3cret"})
     )
     assert resp.status_code == 200
 

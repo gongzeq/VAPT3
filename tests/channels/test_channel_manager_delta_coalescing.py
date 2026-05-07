@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
-from nanobot.channels.manager import ChannelManager
-from nanobot.config.schema import Config
+from secbot.bus.events import OutboundMessage
+from secbot.bus.queue import MessageBus
+from secbot.channels.base import BaseChannel
+from secbot.channels.manager import ChannelManager
+from secbot.config.schema import Config
 
 
 class MockChannel(BaseChannel):

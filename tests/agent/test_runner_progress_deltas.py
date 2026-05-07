@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nanobot.agent.runner import AgentRunner, AgentRunSpec
-from nanobot.config.schema import AgentDefaults
-from nanobot.providers.base import LLMResponse
+from secbot.agent.runner import AgentRunner, AgentRunSpec
+from secbot.config.schema import AgentDefaults
+from secbot.providers.base import LLMResponse
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
