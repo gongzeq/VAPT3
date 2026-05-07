@@ -110,14 +110,72 @@ secbot onboard
 
 ### 3. 启动对话
 
-```bash
-# CLI 交互
-secbot agent
+secbot 有三个互不相同的入口，**启动前请确认选对了对应场景**：
 
-# 或启动网关 + WebUI
-secbot gateway
-cd webui && bun install && bun run dev
+| 场景 | 命令 | 默认端口 | 说明 |
+|------|------|---------|------|
+| CLI 直连 | `secbot agent` | — | 终端交互，适合快速冒烟 |
+| OpenAI 兼容 API | `secbot serve` | `8000` | `/v1/chat/completions`，用于嵌入第三方平台，**不为 WebUI 服务** |
+| WebUI / 网关 | `secbot gateway` | `18790`（健康检查）+ `8765`（WebSocket 通道） | WebUI 依赖此入口 |
+
+#### 3.1 CLI 交互
+
+```bash
+secbot agent
 ```
+
+#### 3.2 启动 WebUI（后端 + 前端）
+
+**后端**：WebUI 通过 `/webui/bootstrap` 领取会话 token，该端点由 `websocket` 通道提供，所以 **必须** 在 `~/.secbot/config.json` 里启用：
+
+```json
+{
+  "channels": {
+    "websocket": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8765
+    }
+  }
+}
+```
+
+然后启动网关（`-v` 打开详细日志）：
+
+```bash
+secbot gateway -v
+# ✓ Channels enabled: websocket
+# ✓ WebSocket server listening on ws://127.0.0.1:8765/
+# ✓ Health endpoint: http://127.0.0.1:18790/health
+```
+
+验证：
+
+```bash
+curl http://127.0.0.1:8765/webui/bootstrap
+# {"token":"nbwt_...","ws_path":"/","expires_in":300,"model_name":"..."}
+```
+
+**前端**（默认 `bun`，也可用 `npm`）：
+
+```bash
+cd webui
+bun install && bun run dev        # 或 npm install && npm run dev
+# VITE ready → http://127.0.0.1:5173/
+```
+
+Vite 开发代理默认把 `/webui`、`/api`、`/auth`、`/`（WebSocket 升级）转发到 `http://127.0.0.1:8765`。如需换端口，设置环境变量 `NANOBOT_API_URL=http://host:port` 再启动 `bun run dev`。
+
+> 常见故障：浏览器提示「无法连接到 nanobot」/ Vite 日志出现 `ECONNREFUSED 127.0.0.1:8765` → 十有八九是 `channels.websocket.enabled` 还是 `false`，或者启动的是 `secbot serve` 而不是 `secbot gateway`。
+
+#### 3.3 OpenAI 兼容 API（可选）
+
+```bash
+secbot serve -v -p 8000
+# Endpoint : http://127.0.0.1:8000/v1/chat/completions
+```
+
+该入口要求默认模型对应 Provider 已配置 `apiKey`，否则启动即报 `No API key configured for provider '...'`。
 
 ### 4. 一次典型对话
 
