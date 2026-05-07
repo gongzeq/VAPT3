@@ -58,6 +58,32 @@
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 18%;
   }
+
+  /* secbot dark theme overrides — applied when [data-theme="secbot"] is set
+     on the root element. Mirrors `.trellis/tasks/.../research/cybersec-ui-patterns.md` §3.3-§3.4. */
+  :root[data-theme="secbot"] {
+    --background: 230 20% 5%;          /* #0A0B10 */
+    --foreground: 220 10% 92%;         /* #E6E8EE */
+    --card: 230 18% 9%;                /* #13141B */
+    --card-foreground: 220 10% 92%;
+    --popover: 230 16% 12%;            /* #1A1C25 */
+    --popover-foreground: 220 10% 92%;
+    --border: 230 12% 18%;             /* #262833 */
+    --border-subtle: 230 14% 14%;      /* #1F2029 */
+    --primary: 210 100% 56%;           /* #1E90FF — Dodger Blue */
+    --primary-foreground: 230 20% 5%;
+    --destructive: 0 100% 65%;         /* #FF4D4F (== Critical) */
+    --destructive-foreground: 0 0% 100%;
+    --text-primary: 220 10% 92%;
+    --text-secondary: 220 7% 64%;      /* #9AA0AC */
+
+    /* Severity palette (per §3.2). */
+    --sev-critical: 0 100% 65%;        /* #FF4D4F */
+    --sev-high:     22 100% 62%;       /* #FF8A3D */
+    --sev-medium:   48 96% 53%;        /* #FACC15 */
+    --sev-low:      203 100% 62%;      /* #3FB6FF */
+    --sev-info:     220 7% 64%;        /* #9AA0AC */
+  }
 }
 
 @layer base {

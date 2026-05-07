@@ -79,6 +79,16 @@ export default {
           foreground: "hsl(var(--destructive-foreground))",
         },
         border: "hsl(var(--border))",
+        "border-subtle": "hsl(var(--border-subtle))",
+        "text-primary": "hsl(var(--text-primary))",
+        "text-secondary": "hsl(var(--text-secondary))",
+        severity: {
+          critical: "hsl(var(--sev-critical))",
+          high: "hsl(var(--sev-high))",
+          medium: "hsl(var(--sev-medium))",
+          low: "hsl(var(--sev-low))",
+          info: "hsl(var(--sev-info))",
+        },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         sidebar: {
