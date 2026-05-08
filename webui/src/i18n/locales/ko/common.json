@@ -93,6 +93,7 @@
       "inputAria": "메시지 입력",
       "sendHint": "Enter로 전송 · Shift+Enter로 줄바꿈",
       "send": "메시지 보내기",
+      "stop": "생성 중지",
       "attachImage": "이미지 첨부",
       "encoding": "처리 중…",
       "remove": "첨부 제거",

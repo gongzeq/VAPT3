@@ -93,6 +93,7 @@
       "inputAria": "訊息輸入框",
       "sendHint": "Enter 送出 · Shift+Enter 換行",
       "send": "送出訊息",
+      "stop": "停止輸出",
       "attachImage": "附加圖片",
       "encoding": "處理中…",
       "remove": "移除附件",

@@ -49,6 +49,9 @@ function formatBytes(n: number): string {
 
 interface ThreadComposerProps {
   onSend: (content: string, images?: SendImage[]) => void;
+  /** Invoked when the user clicks the stop button while ``isStreaming`` is
+   * true. Should ask the backend to cancel the active turn. */
+  onStop?: () => void;
   disabled?: boolean;
   placeholder?: string;
   isStreaming?: boolean;
@@ -75,6 +78,7 @@ function slashCommandI18nKey(command: string): string {
 
 export function ThreadComposer({
   onSend,
+  onStop,
   disabled,
   placeholder,
   isStreaming = false,
@@ -464,25 +468,48 @@ export function ThreadComposer({
             ) : null}
           </div>
           <span className={cn(isHero ? "hidden" : "sm:hidden")} aria-hidden />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!canSend}
-            aria-label={t("thread.composer.send")}
-            className={cn(
-              isHero
-                ? "h-9 w-9 rounded-full border border-foreground bg-foreground text-background shadow-[0_4px_12px_rgba(15,23,42,0.20)] hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80"
-                : "rounded-full border border-foreground bg-foreground text-background shadow-[0_3px_10px_rgba(15,23,42,0.18)] transition-transform hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80",
-              isHero ? "" : "h-7.5 w-7.5",
-              canSend && "hover:scale-[1.03] active:scale-95",
-            )}
-          >
-            {isStreaming ? (
-              <Loader2 className={cn(isHero ? "h-4.5 w-4.5" : "h-4 w-4", "animate-spin")} />
-            ) : (
+          {isStreaming && onStop ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={onStop}
+              aria-label={t("thread.composer.stop")}
+              title={t("thread.composer.stop")}
+              className={cn(
+                "group/stop relative grid place-items-center rounded-full transition-transform",
+                "border border-foreground bg-foreground text-background",
+                "hover:bg-foreground/90 hover:scale-[1.04] active:scale-95",
+                isHero
+                  ? "h-9 w-9 shadow-[0_4px_12px_rgba(15,23,42,0.20)]"
+                  : "h-7.5 w-7.5 shadow-[0_3px_10px_rgba(15,23,42,0.18)]",
+              )}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "block rounded-[3px] bg-background",
+                  "transition-transform group-hover/stop:scale-95",
+                  isHero ? "h-[10px] w-[10px]" : "h-2 w-2",
+                )}
+              />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!canSend}
+              aria-label={t("thread.composer.send")}
+              className={cn(
+                isHero
+                  ? "h-9 w-9 rounded-full border border-foreground bg-foreground text-background shadow-[0_4px_12px_rgba(15,23,42,0.20)] hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80"
+                  : "rounded-full border border-foreground bg-foreground text-background shadow-[0_3px_10px_rgba(15,23,42,0.18)] transition-transform hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80",
+                isHero ? "" : "h-7.5 w-7.5",
+                canSend && "hover:scale-[1.03] active:scale-95",
+              )}
+            >
               <ArrowUp className={cn(isHero ? "h-4.5 w-4.5" : "h-4 w-4")} />
-            )}
-          </Button>
+            </Button>
+          )}
         </div>
       </div>
     </form>

@@ -93,6 +93,7 @@
       "inputAria": "Champ de message",
       "sendHint": "Entrée pour envoyer · Maj+Entrée pour un retour à la ligne",
       "send": "Envoyer le message",
+      "stop": "Arrêter la génération",
       "attachImage": "Joindre une image",
       "encoding": "Traitement…",
       "remove": "Retirer la pièce jointe",

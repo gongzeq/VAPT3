@@ -190,6 +190,18 @@ export class NanobotClient {
     this.queueSend(frame);
   }
 
+  /** Ask the server to cancel the active turn for ``chatId``.
+   *
+   * The backend routes this through the ``/stop`` command silently, so the
+   * transcript does not gain a ``"/stop"`` user bubble or a confirmation
+   * reply. A ``turn_end`` event will follow so the UI can clear its
+   * streaming indicator. */
+  stopChat(chatId: string): void {
+    if (!chatId) return;
+    this.knownChats.add(chatId);
+    this.queueSend({ type: "stop", chat_id: chatId });
+  }
+
   // -- internals ---------------------------------------------------------
 
   private setStatus(status: ConnectionStatus): void {

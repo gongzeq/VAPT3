@@ -24,7 +24,7 @@ export default function MarkdownTextRenderer({
   return (
     <div
       className={cn(
-        "markdown-content prose prose-lg max-w-none dark:prose-invert",
+        "markdown-content prose max-w-none dark:prose-invert",
         "prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-semibold prose-headings:tracking-tight",
         "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm",
         "prose-p:my-2",

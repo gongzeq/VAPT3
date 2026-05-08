@@ -14,6 +14,113 @@ import type { ChatSummary, UIMessage } from "@/lib/types";
 
 const EMPTY_MESSAGES: UIMessage[] = [];
 
+type RawHistoryMessage = {
+  role: string;
+  content: string;
+  timestamp?: string;
+  tool_calls?: unknown;
+  tool_call_id?: string;
+  name?: string;
+  media_urls?: Array<{ url: string; name?: string }>;
+};
+
+/** Extract a tool function name from an OpenAI-compatible ``tool_call`` entry.
+ * Falls back to the generic ``name``/``id`` fields so non-function tool
+ * backends still render something meaningful. */
+function toolCallLabel(call: unknown): string {
+  if (!call || typeof call !== "object") return "tool";
+  const obj = call as Record<string, unknown>;
+  const fn = obj.function as Record<string, unknown> | undefined;
+  const name =
+    (fn && typeof fn.name === "string" && fn.name) ||
+    (typeof obj.name === "string" && obj.name) ||
+    (typeof obj.id === "string" && obj.id) ||
+    "tool";
+  return String(name);
+}
+
+/** Trim a tool result string to a compact one-line preview suitable for
+ * rendering inside the collapsible trace group. */
+function toolResultPreview(content: string, name?: string): string {
+  const trimmed = content.replace(/\s+/g, " ").trim();
+  const short = trimmed.length > 120 ? `${trimmed.slice(0, 120)}…` : trimmed;
+  const prefix = name ? `↳ ${name}` : "↳";
+  return short ? `${prefix}: ${short}` : prefix;
+}
+
+/** Convert the raw persisted session messages into the UI's message shape,
+ * reconstructing the trace (tool-usage) rows from ``tool_calls`` and
+ * ``role: "tool"`` entries so reopening a conversation still shows the
+ * "Used N tools" breadcrumbs that appeared live. */
+function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
+  const out: UIMessage[] = [];
+  let pending: string[] = [];
+  const flushPending = (idx: number) => {
+    if (pending.length === 0) return;
+    out.push({
+      id: `hist-trace-${idx}`,
+      role: "tool",
+      kind: "trace",
+      content: pending[pending.length - 1],
+      traces: pending,
+      createdAt: Date.now(),
+    });
+    pending = [];
+  };
+  raw.forEach((m, idx) => {
+    if (m.role === "assistant") {
+      if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+        for (const call of m.tool_calls) {
+          pending.push(`→ ${toolCallLabel(call)}`);
+        }
+      }
+      if (typeof m.content === "string" && m.content.length > 0) {
+        flushPending(idx);
+        const media =
+          Array.isArray(m.media_urls) && m.media_urls.length > 0
+            ? m.media_urls.map((mu) => toMediaAttachment(mu))
+            : undefined;
+        out.push({
+          id: `hist-${idx}`,
+          role: "assistant",
+          content: m.content,
+          createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+          ...(media ? { media } : {}),
+        });
+      }
+      return;
+    }
+    if (m.role === "tool") {
+      if (typeof m.content === "string") {
+        pending.push(toolResultPreview(m.content, m.name));
+      }
+      return;
+    }
+    if (m.role === "user") {
+      if (typeof m.content !== "string") return;
+      flushPending(idx);
+      const media =
+        Array.isArray(m.media_urls) && m.media_urls.length > 0
+          ? m.media_urls.map((mu) => toMediaAttachment(mu))
+          : undefined;
+      const images =
+        media?.every((item) => item.kind === "image")
+          ? media.map((item) => ({ url: item.url, name: item.name }))
+          : undefined;
+      out.push({
+        id: `hist-${idx}`,
+        role: "user",
+        content: m.content,
+        createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+        ...(images ? { images } : {}),
+        ...(media ? { media } : {}),
+      });
+    }
+  });
+  flushPending(raw.length);
+  return out;
+}
+
 /** Sidebar state: fetches the full session list and exposes create / delete actions. */
 export function useSessions(): {
   sessions: ChatSummary[];
@@ -129,31 +236,7 @@ export function useSessionHistory(key: string | null): {
       try {
         const body = await fetchSessionMessages(token, key);
         if (cancelled) return;
-        const ui: UIMessage[] = body.messages.flatMap((m, idx) => {
-          if (m.role !== "user" && m.role !== "assistant") return [];
-          if (typeof m.content !== "string") return [];
-          // Hydrate signed media URLs into generic UI attachments. Image-only
-          // user turns still populate the legacy ``images`` slot so the
-          // existing optimistic-send and lightbox paths remain unchanged.
-          const media =
-            Array.isArray(m.media_urls) && m.media_urls.length > 0
-              ? m.media_urls.map((mu) => toMediaAttachment(mu))
-              : undefined;
-          const images =
-            m.role === "user" && media?.every((item) => item.kind === "image")
-              ? media.map((item) => ({ url: item.url, name: item.name }))
-              : undefined;
-          return [
-            {
-              id: `hist-${idx}`,
-              role: m.role,
-              content: m.content,
-              createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
-              ...(images ? { images } : {}),
-              ...(media ? { media } : {}),
-            },
-          ];
-        });
+        const ui = buildHistoryMessages(body.messages);
         // Tool result rows can trail the assistant tool-call row while the turn
         // is still running, so check the last conversational row.
         const lastRaw = [...body.messages]

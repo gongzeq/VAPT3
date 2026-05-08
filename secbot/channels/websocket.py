@@ -1299,6 +1299,28 @@ class WebSocketChannel(BaseChannel):
             self._attach(connection, cid)
             await self._send_event(connection, "attached", chat_id=cid)
             return
+        if t == "stop":
+            # Silent cancel request from the WebUI composer — route it as an
+            # internal /stop inbound so the existing cancellation path runs,
+            # but keep ``silent`` set so no "Stopped N task(s)." reply is
+            # echoed back to the chat history.
+            cid = envelope.get("chat_id")
+            if not _is_valid_chat_id(cid):
+                await self._send_event(connection, "error", detail="invalid chat_id")
+                return
+            self._attach(connection, cid)
+            metadata: dict[str, Any] = {
+                "remote": getattr(connection, "remote_address", None),
+                "webui": True,
+                "silent": True,
+            }
+            await self._handle_message(
+                sender_id=client_id,
+                chat_id=cid,
+                content="/stop",
+                metadata=metadata,
+            )
+            return
         if t == "message":
             cid = envelope.get("chat_id")
             content = envelope.get("content")

@@ -105,15 +105,30 @@ def builtin_command_palette() -> list[dict[str, str]]:
     return [spec.as_dict() for spec in BUILTIN_COMMAND_SPECS]
 
 
-async def cmd_stop(ctx: CommandContext) -> OutboundMessage:
+async def cmd_stop(ctx: CommandContext) -> OutboundMessage | None:
     """Cancel all active tasks and subagents for the session."""
     loop = ctx.loop
     msg = ctx.msg
     total = await loop._cancel_active_tasks(msg.session_key)
+    metadata = dict(msg.metadata or {})
+    silent = bool(metadata.get("silent"))
+    # Cancelled agent tasks re-raise CancelledError before they can emit the
+    # normal ``_turn_end`` for websocket channels, so the WebUI would stay
+    # stuck in the "streaming" state. Emit one explicitly from the stop
+    # command so the client can clear its loading indicator.
+    if msg.channel == "websocket":
+        await loop.bus.publish_outbound(OutboundMessage(
+            channel=msg.channel, chat_id=msg.chat_id,
+            content="", metadata={**metadata, "_turn_end": True},
+        ))
+    if silent:
+        # WebUI stop button: suppress the confirmation bubble so the user's
+        # transcript stays clean; the turn_end above already unblocked the UI.
+        return None
     content = f"Stopped {total} task(s)." if total else "No active task to stop."
     return OutboundMessage(
         channel=msg.channel, chat_id=msg.chat_id, content=content,
-        metadata=dict(msg.metadata or {})
+        metadata=metadata,
     )
 
 

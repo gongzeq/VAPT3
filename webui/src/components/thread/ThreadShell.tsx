@@ -238,6 +238,7 @@ export function ThreadShell({
       {session ? (
         <ThreadComposer
           onSend={send}
+          onStop={chatId ? () => client.stopChat(chatId) : undefined}
           disabled={!chatId}
           isStreaming={isStreaming}
           placeholder={
@@ -295,6 +296,7 @@ export function ThreadShell({
         isStreaming={isStreaming}
         emptyState={emptyState}
         composer={composer}
+        resetKey={chatId}
       />
     </section>
   );

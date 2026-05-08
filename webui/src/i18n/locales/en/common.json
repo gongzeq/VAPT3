@@ -120,6 +120,7 @@
       "inputAria": "Message input",
       "sendHint": "Enter to send · Shift+Enter for newline",
       "send": "Send message",
+      "stop": "Stop generating",
       "attachImage": "Attach image",
       "tools": {
         "search": "Search",

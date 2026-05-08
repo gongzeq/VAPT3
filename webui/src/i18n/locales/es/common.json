@@ -93,6 +93,7 @@
       "inputAria": "Entrada de mensaje",
       "sendHint": "Enter para enviar · Shift+Enter para nueva línea",
       "send": "Enviar mensaje",
+      "stop": "Detener generación",
       "attachImage": "Adjuntar imagen",
       "encoding": "Procesando…",
       "remove": "Quitar adjunto",

@@ -73,7 +73,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <p
             className={cn(
               "ml-auto w-fit rounded-[18px] bg-secondary/70 px-4 py-2",
-              "text-left text-[18px]/[1.8] whitespace-pre-wrap break-words",
+              "text-left text-[16px]/[1.75] whitespace-pre-wrap break-words",
             )}
           >
             {message.content}
@@ -87,7 +87,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const media = message.media ?? [];
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
   return (
-    <div className={cn("w-full text-sm", baseAnim)} style={{ lineHeight: "var(--cjk-line-height)" }}>
+    <div className={cn("w-full text-[16px]", baseAnim)} style={{ lineHeight: "var(--cjk-line-height)" }}>
       {empty && message.isStreaming ? (
         <TypingDots />
       ) : (
@@ -364,15 +364,15 @@ interface TraceGroupProps {
 }
 
 /**
- * Collapsible group of tool-call / progress breadcrumbs. Defaults to
- * expanded for discoverability; a single click on the header folds the
- * group down to a one-line summary so it never dominates the thread.
+ * Collapsible group of tool-call / progress breadcrumbs. Collapsed by
+ * default so a long trace never dominates the thread on reopen; a single
+ * click expands it for detail.
  */
 function TraceGroup({ message, animClass }: TraceGroupProps) {
   const { t } = useTranslation();
   const lines = message.traces ?? [message.content];
   const count = lines.length;
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   return (
     <div className={cn("w-full", animClass)}>
       <button

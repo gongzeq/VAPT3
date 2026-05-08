@@ -186,6 +186,7 @@ export interface OutboundMedia {
 export type Outbound =
   | { type: "new_chat" }
   | { type: "attach"; chat_id: string }
+  | { type: "stop"; chat_id: string }
   | {
       type: "message";
       chat_id: string;
