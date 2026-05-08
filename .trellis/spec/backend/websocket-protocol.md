@@ -57,9 +57,23 @@ Mirrors [scan-lifecycle.md §3 + §4](./scan-lifecycle.md#3-bus-events). Backend
 | `tool.progress` | Skill progress | `{tool_call_id, percent: 0-100, message}` |
 | `tool.result` | Skill done | `{tool_call_id, summary_json, raw_log_path, duration_ms}` |
 | `tool.error` | Skill failure | `{tool_call_id, error_type, message}` |
+| `agent.thought` | Orchestrator reasoning step (optional; non-breaking, PR3) | `{message_id, step_id, tool_call_id, title, icon?, parent_step_id?, tokens?, status: "running"\|"ok"\|"error", duration_ms?, next_action?}` |
 | `pong` | Reply to `ping` | `{}` |
 
 Ordering guarantee: events for a given `scan_id` are delivered in the order they were emitted on the bus. Cross-scan ordering is unspecified.
+
+### 3.1 Reserved tool name `__thought__` (PR3)
+
+Backends MAY surface orchestrator reasoning through the **existing** `tool.call` / `tool.progress` / `tool.result` triplet by setting `tool_name === "__thought__"`. No new event type is required, and no frontend upgrade is needed beyond registering the `<AgentThoughtChain>` renderer at `SKILL_RENDERERS["__thought__"]` (see [frontend component-patterns.md §1.3](../frontend/component-patterns.md#13-reasoning--thought-stream-pr3--05-07-ocean-tech-frontend-r6)).
+
+**Wire shapes** (canonical, mirror the frontend contract):
+
+- `tool.call` `args`: `{ step_id: string; title: string; icon?: "brain" | "wrench" | "search" | "filetext"; parent_step_id?: string }`
+- `tool.progress` `data.message` (free-form) carries incremental reasoning tokens; cumulative `percent` is unused for `__thought__` (set to 0 or omit).
+- `tool.result` `summary_json`: `{ status: "ok" | "error"; tokens: string; duration_ms: number; next_action?: string }`. `raw_log_path` is OPTIONAL (reasoning rarely has a raw log).
+- `risk_level` MUST be `"safe"` on `__thought__` — thought emission never triggers the high-risk AlertDialog.
+
+**When to prefer `agent.thought` over `tool.call(__thought__)`**: if the orchestrator implementation already routes other messages via a typed reasoning bus (e.g. CoT scaffolding) and does not want to conflate with the tool-invocation pipeline. Both paths MUST render identically on the frontend; the UI is deliberately source-agnostic.
 
 ---
 
@@ -97,6 +111,8 @@ Client-initiated message creation (sending a chat prompt) goes via `POST /scans`
 
 - The `v` field locks the wire format. Adding a new event `type` is non-breaking. Changing the shape of an existing `data` payload IS breaking — bump to `v=2`, server announces both via `hello.supported_versions`, frontend negotiates.
 - Removing an event type requires deprecation across one minor version with a `Deprecation` header in `hello.data`.
+- Added event types since `v=1` (non-breaking; frontend MUST gracefully ignore unknown `type` values):
+  - `agent.thought` — PR3 of 05-07-ocean-tech-frontend. See §3 + §3.1.
 
 ---
 

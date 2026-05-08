@@ -1,0 +1,2689 @@
+diff --git a/webui/bun.lock b/webui/bun.lock
+index 5a9db3d2..b4e2c5b7 100644
+--- a/webui/bun.lock
++++ b/webui/bun.lock
+@@ -7,33 +7,48 @@
+       "dependencies": {
+         "@assistant-ui/react": "^0.10.0",
+         "@assistant-ui/react-markdown": "^0.10.0",
++        "@dnd-kit/core": "^6.3.1",
++        "@dnd-kit/modifiers": "^9.0.0",
++        "@dnd-kit/sortable": "^10.0.0",
++        "@dnd-kit/utilities": "^3.2.2",
+         "@radix-ui/react-alert-dialog": "^1.1.4",
+-        "@radix-ui/react-avatar": "^1.1.2",
++        "@radix-ui/react-avatar": "^1.1.11",
++        "@radix-ui/react-checkbox": "^1.3.3",
+         "@radix-ui/react-collapsible": "^1.1.12",
+-        "@radix-ui/react-dialog": "^1.1.4",
+-        "@radix-ui/react-dropdown-menu": "^2.1.4",
++        "@radix-ui/react-dialog": "^1.1.15",
++        "@radix-ui/react-dropdown-menu": "^2.1.16",
++        "@radix-ui/react-label": "^2.1.8",
+         "@radix-ui/react-scroll-area": "^1.2.2",
+-        "@radix-ui/react-separator": "^1.1.1",
+-        "@radix-ui/react-slot": "^1.1.1",
+-        "@radix-ui/react-tabs": "^1.1.2",
+-        "@radix-ui/react-tooltip": "^1.1.6",
++        "@radix-ui/react-select": "^2.2.6",
++        "@radix-ui/react-separator": "^1.1.8",
++        "@radix-ui/react-slot": "^1.2.4",
++        "@radix-ui/react-tabs": "^1.1.13",
++        "@radix-ui/react-toggle": "^1.1.10",
++        "@radix-ui/react-toggle-group": "^1.1.11",
++        "@radix-ui/react-tooltip": "^1.2.8",
+         "@tanstack/react-query": "^5.66.0",
++        "@tanstack/react-table": "^8.21.3",
+         "@xyflow/react": "^12.10",
+         "class-variance-authority": "^0.7.1",
+         "clsx": "^2.1.1",
+         "framer-motion": "^11",
+         "i18next": "^26.0.6",
+-        "lucide-react": "^0.469.0",
++        "lucide-react": "^1.14.0",
++        "motion": "^12.38.0",
++        "next-themes": "^0.4.6",
+         "react": "^18.3.1",
+         "react-dom": "^18.3.1",
+         "react-i18next": "^17.0.4",
+         "react-markdown": "^9.0.1",
+         "react-syntax-highlighter": "^15.6.1",
+-        "recharts": "^2.15.0",
++        "recharts": "2.15.4",
+         "rehype-katex": "^7.0.1",
+         "remark-gfm": "^4.0.0",
+         "remark-math": "^6.0.0",
++        "sonner": "^2.0.7",
+         "tailwind-merge": "^2.6.0",
++        "vaul": "^1.1.2",
++        "zod": "^4.4.3",
+       },
+       "devDependencies": {
+         "@tailwindcss/typography": "^0.5.19",
+@@ -106,6 +121,16 @@
+ 
+     "@babel/types": ["@babel/types@7.29.0", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A=="],
+ 
++    "@dnd-kit/accessibility": ["@dnd-kit/accessibility@3.1.1", "", { "dependencies": { "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw=="],
++
++    "@dnd-kit/core": ["@dnd-kit/core@6.3.1", "", { "dependencies": { "@dnd-kit/accessibility": "^3.1.1", "@dnd-kit/utilities": "^3.2.2", "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0", "react-dom": ">=16.8.0" } }, "sha512-xkGBRQQab4RLwgXxoqETICr6S5JlogafbhNsidmrkVv2YRs5MLwpjoF2qpiGjQt8S9AoxtIV603s0GIUpY5eYQ=="],
++
++    "@dnd-kit/modifiers": ["@dnd-kit/modifiers@9.0.0", "", { "dependencies": { "@dnd-kit/utilities": "^3.2.2", "tslib": "^2.0.0" }, "peerDependencies": { "@dnd-kit/core": "^6.3.0", "react": ">=16.8.0" } }, "sha512-ybiLc66qRGuZoC20wdSSG6pDXFikui/dCNGthxv4Ndy8ylErY0N3KVxY2bgo7AWwIbxDmXDg3ylAFmnrjcbVvw=="],
++
++    "@dnd-kit/sortable": ["@dnd-kit/sortable@10.0.0", "", { "dependencies": { "@dnd-kit/utilities": "^3.2.2", "tslib": "^2.0.0" }, "peerDependencies": { "@dnd-kit/core": "^6.3.0", "react": ">=16.8.0" } }, "sha512-+xqhmIIzvAYMGfBYYnbKuNicfSsk4RksY2XdmJhT+HAC01nix6fHCztU68jooFiMUB01Ky3F0FyOvhG/BZrWkg=="],
++
++    "@dnd-kit/utilities": ["@dnd-kit/utilities@3.2.2", "", { "dependencies": { "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-+MKAJEOfaBe5SmV6t34p80MMKhjvUz0vRrvVJbPT0WElzaOJ/1xs+D+KDv+tD/NE5ujfrChEcshd4fLn0wpiqg=="],
++
+     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.21.5", "", { "os": "aix", "cpu": "ppc64" }, "sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ=="],
+ 
+     "@esbuild/android-arm": ["@esbuild/android-arm@0.21.5", "", { "os": "android", "cpu": "arm" }, "sha512-vCPvzSjpPHEi1siZdlvAlsPxXl7WbOVUBBAowWug4rJHb68Ox8KualB+1ocNvT5fjv6wpkX6o/iEpbDrf68zcg=="],
+@@ -186,6 +211,8 @@
+ 
+     "@radix-ui/react-avatar": ["@radix-ui/react-avatar@1.1.11", "", { "dependencies": { "@radix-ui/react-context": "1.1.3", "@radix-ui/react-primitive": "2.1.4", "@radix-ui/react-use-callback-ref": "1.1.1", "@radix-ui/react-use-is-hydrated": "0.1.0", "@radix-ui/react-use-layout-effect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-0Qk603AHGV28BOBO34p7IgD5m+V5Sg/YovfayABkoDDBM5d3NCx0Mp4gGrjzLGes1jV5eNOE1r3itqOR33VC6Q=="],
+ 
++    "@radix-ui/react-checkbox": ["@radix-ui/react-checkbox@1.3.3", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-use-controllable-state": "1.2.2", "@radix-ui/react-use-previous": "1.1.1", "@radix-ui/react-use-size": "1.1.1" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-wBbpv+NQftHDdG86Qc0pIyXk5IR3tM8Vd0nWLKDcX8nNn4nXFOFwsKuqw2okA/1D/mpaAkmuyndrPJTYDNZtFw=="],
++
+     "@radix-ui/react-collapsible": ["@radix-ui/react-collapsible@1.1.12", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-use-controllable-state": "1.2.2", "@radix-ui/react-use-layout-effect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-Uu+mSh4agx2ib1uIGPP4/CKNULyajb3p92LsVXmH2EHVMTfZWpll88XJ0j4W0z3f8NK1eYl1+Mf/szHPmcHzyA=="],
+ 
+     "@radix-ui/react-collection": ["@radix-ui/react-collection@1.1.7", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-Fh9rGN0MoI4ZFUNyfFVNU4y9LUz93u9/0K+yLgA2bwRojxM8JU1DyvvMBabnZPBgMWREAJvU2jjVzq+LrFUglw=="],
+@@ -208,6 +235,8 @@
+ 
+     "@radix-ui/react-id": ["@radix-ui/react-id@1.1.1", "", { "dependencies": { "@radix-ui/react-use-layout-effect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-kGkGegYIdQsOb4XjsfM97rXsiHaBwco+hFI66oO4s9LU+PLAC5oJ7khdOVFxkhsmlbpUqDAvXw11CluXP+jkHg=="],
+ 
++    "@radix-ui/react-label": ["@radix-ui/react-label@2.1.8", "", { "dependencies": { "@radix-ui/react-primitive": "2.1.4" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-FmXs37I6hSBVDlO4y764TNz1rLgKwjJMQ0EGte6F3Cb3f4bIuHB/iLa/8I9VKkmOy+gNHq8rql3j686ACVV21A=="],
++
+     "@radix-ui/react-menu": ["@radix-ui/react-menu@2.1.16", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-collection": "1.1.7", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-direction": "1.1.1", "@radix-ui/react-dismissable-layer": "1.1.11", "@radix-ui/react-focus-guards": "1.1.3", "@radix-ui/react-focus-scope": "1.1.7", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-popper": "1.2.8", "@radix-ui/react-portal": "1.1.9", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-roving-focus": "1.1.11", "@radix-ui/react-slot": "1.2.3", "@radix-ui/react-use-callback-ref": "1.1.1", "aria-hidden": "^1.2.4", "react-remove-scroll": "^2.6.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-72F2T+PLlphrqLcAotYPp0uJMr5SjP5SL01wfEspJbru5Zs5vQaSHb4VB3ZMJPimgHHCHG7gMOeOB9H3Hdmtxg=="],
+ 
+     "@radix-ui/react-popover": ["@radix-ui/react-popover@1.1.15", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-dismissable-layer": "1.1.11", "@radix-ui/react-focus-guards": "1.1.3", "@radix-ui/react-focus-scope": "1.1.7", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-popper": "1.2.8", "@radix-ui/react-portal": "1.1.9", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-slot": "1.2.3", "@radix-ui/react-use-controllable-state": "1.2.2", "aria-hidden": "^1.2.4", "react-remove-scroll": "^2.6.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-kr0X2+6Yy/vJzLYJUPCZEc8SfQcf+1COFoAqauJm74umQhta9M7lNJHP7QQS3vkvcGLQUbWpMzwrXYwrYztHKA=="],
+@@ -224,12 +253,18 @@
+ 
+     "@radix-ui/react-scroll-area": ["@radix-ui/react-scroll-area@1.2.10", "", { "dependencies": { "@radix-ui/number": "1.1.1", "@radix-ui/primitive": "1.1.3", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-direction": "1.1.1", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-use-callback-ref": "1.1.1", "@radix-ui/react-use-layout-effect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-tAXIa1g3sM5CGpVT0uIbUx/U3Gs5N8T52IICuCtObaos1S8fzsrPXG5WObkQN3S6NVl6wKgPhAIiBGbWnvc97A=="],
+ 
++    "@radix-ui/react-select": ["@radix-ui/react-select@2.2.6", "", { "dependencies": { "@radix-ui/number": "1.1.1", "@radix-ui/primitive": "1.1.3", "@radix-ui/react-collection": "1.1.7", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-direction": "1.1.1", "@radix-ui/react-dismissable-layer": "1.1.11", "@radix-ui/react-focus-guards": "1.1.3", "@radix-ui/react-focus-scope": "1.1.7", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-popper": "1.2.8", "@radix-ui/react-portal": "1.1.9", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-slot": "1.2.3", "@radix-ui/react-use-callback-ref": "1.1.1", "@radix-ui/react-use-controllable-state": "1.2.2", "@radix-ui/react-use-layout-effect": "1.1.1", "@radix-ui/react-use-previous": "1.1.1", "@radix-ui/react-visually-hidden": "1.2.3", "aria-hidden": "^1.2.4", "react-remove-scroll": "^2.6.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-I30RydO+bnn2PQztvo25tswPH+wFBjehVGtmagkU78yMdwTwVf12wnAOF+AeP8S2N8xD+5UPbGhkUfPyvT+mwQ=="],
++
+     "@radix-ui/react-separator": ["@radix-ui/react-separator@1.1.8", "", { "dependencies": { "@radix-ui/react-primitive": "2.1.4" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-sDvqVY4itsKwwSMEe0jtKgfTh+72Sy3gPmQpjqcQneqQ4PFmr/1I0YA+2/puilhggCe2gJcx5EBAYFkWkdpa5g=="],
+ 
+     "@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.4", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-Jl+bCv8HxKnlTLVrcDE8zTMJ09R9/ukw4qBs/oZClOfoQk/cOTbDn+NceXfV7j09YPVQUryJPHurafcSg6EVKA=="],
+ 
+     "@radix-ui/react-tabs": ["@radix-ui/react-tabs@1.1.13", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-direction": "1.1.1", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-roving-focus": "1.1.11", "@radix-ui/react-use-controllable-state": "1.2.2" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-7xdcatg7/U+7+Udyoj2zodtI9H/IIopqo+YOIcZOq1nJwXWBZ9p8xiu5llXlekDbZkca79a/fozEYQXIA4sW6A=="],
+ 
++    "@radix-ui/react-toggle": ["@radix-ui/react-toggle@1.1.10", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-use-controllable-state": "1.2.2" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-lS1odchhFTeZv3xwHH31YPObmJn8gOg7Lq12inrr0+BH/l3Tsq32VfjqH1oh80ARM3mlkfMic15n0kg4sD1poQ=="],
++
++    "@radix-ui/react-toggle-group": ["@radix-ui/react-toggle-group@1.1.11", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-direction": "1.1.1", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-roving-focus": "1.1.11", "@radix-ui/react-toggle": "1.1.10", "@radix-ui/react-use-controllable-state": "1.2.2" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-5umnS0T8JQzQT6HbPyO7Hh9dgd82NmS36DQr+X/YJ9ctFNCiiQd6IJAYYZ33LUwm8M+taCz5t2ui29fHZc4Y6Q=="],
++
+     "@radix-ui/react-tooltip": ["@radix-ui/react-tooltip@1.2.8", "", { "dependencies": { "@radix-ui/primitive": "1.1.3", "@radix-ui/react-compose-refs": "1.1.2", "@radix-ui/react-context": "1.1.2", "@radix-ui/react-dismissable-layer": "1.1.11", "@radix-ui/react-id": "1.1.1", "@radix-ui/react-popper": "1.2.8", "@radix-ui/react-portal": "1.1.9", "@radix-ui/react-presence": "1.1.5", "@radix-ui/react-primitive": "2.1.3", "@radix-ui/react-slot": "1.2.3", "@radix-ui/react-use-controllable-state": "1.2.2", "@radix-ui/react-visually-hidden": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-tY7sVt1yL9ozIxvmbtN5qtmH2krXcBCfjEiCgKGLqunJHvgvZG2Pcl2oQ3kbcZARb1BGEHdkLzcYGO8ynVlieg=="],
+ 
+     "@radix-ui/react-use-callback-ref": ["@radix-ui/react-use-callback-ref@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-FkBMwD+qbGQeMu1cOHnuGB6x4yzPjho8ap5WtbEJ26umhgqVXbhekKUQO+hZEL1vU92a3wHwdp0HAcqAUF5iDg=="],
+@@ -244,6 +279,8 @@
+ 
+     "@radix-ui/react-use-layout-effect": ["@radix-ui/react-use-layout-effect@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-RbJRS4UWQFkzHTTwVymMTUv8EqYhOp8dOOviLj2ugtTiXRaRQS7GLGxZTLL1jWhMeoSCf5zmcZkqTl9IiYfXcQ=="],
+ 
++    "@radix-ui/react-use-previous": ["@radix-ui/react-use-previous@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-2dHfToCj/pzca2Ck724OZ5L0EVrr3eHRNsG/b3xQJLA2hZpVCS99bLAX+hm1IHXDEnzU6by5z/5MIY794/a8NQ=="],
++
+     "@radix-ui/react-use-rect": ["@radix-ui/react-use-rect@1.1.1", "", { "dependencies": { "@radix-ui/rect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-QTYuDesS0VtuHNNvMh+CjlKJ4LJickCMUAqjlE3+j8w+RlRpwyX3apEQKGFzbZGdo7XNG1tXa+bQqIE7HIXT2w=="],
+ 
+     "@radix-ui/react-use-size": ["@radix-ui/react-use-size@1.1.1", "", { "dependencies": { "@radix-ui/react-use-layout-effect": "1.1.1" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-ewrXRDTAqAXlkl6t/fkXWNAhFX9I+CkKlw6zjEwk86RSPKwZr3xpBRso655aqYafwtnbpHLj6toFzmd6xdVptQ=="],
+@@ -312,6 +349,10 @@
+ 
+     "@tanstack/react-query": ["@tanstack/react-query@5.100.9", "", { "dependencies": { "@tanstack/query-core": "5.100.9" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-Oa44XkaI3kCNN6ME0KByU3xT3SEUNOMfZpHxL6+wFoTm+OeUFYHKdeYVe0aOXlRDm/f15sgLwEt2HDorIdW8+A=="],
+ 
++    "@tanstack/react-table": ["@tanstack/react-table@8.21.3", "", { "dependencies": { "@tanstack/table-core": "8.21.3" }, "peerDependencies": { "react": ">=16.8", "react-dom": ">=16.8" } }, "sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww=="],
++
++    "@tanstack/table-core": ["@tanstack/table-core@8.21.3", "", {}, "sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg=="],
++
+     "@testing-library/dom": ["@testing-library/dom@10.4.1", "", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
+ 
+     "@testing-library/jest-dom": ["@testing-library/jest-dom@6.9.1", "", { "dependencies": { "@adobe/css-tools": "^4.4.0", "aria-query": "^5.0.0", "css.escape": "^1.5.1", "dom-accessibility-api": "^0.6.3", "picocolors": "^1.1.1", "redent": "^3.0.0" } }, "sha512-zIcONa+hVtVSSep9UT3jZ5rizo2BsxgyDYU7WFD5eICBE7no3881HGeb/QkGfsJs6JTkY1aQhT7rIPC7e+0nnA=="],
+@@ -672,7 +713,7 @@
+ 
+     "lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
+ 
+-    "lucide-react": ["lucide-react@0.469.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-28vvUnnKQ/dBwiCQtwJw7QauYnE7yd2Cyp4tTTJpvglX4EMpbflcdBgrgToX2j71B3YvugK/NH3BGUk+E/p/Fw=="],
++    "lucide-react": ["lucide-react@1.14.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-+1mdWcfSJVUsaTIjN9zoezmUhfXo5l0vP7ekBMPo3jcS/aIkxHnXqAPsByszMZx/Y8oQBRJxJx5xg+RH3urzxA=="],
+ 
+     "lz-string": ["lz-string@1.5.0", "", { "bin": { "lz-string": "bin/bin.js" } }, "sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ=="],
+ 
+@@ -776,6 +817,8 @@
+ 
+     "min-indent": ["min-indent@1.0.1", "", {}, "sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg=="],
+ 
++    "motion": ["motion@12.38.0", "", { "dependencies": { "framer-motion": "^12.38.0", "tslib": "^2.4.0" }, "peerDependencies": { "@emotion/is-prop-valid": "*", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/is-prop-valid", "react", "react-dom"] }, "sha512-uYfXzeHlgThchzwz5Te47dlv5JOUC7OB4rjJ/7XTUgtBZD8CchMN8qEJ4ZVsUmTyYA44zjV0fBwsiktRuFnn+w=="],
++
+     "motion-dom": ["motion-dom@11.18.1", "", { "dependencies": { "motion-utils": "^11.18.1" } }, "sha512-g76KvA001z+atjfxczdRtw/RXOM3OMSdd1f4DL77qCTF/+avrRJiawSG4yDibEQ215sr9kpinSlX2pCTJ9zbhw=="],
+ 
+     "motion-utils": ["motion-utils@11.18.1", "", {}, "sha512-49Kt+HKjtbJKLtgO/LKj9Ld+6vw9BjH5d9sc40R/kVyH8GLAXgT42M2NnuPcJNuA3s9ZfZBUcwIgpmZWGEE+hA=="],
+@@ -786,6 +829,8 @@
+ 
+     "nanoid": ["nanoid@3.3.11", "", { "bin": { "nanoid": "bin/nanoid.cjs" } }, "sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w=="],
+ 
++    "next-themes": ["next-themes@0.4.6", "", { "peerDependencies": { "react": "^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc", "react-dom": "^16.8 || ^17 || ^18 || ^19 || ^19.0.0-rc" } }, "sha512-pZvgD5L0IEvX5/9GWyHMf3m8BKiVQwsCMHfoFosXtXBMnaS0ZnIJ9ST4b4NqLVKDEm8QBxoNNGNaBv2JNF6XNA=="],
++
+     "node-releases": ["node-releases@2.0.37", "", {}, "sha512-1h5gKZCF+pO/o3Iqt5Jp7wc9rH3eJJ0+nh/CIoiRwjRxde/hAHyLPXYN4V3CqKAbiZPSeJFSWHmJsbkicta0Eg=="],
+ 
+     "normalize-path": ["normalize-path@3.0.0", "", {}, "sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA=="],
+@@ -902,6 +947,8 @@
+ 
+     "siginfo": ["siginfo@2.0.0", "", {}, "sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g=="],
+ 
++    "sonner": ["sonner@2.0.7", "", { "peerDependencies": { "react": "^18.0.0 || ^19.0.0 || ^19.0.0-rc", "react-dom": "^18.0.0 || ^19.0.0 || ^19.0.0-rc" } }, "sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w=="],
++
+     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
+ 
+     "space-separated-tokens": ["space-separated-tokens@2.0.2", "", {}, "sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q=="],
+@@ -992,6 +1039,8 @@
+ 
+     "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
+ 
++    "vaul": ["vaul@1.1.2", "", { "dependencies": { "@radix-ui/react-dialog": "^1.1.1" }, "peerDependencies": { "react": "^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc" } }, "sha512-ZFkClGpWyI2WUQjdLJ/BaGuV6AVQiJ3uELGk3OYtP+B6yCO7Cmn9vPFXVJkRaGkOJu3m8bQMgtyzNHixULceQA=="],
++
+     "vfile": ["vfile@6.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "vfile-message": "^4.0.0" } }, "sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q=="],
+ 
+     "vfile-location": ["vfile-location@5.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "vfile": "^6.0.0" } }, "sha512-5yXvWDEgqeiYiBe1lbxYF7UMAIm/IcopxMHrMQDq3nvKcjPKIhZklUKL+AE7J7uApI4kwe2snsK+eI6UTj9EHg=="],
+@@ -1038,6 +1087,10 @@
+ 
+     "@radix-ui/react-arrow/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
+ 
++    "@radix-ui/react-checkbox/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
++
++    "@radix-ui/react-checkbox/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
++
+     "@radix-ui/react-collapsible/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
+ 
+     "@radix-ui/react-collapsible/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
+@@ -1088,10 +1141,22 @@
+ 
+     "@radix-ui/react-scroll-area/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
+ 
++    "@radix-ui/react-select/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
++
++    "@radix-ui/react-select/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
++
++    "@radix-ui/react-select/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
++
+     "@radix-ui/react-tabs/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
+ 
+     "@radix-ui/react-tabs/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
+ 
++    "@radix-ui/react-toggle/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
++
++    "@radix-ui/react-toggle-group/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
++
++    "@radix-ui/react-toggle-group/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
++
+     "@radix-ui/react-tooltip/@radix-ui/react-context": ["@radix-ui/react-context@1.1.2", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-jCi/QKUM2r1Ju5a3J64TH2A5SpKAgh0LpknyqdQ4m6DCV0xJ2HG1xARRwNGPQfi1SLdLWZ1OJz6F4OMBBNiGJA=="],
+ 
+     "@radix-ui/react-tooltip/@radix-ui/react-primitive": ["@radix-ui/react-primitive@2.1.3", "", { "dependencies": { "@radix-ui/react-slot": "1.2.3" }, "peerDependencies": { "@types/react": "*", "@types/react-dom": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc", "react-dom": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-m9gTwRkhy2lvCPe6QJp4d3G1TYEUHn/FzJUtq9MjH46an1wJU+GdoGC5VLof8RX8Ft/DlpshApkhswDLZzHIcQ=="],
+@@ -1130,6 +1195,8 @@
+ 
+     "mdast-util-mdx-jsx/parse-entities": ["parse-entities@4.0.2", "", { "dependencies": { "@types/unist": "^2.0.0", "character-entities-legacy": "^3.0.0", "character-reference-invalid": "^2.0.0", "decode-named-character-reference": "^1.0.0", "is-alphanumerical": "^2.0.0", "is-decimal": "^2.0.0", "is-hexadecimal": "^2.0.0" } }, "sha512-GG2AQYWoLgL877gQIKeRPGO1xF9+eG1ujIb5soS5gPvLQ1y2o8FL90w2QWNdf9I361Mpp7726c+lj3U0qK1uGw=="],
+ 
++    "motion/framer-motion": ["framer-motion@12.38.0", "", { "dependencies": { "motion-dom": "^12.38.0", "motion-utils": "^12.36.0", "tslib": "^2.4.0" }, "peerDependencies": { "@emotion/is-prop-valid": "*", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@emotion/is-prop-valid", "react", "react-dom"] }, "sha512-rFYkY/pigbcswl1XQSb7q424kSTQ8q6eAC+YUsSKooHQYuLdzdHjrt6uxUC+PRAO++q5IS7+TamgIw1AphxR+g=="],
++
+     "postcss-nested/postcss-selector-parser": ["postcss-selector-parser@6.1.2", "", { "dependencies": { "cssesc": "^3.0.0", "util-deprecate": "^1.0.2" } }, "sha512-Q8qQfPiZ+THO/3ZrOrO0cJJKfpYCagtMUkXbnEfmgUjwXg6z/WBeOyS9APBBPCTSiDV+s4SwQGu8yFsiMRIudg=="],
+ 
+     "pretty-format/react-is": ["react-is@17.0.2", "", {}, "sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w=="],
+@@ -1148,6 +1215,8 @@
+ 
+     "@radix-ui/react-arrow/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
+ 
++    "@radix-ui/react-checkbox/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
++
+     "@radix-ui/react-collapsible/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
+ 
+     "@radix-ui/react-dismissable-layer/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
+@@ -1166,6 +1235,10 @@
+ 
+     "@radix-ui/react-tabs/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
+ 
++    "@radix-ui/react-toggle-group/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
++
++    "@radix-ui/react-toggle/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
++
+     "@radix-ui/react-visually-hidden/@radix-ui/react-primitive/@radix-ui/react-slot": ["@radix-ui/react-slot@1.2.3", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.2" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-aeNmHnBxbi2St0au6VBVC7JXFlhLlOnvIIlePNniyUNAClzmtAUEY8/pBiK3iHjufOlwA+c20/8jngo7xcrg8A=="],
+ 
+     "assistant-cloud/assistant-stream/nanoid": ["nanoid@5.1.11", "", { "bin": { "nanoid": "bin/nanoid.js" } }, "sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg=="],
+@@ -1188,6 +1261,10 @@
+ 
+     "mdast-util-mdx-jsx/parse-entities/is-hexadecimal": ["is-hexadecimal@2.0.1", "", {}, "sha512-DgZQp241c8oO6cA1SbTEWiXeoxV42vlcJxgH+B3hi1AiqqKruZR3ZGF8In3fj4+/y/7rHvlOZLZtgJ/4ttYGZg=="],
+ 
++    "motion/framer-motion/motion-dom": ["motion-dom@12.38.0", "", { "dependencies": { "motion-utils": "^12.36.0" } }, "sha512-pdkHLD8QYRp8VfiNLb8xIBJis1byQ9gPT3Jnh2jqfFtAsWUA3dEepDlsWe/xMpO8McV+VdpKVcp+E+TGJEtOoA=="],
++
++    "motion/framer-motion/motion-utils": ["motion-utils@12.36.0", "", {}, "sha512-eHWisygbiwVvf6PZ1vhaHCLamvkSbPIeAYxWUuL3a2PD/TROgE7FvfHWTIH4vMl798QLfMw15nRqIaRDXTlYRg=="],
++
+     "mdast-util-mdx-jsx/parse-entities/is-alphanumerical/is-alphabetical": ["is-alphabetical@2.0.1", "", {}, "sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ=="],
+   }
+ }
+diff --git a/webui/package.json b/webui/package.json
+index ff10e1ec..c379daca 100644
+--- a/webui/package.json
++++ b/webui/package.json
+@@ -14,33 +14,48 @@
+   "dependencies": {
+     "@assistant-ui/react": "^0.10.0",
+     "@assistant-ui/react-markdown": "^0.10.0",
++    "@dnd-kit/core": "^6.3.1",
++    "@dnd-kit/modifiers": "^9.0.0",
++    "@dnd-kit/sortable": "^10.0.0",
++    "@dnd-kit/utilities": "^3.2.2",
+     "@radix-ui/react-alert-dialog": "^1.1.4",
+-    "@radix-ui/react-avatar": "^1.1.2",
++    "@radix-ui/react-avatar": "^1.1.11",
++    "@radix-ui/react-checkbox": "^1.3.3",
+     "@radix-ui/react-collapsible": "^1.1.12",
+-    "@radix-ui/react-dialog": "^1.1.4",
+-    "@radix-ui/react-dropdown-menu": "^2.1.4",
++    "@radix-ui/react-dialog": "^1.1.15",
++    "@radix-ui/react-dropdown-menu": "^2.1.16",
++    "@radix-ui/react-label": "^2.1.8",
+     "@radix-ui/react-scroll-area": "^1.2.2",
+-    "@radix-ui/react-separator": "^1.1.1",
+-    "@radix-ui/react-slot": "^1.1.1",
+-    "@radix-ui/react-tabs": "^1.1.2",
+-    "@radix-ui/react-tooltip": "^1.1.6",
++    "@radix-ui/react-select": "^2.2.6",
++    "@radix-ui/react-separator": "^1.1.8",
++    "@radix-ui/react-slot": "^1.2.4",
++    "@radix-ui/react-tabs": "^1.1.13",
++    "@radix-ui/react-toggle": "^1.1.10",
++    "@radix-ui/react-toggle-group": "^1.1.11",
++    "@radix-ui/react-tooltip": "^1.2.8",
+     "@tanstack/react-query": "^5.66.0",
++    "@tanstack/react-table": "^8.21.3",
+     "@xyflow/react": "^12.10",
+     "class-variance-authority": "^0.7.1",
+     "clsx": "^2.1.1",
+     "framer-motion": "^11",
+     "i18next": "^26.0.6",
+-    "lucide-react": "^0.469.0",
++    "lucide-react": "^1.14.0",
++    "motion": "^12.38.0",
++    "next-themes": "^0.4.6",
+     "react": "^18.3.1",
+     "react-dom": "^18.3.1",
+     "react-i18next": "^17.0.4",
+     "react-markdown": "^9.0.1",
+     "react-syntax-highlighter": "^15.6.1",
+-    "recharts": "^2.15.0",
++    "recharts": "2.15.4",
+     "rehype-katex": "^7.0.1",
+     "remark-gfm": "^4.0.0",
+     "remark-math": "^6.0.0",
+-    "tailwind-merge": "^2.6.0"
++    "sonner": "^2.0.7",
++    "tailwind-merge": "^2.6.0",
++    "vaul": "^1.1.2",
++    "zod": "^4.4.3"
+   },
+   "devDependencies": {
+     "@tailwindcss/typography": "^0.5.19",
+diff --git a/webui/src/components/magicui/animated-beam.tsx b/webui/src/components/magicui/animated-beam.tsx
+index 6d1a680e..76f27418 100644
+--- a/webui/src/components/magicui/animated-beam.tsx
++++ b/webui/src/components/magicui/animated-beam.tsx
+@@ -1,40 +1,33 @@
+-// Source: https://magicui.design/r/animated-beam.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Imports `motion` from `framer-motion` (we are on framer-motion@^11)
+-//     instead of `motion/react` (v12-only package alias).
+-//   - Default `pathColor`, `gradientStartColor`, `gradientStopColor` switched
+-//     from raw color literals (`gray`, `#ffaa40`, `#9c40ff`) to design tokens
+-//     via `hsl(var(--*))` so the beam renders on-brand without per-call-site
+-//     overrides (theme-tokens.md §2.2).
+-"use client";
++/**
++ * AnimatedBeam - Connection beam animation component
++ * Source: https://magicui.design/docs/components/animated-beam
++ * Registry: https://magicui.design/r/animated-beam.json
++ */
++import { useEffect, useId, useState, type RefObject } from "react"
++import { motion } from "motion/react"
+ 
+-import { useEffect, useId, useState, type RefObject } from "react";
+-import { motion } from "framer-motion";
+-
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ export interface AnimatedBeamProps {
+-  className?: string;
+-  containerRef: RefObject<HTMLElement | null>;
+-  fromRef: RefObject<HTMLElement | null>;
+-  toRef: RefObject<HTMLElement | null>;
+-  curvature?: number;
+-  reverse?: boolean;
+-  pathColor?: string;
+-  pathWidth?: number;
+-  pathOpacity?: number;
+-  gradientStartColor?: string;
+-  gradientStopColor?: string;
+-  delay?: number;
+-  duration?: number;
+-  repeat?: number;
+-  repeatDelay?: number;
+-  startXOffset?: number;
+-  startYOffset?: number;
+-  endXOffset?: number;
+-  endYOffset?: number;
++  className?: string
++  containerRef: RefObject<HTMLElement | null> // Container ref
++  fromRef: RefObject<HTMLElement | null>
++  toRef: RefObject<HTMLElement | null>
++  curvature?: number
++  reverse?: boolean
++  pathColor?: string
++  pathWidth?: number
++  pathOpacity?: number
++  gradientStartColor?: string
++  gradientStopColor?: string
++  delay?: number
++  duration?: number
++  repeat?: number
++  repeatDelay?: number
++  startXOffset?: number
++  startYOffset?: number
++  endXOffset?: number
++  endYOffset?: number
+ }
+ 
+ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+@@ -43,14 +36,14 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+   fromRef,
+   toRef,
+   curvature = 0,
+-  reverse = false,
++  reverse = false, // Include the reverse prop
+   duration = 5,
+   delay = 0,
+-  pathColor = "hsl(var(--border))",
++  pathColor = "gray",
+   pathWidth = 2,
+   pathOpacity = 0.2,
+-  gradientStartColor = "hsl(var(--brand-deep))",
+-  gradientStopColor = "hsl(var(--primary))",
++  gradientStartColor = "hsl(var(--primary))",
++  gradientStopColor = "hsl(var(--brand-light))",
+   repeat = Infinity,
+   repeatDelay = 0,
+   startXOffset = 0,
+@@ -58,9 +51,9 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+   endXOffset = 0,
+   endYOffset = 0,
+ }) => {
+-  const id = useId();
+-  const [pathD, setPathD] = useState("");
+-  const [svgDimensions, setSvgDimensions] = useState({ width: 0, height: 0 });
++  const id = useId()
++  const [pathD, setPathD] = useState("")
++  const [svgDimensions, setSvgDimensions] = useState({ width: 0, height: 0 })
+ 
+   // Calculate the gradient coordinates based on the reverse prop
+   const gradientCoordinates = reverse
+@@ -75,53 +68,53 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+         x2: ["0%", "100%"],
+         y1: ["0%", "0%"],
+         y2: ["0%", "0%"],
+-      };
++      }
+ 
+   useEffect(() => {
+     const updatePath = () => {
+       if (containerRef.current && fromRef.current && toRef.current) {
+-        const containerRect = containerRef.current.getBoundingClientRect();
+-        const rectA = fromRef.current.getBoundingClientRect();
+-        const rectB = toRef.current.getBoundingClientRect();
++        const containerRect = containerRef.current.getBoundingClientRect()
++        const rectA = fromRef.current.getBoundingClientRect()
++        const rectB = toRef.current.getBoundingClientRect()
+ 
+-        const svgWidth = containerRect.width;
+-        const svgHeight = containerRect.height;
+-        setSvgDimensions({ width: svgWidth, height: svgHeight });
++        const svgWidth = containerRect.width
++        const svgHeight = containerRect.height
++        setSvgDimensions({ width: svgWidth, height: svgHeight })
+ 
+         const startX =
+-          rectA.left - containerRect.left + rectA.width / 2 + startXOffset;
++          rectA.left - containerRect.left + rectA.width / 2 + startXOffset
+         const startY =
+-          rectA.top - containerRect.top + rectA.height / 2 + startYOffset;
++          rectA.top - containerRect.top + rectA.height / 2 + startYOffset
+         const endX =
+-          rectB.left - containerRect.left + rectB.width / 2 + endXOffset;
++          rectB.left - containerRect.left + rectB.width / 2 + endXOffset
+         const endY =
+-          rectB.top - containerRect.top + rectB.height / 2 + endYOffset;
++          rectB.top - containerRect.top + rectB.height / 2 + endYOffset
+ 
+-        const controlY = startY - curvature;
++        const controlY = startY - curvature
+         const d = `M ${startX},${startY} Q ${
+           (startX + endX) / 2
+-        },${controlY} ${endX},${endY}`;
+-        setPathD(d);
++        },${controlY} ${endX},${endY}`
++        setPathD(d)
+       }
+-    };
++    }
+ 
+     // Initialize ResizeObserver
+     const resizeObserver = new ResizeObserver(() => {
+-      updatePath();
+-    });
++      updatePath()
++    })
+ 
+     // Observe the container element
+     if (containerRef.current) {
+-      resizeObserver.observe(containerRef.current);
++      resizeObserver.observe(containerRef.current)
+     }
+ 
+     // Call the updatePath initially to set the initial path
+-    updatePath();
++    updatePath()
+ 
+     // Clean up the observer on component unmount
+     return () => {
+-      resizeObserver.disconnect();
+-    };
++      resizeObserver.disconnect()
++    }
+   }, [
+     containerRef,
+     fromRef,
+@@ -131,7 +124,7 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+     startYOffset,
+     endXOffset,
+     endYOffset,
+-  ]);
++  ])
+ 
+   return (
+     <svg
+@@ -141,7 +134,7 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+       xmlns="http://www.w3.org/2000/svg"
+       className={cn(
+         "pointer-events-none absolute top-0 left-0 transform-gpu stroke-2",
+-        className,
++        className
+       )}
+       viewBox={`0 0 ${svgDimensions.width} ${svgDimensions.height}`}
+     >
+@@ -179,7 +172,7 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+           transition={{
+             delay,
+             duration,
+-            ease: [0.16, 1, 0.3, 1],
++            ease: [0.16, 1, 0.3, 1], // https://easings.net/#easeOutExpo
+             repeat,
+             repeatDelay,
+           }}
+@@ -195,5 +188,5 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
+         </motion.linearGradient>
+       </defs>
+     </svg>
+-  );
+-};
++  )
++}
+diff --git a/webui/src/components/magicui/animated-grid-pattern.tsx b/webui/src/components/magicui/animated-grid-pattern.tsx
+index 5fc9e6e3..a99010a9 100644
+--- a/webui/src/components/magicui/animated-grid-pattern.tsx
++++ b/webui/src/components/magicui/animated-grid-pattern.tsx
+@@ -1,15 +1,8 @@
+-// Source: https://magicui.design/r/animated-grid-pattern.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Imports `motion` from `framer-motion` (we are on framer-motion@^11)
+-//     instead of `motion/react` (v12-only package alias).
+-//   - Default fill/stroke `gray-400/30` retained from upstream — they are
+-//     intentionally neutral (this component sits as a subtle background
+-//     pattern). Override the color via `className="fill-foreground/10"` etc.
+-//     at the call site if a brand-tinted variant is needed.
+-"use client";
+-
++/**
++ * AnimatedGridPattern - HUD background grid animation
++ * Source: https://magicui.design/docs/components/animated-grid-pattern
++ * Registry: https://magicui.design/r/animated-grid-pattern.json
++ */
+ import {
+   useCallback,
+   useEffect,
+@@ -17,29 +10,28 @@ import {
+   useRef,
+   useState,
+   type ComponentPropsWithoutRef,
+-} from "react";
+-import { motion } from "framer-motion";
+-
+-import { cn } from "@/lib/utils";
+-
+-export interface AnimatedGridPatternProps
+-  extends ComponentPropsWithoutRef<"svg"> {
+-  width?: number;
+-  height?: number;
+-  x?: number;
+-  y?: number;
+-  strokeDasharray?: number;
+-  numSquares?: number;
+-  maxOpacity?: number;
+-  duration?: number;
+-  repeatDelay?: number;
++} from "react"
++import { motion } from "motion/react"
++
++import { cn } from "@/lib/utils"
++
++export interface AnimatedGridPatternProps extends ComponentPropsWithoutRef<"svg"> {
++  width?: number
++  height?: number
++  x?: number
++  y?: number
++  strokeDasharray?: number
++  numSquares?: number
++  maxOpacity?: number
++  duration?: number
++  repeatDelay?: number
+ }
+ 
+ type Square = {
+-  id: number;
+-  pos: [number, number];
+-  iteration: number;
+-};
++  id: number
++  pos: [number, number]
++  iteration: number
++}
+ 
+ export function AnimatedGridPattern({
+   width = 40,
+@@ -54,17 +46,17 @@ export function AnimatedGridPattern({
+   repeatDelay = 0.5,
+   ...props
+ }: AnimatedGridPatternProps) {
+-  const id = useId();
+-  const containerRef = useRef<SVGSVGElement | null>(null);
+-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+-  const [squares, setSquares] = useState<Array<Square>>([]);
++  const id = useId()
++  const containerRef = useRef<SVGSVGElement | null>(null)
++  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
++  const [squares, setSquares] = useState<Array<Square>>([])
+ 
+   const getPos = useCallback((): [number, number] => {
+     return [
+       Math.floor((Math.random() * dimensions.width) / width),
+       Math.floor((Math.random() * dimensions.height) / height),
+-    ];
+-  }, [dimensions.height, dimensions.width, height, width]);
++    ]
++  }, [dimensions.height, dimensions.width, height, width])
+ 
+   const generateSquares = useCallback(
+     (count: number) => {
+@@ -72,74 +64,74 @@ export function AnimatedGridPattern({
+         id: i,
+         pos: getPos(),
+         iteration: 0,
+-      }));
++      }))
+     },
+-    [getPos],
+-  );
++    [getPos]
++  )
+ 
+   const updateSquarePosition = useCallback(
+     (squareId: number) => {
+       setSquares((currentSquares) => {
+-        const current = currentSquares[squareId];
+-        if (!current || current.id !== squareId) return currentSquares;
++        const current = currentSquares[squareId]
++        if (!current || current.id !== squareId) return currentSquares
+ 
+-        const nextSquares = currentSquares.slice();
++        const nextSquares = currentSquares.slice()
+         nextSquares[squareId] = {
+           ...current,
+           pos: getPos(),
+           iteration: current.iteration + 1,
+-        };
++        }
+ 
+-        return nextSquares;
+-      });
++        return nextSquares
++      })
+     },
+-    [getPos],
+-  );
++    [getPos]
++  )
+ 
+   useEffect(() => {
+     if (dimensions.width && dimensions.height) {
+-      setSquares(generateSquares(numSquares));
++      setSquares(generateSquares(numSquares))
+     }
+-  }, [dimensions.width, dimensions.height, generateSquares, numSquares]);
++  }, [dimensions.width, dimensions.height, generateSquares, numSquares])
+ 
+   useEffect(() => {
+-    const element = containerRef.current;
+-    let resizeObserver: ResizeObserver | null = null;
++    const element = containerRef.current
++    let resizeObserver: ResizeObserver | null = null
+ 
+     if (element) {
+       resizeObserver = new ResizeObserver((entries) => {
+         for (const entry of entries) {
+           setDimensions((currentDimensions) => {
+-            const nextWidth = entry.contentRect.width;
+-            const nextHeight = entry.contentRect.height;
++            const nextWidth = entry.contentRect.width
++            const nextHeight = entry.contentRect.height
+             if (
+               currentDimensions.width === nextWidth &&
+               currentDimensions.height === nextHeight
+             ) {
+-              return currentDimensions;
++              return currentDimensions
+             }
+-            return { width: nextWidth, height: nextHeight };
+-          });
++            return { width: nextWidth, height: nextHeight }
++          })
+         }
+-      });
++      })
+ 
+-      resizeObserver.observe(element);
++      resizeObserver.observe(element)
+     }
+ 
+     return () => {
+       if (resizeObserver) {
+-        resizeObserver.disconnect();
++        resizeObserver.disconnect()
+       }
+-    };
+-  }, []);
++    }
++  }, [])
+ 
+   return (
+     <svg
+       ref={containerRef}
+       aria-hidden="true"
+       className={cn(
+-        "pointer-events-none absolute inset-0 h-full w-full fill-muted-foreground/30 stroke-muted-foreground/30",
+-        className,
++        "pointer-events-none absolute inset-0 h-full w-full fill-gray-400/30 stroke-gray-400/30",
++        className
+       )}
+       {...props}
+     >
+@@ -161,7 +153,7 @@ export function AnimatedGridPattern({
+       </defs>
+       <rect width="100%" height="100%" fill={`url(#${id})`} />
+       <svg x={x} y={y} className="overflow-visible">
+-        {squares.map(({ pos: [squareX, squareY], id: squareId, iteration }, index) => (
++        {squares.map(({ pos: [squareX, squareY], id, iteration }, index) => (
+           <motion.rect
+             initial={{ opacity: 0 }}
+             animate={{ opacity: maxOpacity }}
+@@ -172,8 +164,8 @@ export function AnimatedGridPattern({
+               repeatType: "reverse",
+               repeatDelay,
+             }}
+-            onAnimationComplete={() => updateSquarePosition(squareId)}
+-            key={`${squareId}-${iteration}`}
++            onAnimationComplete={() => updateSquarePosition(id)}
++            key={`${id}-${iteration}`}
+             width={width - 1}
+             height={height - 1}
+             x={squareX * width + 1}
+@@ -184,5 +176,5 @@ export function AnimatedGridPattern({
+         ))}
+       </svg>
+     </svg>
+-  );
++  )
+ }
+diff --git a/webui/src/components/magicui/animated-shiny-text.tsx b/webui/src/components/magicui/animated-shiny-text.tsx
+index 282d8269..b72eaf9f 100644
+--- a/webui/src/components/magicui/animated-shiny-text.tsx
++++ b/webui/src/components/magicui/animated-shiny-text.tsx
+@@ -1,28 +1,18 @@
+-// Source: https://magicui.design/r/animated-shiny-text.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Tailwind v4 utilities (`bg-size-[...]`, `bg-position-[...]`, `bg-linear-to-r`)
+-//     rewritten as v3.4 bracketed arbitrary values
+-//     (`[background-size:...]`, `[background-position:...]`,
+-//     `bg-gradient-to-r`).
+-//   - The `animate-shiny-text` utility requires the `shiny-text` keyframe
+-//     registered in `tailwind.config.js`.
+-//   - Color stops switched from upstream's `via-black/80 dark:via-white/80`
+-//     hardcoded blacks/whites to `via-foreground/80` token to follow
+-//     theme-tokens.md (no raw hex / dark-only colors).
+-
++/**
++ * AnimatedShinyText - Text shimmer effect component
++ * Source: https://magicui.design/docs/components/animated-shiny-text
++ * Registry: https://magicui.design/r/animated-shiny-text.json
++ */
+ import {
+   type ComponentPropsWithoutRef,
+   type CSSProperties,
+   type FC,
+-} from "react";
++} from "react"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+-export interface AnimatedShinyTextProps
+-  extends ComponentPropsWithoutRef<"span"> {
+-  shimmerWidth?: number;
++export interface AnimatedShinyTextProps extends ComponentPropsWithoutRef<"span"> {
++  shimmerWidth?: number
+ }
+ 
+ export const AnimatedShinyText: FC<AnimatedShinyTextProps> = ({
+@@ -39,23 +29,19 @@ export const AnimatedShinyText: FC<AnimatedShinyTextProps> = ({
+         } as CSSProperties
+       }
+       className={cn(
+-        "mx-auto max-w-md text-muted-foreground",
++        "mx-auto max-w-md text-neutral-600/70 dark:text-neutral-400/70",
+ 
+         // Shine effect
+-        "animate-shiny-text bg-clip-text bg-no-repeat",
+-        "[background-size:var(--shiny-width)_100%]",
+-        "[background-position:0_0]",
+-        "[transition:background-position_1s_cubic-bezier(.6,.6,0,1)_infinite]",
++        "animate-shiny-text bg-size-[var(--shiny-width)_100%] bg-clip-text bg-position-[0_0] bg-no-repeat [transition:background-position_1s_cubic-bezier(.6,.6,0,1)_infinite]",
+ 
+-        // Shine gradient — uses the foreground token so the streak inherits
+-        // theme. The 80% alpha keeps the text legible during the sweep.
+-        "bg-gradient-to-r from-transparent via-foreground/80 to-transparent",
++        // Shine gradient
++        "bg-linear-to-r from-transparent via-black/80 via-50% to-transparent dark:via-white/80",
+ 
+-        className,
++        className
+       )}
+       {...props}
+     >
+       {children}
+     </span>
+-  );
+-};
++  )
++}
+diff --git a/webui/src/components/magicui/border-beam.tsx b/webui/src/components/magicui/border-beam.tsx
+index 6649f77d..2cc0fb65 100644
+--- a/webui/src/components/magicui/border-beam.tsx
++++ b/webui/src/components/magicui/border-beam.tsx
+@@ -1,42 +1,57 @@
+-// Source: https://magicui.design/r/border-beam.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Imports `motion` from `framer-motion` (we are on framer-motion@^11)
+-//     instead of `motion/react` (v12-only package alias).
+-//   - Tailwind v4 utilities (`border-(length:--var)`, `bg-linear-to-l`,
+-//     `mask-intersect`, `mask-[...]`) are rewritten as Tailwind v3.4
+-//     bracket utilities so the JIT picks them up under our config.
+-//   - Default `colorFrom` / `colorTo` now reference design tokens
+-//     (`--brand-deep` / `--primary`) so the beam stays on-brand without
+-//     a per-call-site override (theme-tokens.md §2.2).
+-"use client";
++/**
++ * BorderBeam - Animated border highlight component
++ * Source: https://magicui.design/docs/components/border-beam
++ * Registry: https://magicui.design/r/border-beam.json
++ */
++import { motion, MotionStyle, Transition } from "motion/react"
+ 
+-import { motion, type MotionStyle, type Transition } from "framer-motion";
+-
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ interface BorderBeamProps {
+-  /** The size (px) of the moving beam. */
+-  size?: number;
+-  /** The duration of one full lap, in seconds. */
+-  duration?: number;
+-  /** Animation start delay, in seconds. */
+-  delay?: number;
+-  /** Gradient start color (CSS color string). Default = brand-deep token. */
+-  colorFrom?: string;
+-  /** Gradient end color (CSS color string). Default = primary token. */
+-  colorTo?: string;
+-  /** Optional framer-motion transition override. */
+-  transition?: Transition;
+-  className?: string;
+-  style?: React.CSSProperties;
+-  /** Reverse the lap direction. */
+-  reverse?: boolean;
+-  /** Initial offset along the path, 0-100. */
+-  initialOffset?: number;
+-  /** Border width in px. */
+-  borderWidth?: number;
++  /**
++   * The size of the border beam.
++   */
++  size?: number
++  /**
++   * The duration of the border beam.
++   */
++  duration?: number
++  /**
++   * The delay of the border beam.
++   */
++  delay?: number
++  /**
++   * The color of the border beam from.
++   */
++  colorFrom?: string
++  /**
++   * The color of the border beam to.
++   */
++  colorTo?: string
++  /**
++   * The motion transition of the border beam.
++   */
++  transition?: Transition
++  /**
++   * The class name of the border beam.
++   */
++  className?: string
++  /**
++   * The style of the border beam.
++   */
++  style?: React.CSSProperties
++  /**
++   * Whether to reverse the animation direction.
++   */
++  reverse?: boolean
++  /**
++   * The initial offset position (0-100).
++   */
++  initialOffset?: number
++  /**
++   * The border width of the beam.
++   */
++  borderWidth?: number
+ }
+ 
+ export const BorderBeam = ({
+@@ -44,8 +59,8 @@ export const BorderBeam = ({
+   size = 50,
+   delay = 0,
+   duration = 6,
+-  colorFrom = "hsl(var(--brand-deep))",
+-  colorTo = "hsl(var(--primary))",
++  colorFrom = "hsl(var(--primary))",
++  colorTo = "hsl(var(--brand-light))",
+   transition,
+   style,
+   reverse = false,
+@@ -54,20 +69,7 @@ export const BorderBeam = ({
+ }: BorderBeamProps) => {
+   return (
+     <div
+-      className={cn(
+-        "pointer-events-none absolute inset-0 rounded-[inherit]",
+-        "border-[length:var(--border-beam-width)] border-transparent",
+-        // Two-layer mask: paint the beam between the padding-box and the
+-        // border-box only. Using bracketed utilities keeps Tailwind v3.4 JIT
+-        // happy.
+-        "[mask-clip:padding-box,border-box]",
+-        "[mask-composite:intersect]",
+-        // Why hex: pure CSS mask machinery — only the alpha channel matters,
+-        // the literal `#000` is the canonical opaque-stop value for
+-        // `linear-gradient` in masks. Swapping in a token would not change
+-        // rendering and adds indirection.
+-        "[mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]",
+-      )}
++      className="pointer-events-none absolute inset-0 rounded-[inherit] border-(length:--border-beam-width) border-transparent mask-[linear-gradient(transparent,transparent),linear-gradient(#000,#000)] mask-intersect [mask-clip:padding-box,border-box]"
+       style={
+         {
+           "--border-beam-width": `${borderWidth}px`,
+@@ -77,8 +79,8 @@ export const BorderBeam = ({
+       <motion.div
+         className={cn(
+           "absolute aspect-square",
+-          "bg-gradient-to-l from-[var(--color-from)] via-[var(--color-to)] to-transparent",
+-          className,
++          "bg-linear-to-l from-(--color-from) via-(--color-to) to-transparent",
++          className
+         )}
+         style={
+           {
+@@ -104,5 +106,5 @@ export const BorderBeam = ({
+         }}
+       />
+     </div>
+-  );
+-};
++  )
++}
+diff --git a/webui/src/components/magicui/marquee.tsx b/webui/src/components/magicui/marquee.tsx
+index 5fdc3d37..e88b95cc 100644
+--- a/webui/src/components/magicui/marquee.tsx
++++ b/webui/src/components/magicui/marquee.tsx
+@@ -1,41 +1,41 @@
+-// Source: https://magicui.design/r/marquee.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Tailwind v4 utilities (`gap-(--gap)`) rewritten as v3.4 bracketed
+-//     arbitrary values (`gap-[--gap]`).
+-//   - The `animate-marquee` / `animate-marquee-vertical` utilities require
+-//     keyframe + animation entries in `tailwind.config.js`.
++/**
++ * Marquee - Scrolling ticker component
++ * Source: https://magicui.design/docs/components/marquee
++ * Registry: https://magicui.design/r/marquee.json
++ */
++import { type ComponentPropsWithoutRef } from "react"
+ 
+-import { type ComponentPropsWithoutRef } from "react";
+-
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ interface MarqueeProps extends ComponentPropsWithoutRef<"div"> {
+-  /** Optional CSS class name to apply custom styles */
+-  className?: string;
++  /**
++   * Optional CSS class name to apply custom styles
++   */
++  className?: string
+   /**
+    * Whether to reverse the animation direction
+    * @default false
+    */
+-  reverse?: boolean;
++  reverse?: boolean
+   /**
+    * Whether to pause the animation on hover
+    * @default false
+    */
+-  pauseOnHover?: boolean;
+-  /** Content to be displayed in the marquee */
+-  children: React.ReactNode;
++  pauseOnHover?: boolean
++  /**
++   * Content to be displayed in the marquee
++   */
++  children: React.ReactNode
+   /**
+    * Whether to animate vertically instead of horizontally
+    * @default false
+    */
+-  vertical?: boolean;
++  vertical?: boolean
+   /**
+    * Number of times to repeat the content
+    * @default 4
+    */
+-  repeat?: number;
++  repeat?: number
+ }
+ 
+ export function Marquee({
+@@ -51,12 +51,12 @@ export function Marquee({
+     <div
+       {...props}
+       className={cn(
+-        "group flex gap-[--gap] overflow-hidden p-2 [--duration:40s] [--gap:1rem]",
++        "group flex gap-(--gap) overflow-hidden p-2 [--duration:40s] [--gap:1rem]",
+         {
+           "flex-row": !vertical,
+           "flex-col": vertical,
+         },
+-        className,
++        className
+       )}
+     >
+       {Array(repeat)
+@@ -64,7 +64,7 @@ export function Marquee({
+         .map((_, i) => (
+           <div
+             key={i}
+-            className={cn("flex shrink-0 justify-around gap-[--gap]", {
++            className={cn("flex shrink-0 justify-around gap-(--gap)", {
+               "animate-marquee flex-row": !vertical,
+               "animate-marquee-vertical flex-col": vertical,
+               "group-hover:[animation-play-state:paused]": pauseOnHover,
+@@ -75,5 +75,5 @@ export function Marquee({
+           </div>
+         ))}
+     </div>
+-  );
++  )
+ }
+diff --git a/webui/src/components/magicui/number-ticker.tsx b/webui/src/components/magicui/number-ticker.tsx
+index c6977530..0a38bdb3 100644
+--- a/webui/src/components/magicui/number-ticker.tsx
++++ b/webui/src/components/magicui/number-ticker.tsx
+@@ -1,25 +1,19 @@
+-// Source: https://magicui.design/r/number-ticker.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Imports `useInView`, `useMotionValue`, `useSpring` from `framer-motion`
+-//     (we are on framer-motion@^11) instead of `motion/react`.
+-//   - Default text color uses our token (`text-foreground`) instead of the
+-//     upstream's hardcoded `text-black dark:text-white`. The token already
+-//     covers both dark + light secbot theme variants per theme-tokens.md.
+-"use client";
++/**
++ * NumberTicker - Animated counter component
++ * Source: https://magicui.design/docs/components/number-ticker
++ * Registry: https://magicui.design/r/number-ticker.json
++ */
++import { useEffect, useRef, type ComponentPropsWithoutRef } from "react"
++import { useInView, useMotionValue, useSpring } from "motion/react"
+ 
+-import { useEffect, useRef, type ComponentPropsWithoutRef } from "react";
+-import { useInView, useMotionValue, useSpring } from "framer-motion";
+-
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ interface NumberTickerProps extends ComponentPropsWithoutRef<"span"> {
+-  value: number;
+-  startValue?: number;
+-  direction?: "up" | "down";
+-  delay?: number;
+-  decimalPlaces?: number;
++  value: number
++  startValue?: number
++  direction?: "up" | "down"
++  delay?: number
++  decimalPlaces?: number
+ }
+ 
+ export function NumberTicker({
+@@ -31,29 +25,29 @@ export function NumberTicker({
+   decimalPlaces = 0,
+   ...props
+ }: NumberTickerProps) {
+-  const ref = useRef<HTMLSpanElement>(null);
+-  const motionValue = useMotionValue(direction === "down" ? value : startValue);
++  const ref = useRef<HTMLSpanElement>(null)
++  const motionValue = useMotionValue(direction === "down" ? value : startValue)
+   const springValue = useSpring(motionValue, {
+     damping: 60,
+     stiffness: 100,
+-  });
+-  const isInView = useInView(ref, { once: true, margin: "0px" });
++  })
++  const isInView = useInView(ref, { once: true, margin: "0px" })
+ 
+   useEffect(() => {
+-    let timer: ReturnType<typeof setTimeout> | null = null;
++    let timer: ReturnType<typeof setTimeout> | null = null
+ 
+     if (isInView) {
+       timer = setTimeout(() => {
+-        motionValue.set(direction === "down" ? startValue : value);
+-      }, delay * 1000);
++        motionValue.set(direction === "down" ? startValue : value)
++      }, delay * 1000)
+     }
+ 
+     return () => {
+       if (timer !== null) {
+-        clearTimeout(timer);
++        clearTimeout(timer)
+       }
+-    };
+-  }, [motionValue, isInView, delay, value, direction, startValue]);
++    }
++  }, [motionValue, isInView, delay, value, direction, startValue])
+ 
+   useEffect(
+     () =>
+@@ -62,22 +56,22 @@ export function NumberTicker({
+           ref.current.textContent = Intl.NumberFormat("en-US", {
+             minimumFractionDigits: decimalPlaces,
+             maximumFractionDigits: decimalPlaces,
+-          }).format(Number(latest.toFixed(decimalPlaces)));
++          }).format(Number(latest.toFixed(decimalPlaces)))
+         }
+       }),
+-    [springValue, decimalPlaces],
+-  );
++    [springValue, decimalPlaces]
++  )
+ 
+   return (
+     <span
+       ref={ref}
+       className={cn(
+-        "inline-block tracking-wider text-foreground tabular-nums",
+-        className,
++        "inline-block tracking-wider text-black tabular-nums dark:text-white",
++        className
+       )}
+       {...props}
+     >
+       {startValue}
+     </span>
+-  );
++  )
+ }
+diff --git a/webui/src/components/magicui/shimmer-button.tsx b/webui/src/components/magicui/shimmer-button.tsx
+index 912c609a..33a013f5 100644
+--- a/webui/src/components/magicui/shimmer-button.tsx
++++ b/webui/src/components/magicui/shimmer-button.tsx
+@@ -1,42 +1,20 @@
+-// Source: https://magicui.design/r/shimmer-button.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Defaults that referenced raw hex / rgba (`#ffffff` shimmer color,
+-//     `rgba(0, 0, 0, 1)` background) now reference design tokens via
+-//     `hsl(var(--*))` so the button renders in the secbot ocean palette
+-//     by default.
+-//   - The `animate-shimmer-slide` and `animate-spin-around` utilities
+-//     require keyframes registered in `tailwind.config.js`.
+-//   - Tailwind v4 `inset-(--cut)` rewritten as v3.4 `inset-[--cut]`.
+-//   - Removed unsupported `@container-[size]` (Tailwind v4 syntax). Without
+-//     it the CSS container query still resolves correctly because the
+-//     surrounding element flows naturally; we use the standard `relative`
+-//     coordinate space. (The upstream usage was a marketing flourish, not
+-//     load-bearing for the shimmer.)
+-//   - Inset-glow shadows kept as upstream (`#ffffff1f` / `#ffffff3f` are
+-//     alpha-only highlights and read as a generic inner-light effect; for
+-//     theme-strict consumers, override via the `style`/`className` prop).
+-//     Tracked: theme-tokens.md §1 (raw hex forbidden in COMPONENT styles —
+-//     these are intentional optical-glass highlights, not branded color).
++/**
++ * ShimmerButton - Button with shimmer animation
++ * Source: https://magicui.design/docs/components/shimmer-button
++ * Registry: https://magicui.design/r/shimmer-button.json
++ */
++import React, { type ComponentPropsWithoutRef, type CSSProperties } from "react"
+ 
+-import React, { type ComponentPropsWithoutRef, type CSSProperties } from "react";
+-
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ export interface ShimmerButtonProps extends ComponentPropsWithoutRef<"button"> {
+-  /** Shimmer streak color. Defaults to the brand-light token. */
+-  shimmerColor?: string;
+-  /** Inner cut size; controls the depth of the backdrop ring. */
+-  shimmerSize?: string;
+-  /** Border radius (CSS length). */
+-  borderRadius?: string;
+-  /** Shimmer cycle duration (CSS time). */
+-  shimmerDuration?: string;
+-  /** Background CSS value. Defaults to the primary token. */
+-  background?: string;
+-  className?: string;
+-  children?: React.ReactNode;
++  shimmerColor?: string
++  shimmerSize?: string
++  borderRadius?: string
++  shimmerDuration?: string
++  background?: string
++  className?: string
++  children?: React.ReactNode
+ }
+ 
+ export const ShimmerButton = React.forwardRef<
+@@ -45,16 +23,16 @@ export const ShimmerButton = React.forwardRef<
+ >(
+   (
+     {
+-      shimmerColor = "hsl(var(--brand-light))",
++      shimmerColor = "hsl(var(--primary))",
+       shimmerSize = "0.05em",
+       shimmerDuration = "3s",
+       borderRadius = "100px",
+-      background = "hsl(var(--primary))",
++      background = "hsl(var(--background))",
+       className,
+       children,
+       ...props
+     },
+-    ref,
++    ref
+   ) => {
+     return (
+       <button
+@@ -69,11 +47,9 @@ export const ShimmerButton = React.forwardRef<
+           } as CSSProperties
+         }
+         className={cn(
+-          "group relative z-0 flex cursor-pointer items-center justify-center overflow-hidden",
+-          "[border-radius:var(--radius)] border border-border px-6 py-3 whitespace-nowrap",
+-          "text-primary-foreground [background:var(--bg)]",
++          "group relative z-0 flex cursor-pointer items-center justify-center overflow-hidden [border-radius:var(--radius)] border border-white/10 px-6 py-3 whitespace-nowrap text-white [background:var(--bg)]",
+           "transform-gpu transition-transform duration-300 ease-in-out active:translate-y-px",
+-          className,
++          className
+         )}
+         ref={ref}
+         {...props}
+@@ -82,7 +58,7 @@ export const ShimmerButton = React.forwardRef<
+         <div
+           className={cn(
+             "-z-30 blur-[2px]",
+-            "absolute inset-0 overflow-visible",
++            "@container-[size] absolute inset-0 overflow-visible"
+           )}
+         >
+           {/* spark */}
+@@ -93,14 +69,12 @@ export const ShimmerButton = React.forwardRef<
+         </div>
+         {children}
+ 
+-        {/* Highlight — inset white-alpha sheen, kept as the upstream's
+-            generic optical-glass effect; not theme-tied. */}
++        {/* Highlight */}
+         <div
+           className={cn(
+             "absolute inset-0 size-full",
+-            "rounded-2xl px-4 py-1.5 text-sm font-medium",
+-            // Why hex: optical-glass inner highlight; alpha-only on white.
+-            "shadow-[inset_0_-8px_10px_#ffffff1f]",
++
++            "rounded-2xl px-4 py-1.5 text-sm font-medium shadow-[inset_0_-8px_10px_#ffffff1f]",
+ 
+             // transition
+             "transform-gpu transition-all duration-300 ease-in-out",
+@@ -109,19 +83,19 @@ export const ShimmerButton = React.forwardRef<
+             "group-hover:shadow-[inset_0_-6px_10px_#ffffff3f]",
+ 
+             // on click
+-            "group-active:shadow-[inset_0_-10px_10px_#ffffff3f]",
++            "group-active:shadow-[inset_0_-10px_10px_#ffffff3f]"
+           )}
+         />
+ 
+         {/* backdrop */}
+         <div
+           className={cn(
+-            "absolute inset-[--cut] -z-20 [border-radius:var(--radius)] [background:var(--bg)]",
++            "absolute inset-(--cut) -z-20 [border-radius:var(--radius)] [background:var(--bg)]"
+           )}
+         />
+       </button>
+-    );
+-  },
+-);
++    )
++  }
++)
+ 
+-ShimmerButton.displayName = "ShimmerButton";
++ShimmerButton.displayName = "ShimmerButton"
+diff --git a/webui/src/components/magicui/shine-border.tsx b/webui/src/components/magicui/shine-border.tsx
+index 2cf91cd6..6477b07d 100644
+--- a/webui/src/components/magicui/shine-border.tsx
++++ b/webui/src/components/magicui/shine-border.tsx
+@@ -1,33 +1,34 @@
+-// Source: https://magicui.design/r/shine-border.json — copied 2026-05-07
+-// for trellis task 05-07-ocean-tech-frontend (PR2).
+-//
+-// Adaptations from upstream:
+-//   - Default `shineColor` now references the primary token via `hsl(var(--primary))`
+-//     so the shine stays on-brand without a per-call-site override
+-//     (theme-tokens.md §2). Upstream default was `#000000` (black).
+-//   - `motion-safe:animate-shine` requires the `shine` keyframe registered in
+-//     `tailwind.config.js` under `keyframes` + `animation`.
+-"use client";
+-
+-import * as React from "react";
++/**
++ * ShineBorder - Shimmering border effect component
++ * Source: https://magicui.design/docs/components/shine-border
++ * Registry: https://magicui.design/r/shine-border.json
++ */
++import * as React from "react"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ interface ShineBorderProps extends React.HTMLAttributes<HTMLDivElement> {
+-  /** Width of the border in pixels. */
+-  borderWidth?: number;
+-  /** Duration of the animation in seconds. */
+-  duration?: number;
+-  /** Color of the border. Single color or array; defaults to brand primary. */
+-  shineColor?: string | string[];
++  /**
++   * Width of the border in pixels
++   * @default 1
++   */
++  borderWidth?: number
++  /**
++   * Duration of the animation in seconds
++   * @default 14
++   */
++  duration?: number
++  /**
++   * Color of the border, can be a single color or an array of colors
++   * @default "hsl(var(--primary))"
++   */
++  shineColor?: string | string[]
+ }
+ 
+ /**
+  * Shine Border
+  *
+- * An animated background border effect with configurable color, width, and
+- * duration. Renders as an absolutely-positioned overlay; the parent must be
+- * `relative` and have a `rounded-*` for the inherit to work.
++ * An animated background border effect component with configurable properties.
+  */
+ export function ShineBorder({
+   borderWidth = 1,
+@@ -47,8 +48,8 @@ export function ShineBorder({
+             Array.isArray(shineColor) ? shineColor.join(",") : shineColor
+           },transparent,transparent)`,
+           backgroundSize: "300% 300%",
+-          mask: `linear-gradient(hsl(var(--foreground)) 0 0) content-box, linear-gradient(hsl(var(--foreground)) 0 0)`,
+-          WebkitMask: `linear-gradient(hsl(var(--foreground)) 0 0) content-box, linear-gradient(hsl(var(--foreground)) 0 0)`,
++          mask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
++          WebkitMask: `linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)`,
+           WebkitMaskComposite: "xor",
+           maskComposite: "exclude",
+           padding: "var(--border-width)",
+@@ -57,9 +58,9 @@ export function ShineBorder({
+       }
+       className={cn(
+         "motion-safe:animate-shine pointer-events-none absolute inset-0 size-full rounded-[inherit] will-change-[background-position]",
+-        className,
++        className
+       )}
+       {...props}
+     />
+-  );
++  )
+ }
+diff --git a/webui/src/components/ui/avatar.tsx b/webui/src/components/ui/avatar.tsx
+index eb87cf6c..991f56ec 100644
+--- a/webui/src/components/ui/avatar.tsx
++++ b/webui/src/components/ui/avatar.tsx
+@@ -1,7 +1,7 @@
+-import * as React from "react";
+-import * as AvatarPrimitive from "@radix-ui/react-avatar";
++import * as React from "react"
++import * as AvatarPrimitive from "@radix-ui/react-avatar"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ const Avatar = React.forwardRef<
+   React.ElementRef<typeof AvatarPrimitive.Root>,
+@@ -10,13 +10,13 @@ const Avatar = React.forwardRef<
+   <AvatarPrimitive.Root
+     ref={ref}
+     className={cn(
+-      "relative flex h-9 w-9 shrink-0 overflow-hidden rounded-full",
+-      className,
++      "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
++      className
+     )}
+     {...props}
+   />
+-));
+-Avatar.displayName = AvatarPrimitive.Root.displayName;
++))
++Avatar.displayName = AvatarPrimitive.Root.displayName
+ 
+ const AvatarImage = React.forwardRef<
+   React.ElementRef<typeof AvatarPrimitive.Image>,
+@@ -27,8 +27,8 @@ const AvatarImage = React.forwardRef<
+     className={cn("aspect-square h-full w-full", className)}
+     {...props}
+   />
+-));
+-AvatarImage.displayName = AvatarPrimitive.Image.displayName;
++))
++AvatarImage.displayName = AvatarPrimitive.Image.displayName
+ 
+ const AvatarFallback = React.forwardRef<
+   React.ElementRef<typeof AvatarPrimitive.Fallback>,
+@@ -37,12 +37,12 @@ const AvatarFallback = React.forwardRef<
+   <AvatarPrimitive.Fallback
+     ref={ref}
+     className={cn(
+-      "flex h-full w-full items-center justify-center rounded-full bg-muted text-xs font-medium",
+-      className,
++      "flex h-full w-full items-center justify-center rounded-full bg-muted",
++      className
+     )}
+     {...props}
+   />
+-));
+-AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
++))
++AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
+ 
+-export { Avatar, AvatarFallback, AvatarImage };
++export { Avatar, AvatarImage, AvatarFallback }
+diff --git a/webui/src/components/ui/button.tsx b/webui/src/components/ui/button.tsx
+index f656699b..65d4fcd9 100644
+--- a/webui/src/components/ui/button.tsx
++++ b/webui/src/components/ui/button.tsx
+@@ -1,28 +1,29 @@
+-import * as React from "react";
+-import { Slot } from "@radix-ui/react-slot";
+-import { cva, type VariantProps } from "class-variance-authority";
++import * as React from "react"
++import { Slot } from "@radix-ui/react-slot"
++import { cva, type VariantProps } from "class-variance-authority"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ const buttonVariants = cva(
+-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
++  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+   {
+     variants: {
+       variant: {
+-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
++        default:
++          "bg-primary text-primary-foreground shadow hover:bg-primary/90",
+         destructive:
+-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
++          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+         outline:
+-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
++          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+         secondary:
+-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
++          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+         ghost: "hover:bg-accent hover:text-accent-foreground",
+         link: "text-primary underline-offset-4 hover:underline",
+       },
+       size: {
+-        default: "h-10 px-4 py-2",
+-        sm: "h-9 rounded-md px-3",
+-        lg: "h-11 rounded-md px-8",
++        default: "h-9 px-4 py-2",
++        sm: "h-8 rounded-md px-3 text-xs",
++        lg: "h-10 rounded-md px-8",
+         icon: "h-9 w-9",
+       },
+     },
+@@ -30,27 +31,27 @@ const buttonVariants = cva(
+       variant: "default",
+       size: "default",
+     },
+-  },
+-);
++  }
++)
+ 
+ export interface ButtonProps
+   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+     VariantProps<typeof buttonVariants> {
+-  asChild?: boolean;
++  asChild?: boolean
+ }
+ 
+ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+   ({ className, variant, size, asChild = false, ...props }, ref) => {
+-    const Comp = asChild ? Slot : "button";
++    const Comp = asChild ? Slot : "button"
+     return (
+       <Comp
+         className={cn(buttonVariants({ variant, size, className }))}
+         ref={ref}
+         {...props}
+       />
+-    );
+-  },
+-);
+-Button.displayName = "Button";
++    )
++  }
++)
++Button.displayName = "Button"
+ 
+-export { Button, buttonVariants };
++export { Button, buttonVariants }
+diff --git a/webui/src/components/ui/dropdown-menu.tsx b/webui/src/components/ui/dropdown-menu.tsx
+index d7bd3124..e804bca1 100644
+--- a/webui/src/components/ui/dropdown-menu.tsx
++++ b/webui/src/components/ui/dropdown-menu.tsx
+@@ -1,36 +1,42 @@
+-import * as React from "react";
+-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+-import { Check, ChevronRight, Circle } from "lucide-react";
++import * as React from "react"
++import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
++import { Check, ChevronRight, Circle } from "lucide-react"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+-const DropdownMenu = DropdownMenuPrimitive.Root;
+-const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
+-const DropdownMenuGroup = DropdownMenuPrimitive.Group;
+-const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
+-const DropdownMenuSub = DropdownMenuPrimitive.Sub;
+-const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
++const DropdownMenu = DropdownMenuPrimitive.Root
++
++const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
++
++const DropdownMenuGroup = DropdownMenuPrimitive.Group
++
++const DropdownMenuPortal = DropdownMenuPrimitive.Portal
++
++const DropdownMenuSub = DropdownMenuPrimitive.Sub
++
++const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
+ 
+ const DropdownMenuSubTrigger = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
+   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+-    inset?: boolean;
++    inset?: boolean
+   }
+ >(({ className, inset, children, ...props }, ref) => (
+   <DropdownMenuPrimitive.SubTrigger
+     ref={ref}
+     className={cn(
+-      "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
++      "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+       inset && "pl-8",
+-      className,
++      className
+     )}
+     {...props}
+   >
+     {children}
+     <ChevronRight className="ml-auto" />
+   </DropdownMenuPrimitive.SubTrigger>
+-));
+-DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
++))
++DropdownMenuSubTrigger.displayName =
++  DropdownMenuPrimitive.SubTrigger.displayName
+ 
+ const DropdownMenuSubContent = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
+@@ -39,13 +45,14 @@ const DropdownMenuSubContent = React.forwardRef<
+   <DropdownMenuPrimitive.SubContent
+     ref={ref}
+     className={cn(
+-      "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg",
+-      className,
++      "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]",
++      className
+     )}
+     {...props}
+   />
+-));
+-DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
++))
++DropdownMenuSubContent.displayName =
++  DropdownMenuPrimitive.SubContent.displayName
+ 
+ const DropdownMenuContent = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
+@@ -56,32 +63,33 @@ const DropdownMenuContent = React.forwardRef<
+       ref={ref}
+       sideOffset={sideOffset}
+       className={cn(
+-        "z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+-        className,
++        "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
++        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-dropdown-menu-content-transform-origin]",
++        className
+       )}
+       {...props}
+     />
+   </DropdownMenuPrimitive.Portal>
+-));
+-DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
++))
++DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName
+ 
+ const DropdownMenuItem = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
+   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
+-    inset?: boolean;
++    inset?: boolean
+   }
+ >(({ className, inset, ...props }, ref) => (
+   <DropdownMenuPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0",
+       inset && "pl-8",
+-      className,
++      className
+     )}
+     {...props}
+   />
+-));
+-DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
++))
++DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName
+ 
+ const DropdownMenuCheckboxItem = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+@@ -90,8 +98,8 @@ const DropdownMenuCheckboxItem = React.forwardRef<
+   <DropdownMenuPrimitive.CheckboxItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground",
+-      className,
++      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      className
+     )}
+     checked={checked}
+     {...props}
+@@ -103,9 +111,9 @@ const DropdownMenuCheckboxItem = React.forwardRef<
+     </span>
+     {children}
+   </DropdownMenuPrimitive.CheckboxItem>
+-));
++))
+ DropdownMenuCheckboxItem.displayName =
+-  DropdownMenuPrimitive.CheckboxItem.displayName;
++  DropdownMenuPrimitive.CheckboxItem.displayName
+ 
+ const DropdownMenuRadioItem = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>,
+@@ -114,8 +122,8 @@ const DropdownMenuRadioItem = React.forwardRef<
+   <DropdownMenuPrimitive.RadioItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground",
+-      className,
++      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      className
+     )}
+     {...props}
+   >
+@@ -126,13 +134,13 @@ const DropdownMenuRadioItem = React.forwardRef<
+     </span>
+     {children}
+   </DropdownMenuPrimitive.RadioItem>
+-));
+-DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
++))
++DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName
+ 
+ const DropdownMenuLabel = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.Label>,
+   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & {
+-    inset?: boolean;
++    inset?: boolean
+   }
+ >(({ className, inset, ...props }, ref) => (
+   <DropdownMenuPrimitive.Label
+@@ -140,12 +148,12 @@ const DropdownMenuLabel = React.forwardRef<
+     className={cn(
+       "px-2 py-1.5 text-sm font-semibold",
+       inset && "pl-8",
+-      className,
++      className
+     )}
+     {...props}
+   />
+-));
+-DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
++))
++DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName
+ 
+ const DropdownMenuSeparator = React.forwardRef<
+   React.ElementRef<typeof DropdownMenuPrimitive.Separator>,
+@@ -156,13 +164,9 @@ const DropdownMenuSeparator = React.forwardRef<
+     className={cn("-mx-1 my-1 h-px bg-muted", className)}
+     {...props}
+   />
+-));
+-DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName;
++))
++DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName
+ 
+-// `DropdownMenuShortcut` was missing from the original nanobot port of this
+-// primitive but is referenced by the shadcn `sidebar-07` block (PR2 of
+-// 05-07-ocean-tech-frontend). Adding the canonical shadcn implementation
+-// here keeps the public surface aligned with upstream.
+ const DropdownMenuShortcut = ({
+   className,
+   ...props
+@@ -172,24 +176,24 @@ const DropdownMenuShortcut = ({
+       className={cn("ml-auto text-xs tracking-widest opacity-60", className)}
+       {...props}
+     />
+-  );
+-};
+-DropdownMenuShortcut.displayName = "DropdownMenuShortcut";
++  )
++}
++DropdownMenuShortcut.displayName = "DropdownMenuShortcut"
+ 
+ export {
+   DropdownMenu,
+-  DropdownMenuCheckboxItem,
++  DropdownMenuTrigger,
+   DropdownMenuContent,
+-  DropdownMenuGroup,
+   DropdownMenuItem,
+-  DropdownMenuLabel,
+-  DropdownMenuPortal,
+-  DropdownMenuRadioGroup,
++  DropdownMenuCheckboxItem,
+   DropdownMenuRadioItem,
++  DropdownMenuLabel,
+   DropdownMenuSeparator,
+   DropdownMenuShortcut,
++  DropdownMenuGroup,
++  DropdownMenuPortal,
+   DropdownMenuSub,
+   DropdownMenuSubContent,
+   DropdownMenuSubTrigger,
+-  DropdownMenuTrigger,
+-};
++  DropdownMenuRadioGroup,
++}
+diff --git a/webui/src/components/ui/input.tsx b/webui/src/components/ui/input.tsx
+index 7de2a032..69b64fb2 100644
+--- a/webui/src/components/ui/input.tsx
++++ b/webui/src/components/ui/input.tsx
+@@ -1,24 +1,22 @@
+-import * as React from "react";
++import * as React from "react"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+-export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+-
+-const Input = React.forwardRef<HTMLInputElement, InputProps>(
++const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+   ({ className, type, ...props }, ref) => {
+     return (
+       <input
+         type={type}
+         className={cn(
+-          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+-          className,
++          "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
++          className
+         )}
+         ref={ref}
+         {...props}
+       />
+-    );
+-  },
+-);
+-Input.displayName = "Input";
++    )
++  }
++)
++Input.displayName = "Input"
+ 
+-export { Input };
++export { Input }
+diff --git a/webui/src/components/ui/separator.tsx b/webui/src/components/ui/separator.tsx
+index 4407ae5f..6d7f1226 100644
+--- a/webui/src/components/ui/separator.tsx
++++ b/webui/src/components/ui/separator.tsx
+@@ -1,7 +1,7 @@
+-import * as React from "react";
+-import * as SeparatorPrimitive from "@radix-ui/react-separator";
++import * as React from "react"
++import * as SeparatorPrimitive from "@radix-ui/react-separator"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+ const Separator = React.forwardRef<
+   React.ElementRef<typeof SeparatorPrimitive.Root>,
+@@ -9,7 +9,7 @@ const Separator = React.forwardRef<
+ >(
+   (
+     { className, orientation = "horizontal", decorative = true, ...props },
+-    ref,
++    ref
+   ) => (
+     <SeparatorPrimitive.Root
+       ref={ref}
+@@ -18,12 +18,12 @@ const Separator = React.forwardRef<
+       className={cn(
+         "shrink-0 bg-border",
+         orientation === "horizontal" ? "h-[1px] w-full" : "h-full w-[1px]",
+-        className,
++        className
+       )}
+       {...props}
+     />
+-  ),
+-);
+-Separator.displayName = SeparatorPrimitive.Root.displayName;
++  )
++)
++Separator.displayName = SeparatorPrimitive.Root.displayName
+ 
+-export { Separator };
++export { Separator }
+diff --git a/webui/src/components/ui/sheet.tsx b/webui/src/components/ui/sheet.tsx
+index c34d7baf..272cb721 100644
+--- a/webui/src/components/ui/sheet.tsx
++++ b/webui/src/components/ui/sheet.tsx
+@@ -1,140 +1,140 @@
+-import * as React from "react";
+-import * as DialogPrimitive from "@radix-ui/react-dialog";
+-import { X } from "lucide-react";
+-import { cva, type VariantProps } from "class-variance-authority";
++"use client"
+ 
+-import { cn } from "@/lib/utils";
++import * as React from "react"
++import * as SheetPrimitive from "@radix-ui/react-dialog"
++import { cva, type VariantProps } from "class-variance-authority"
++import { X } from "lucide-react"
+ 
+-const Sheet = DialogPrimitive.Root;
+-const SheetTrigger = DialogPrimitive.Trigger;
+-const SheetClose = DialogPrimitive.Close;
+-const SheetPortal = DialogPrimitive.Portal;
++import { cn } from "@/lib/utils"
++
++const Sheet = SheetPrimitive.Root
++
++const SheetTrigger = SheetPrimitive.Trigger
++
++const SheetClose = SheetPrimitive.Close
++
++const SheetPortal = SheetPrimitive.Portal
+ 
+ const SheetOverlay = React.forwardRef<
+-  React.ElementRef<typeof DialogPrimitive.Overlay>,
+-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
++  React.ElementRef<typeof SheetPrimitive.Overlay>,
++  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
+ >(({ className, ...props }, ref) => (
+-  <DialogPrimitive.Overlay
+-    ref={ref}
++  <SheetPrimitive.Overlay
+     className={cn(
+-      "fixed inset-0 z-50 bg-black/40 backdrop-blur-sm",
+-      "data-[state=open]:animate-in data-[state=closed]:animate-out",
+-      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+-      className,
++      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
++      className
+     )}
+     {...props}
++    ref={ref}
+   />
+-));
+-SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
++))
++SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
+ 
+ const sheetVariants = cva(
+-  "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out",
++  "fixed z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out",
+   {
+     variants: {
+       side: {
+-        top: cn(
+-          "inset-x-0 top-0 border-b",
+-          "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+-        ),
+-        bottom: cn(
+-          "inset-x-0 bottom-0 border-t",
+-          "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+-        ),
+-        left: cn(
+-          "inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm",
+-          "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+-        ),
+-        right: cn(
+-          "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
+-          "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+-        ),
++        top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
++        bottom:
++          "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
++        left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
++        right:
++          "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+       },
+     },
+     defaultVariants: {
+       side: "right",
+     },
+-  },
+-);
++  }
++)
+ 
+ interface SheetContentProps
+-  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>,
+-    VariantProps<typeof sheetVariants> {
+-  showCloseButton?: boolean;
+-}
++  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
++    VariantProps<typeof sheetVariants> {}
+ 
+ const SheetContent = React.forwardRef<
+-  React.ElementRef<typeof DialogPrimitive.Content>,
++  React.ElementRef<typeof SheetPrimitive.Content>,
+   SheetContentProps
+->(({ side = "right", className, children, showCloseButton = true, ...props }, ref) => (
++>(({ side = "right", className, children, ...props }, ref) => (
+   <SheetPortal>
+     <SheetOverlay />
+-    <DialogPrimitive.Content
++    <SheetPrimitive.Content
+       ref={ref}
+-      className={cn(
+-        sheetVariants({ side }),
+-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
+-        "duration-300",
+-        className,
+-      )}
++      className={cn(sheetVariants({ side }), className)}
+       {...props}
+     >
++      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
++        <X className="h-4 w-4" />
++        <span className="sr-only">Close</span>
++      </SheetPrimitive.Close>
+       {children}
+-      {showCloseButton ? (
+-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
+-          <X className="h-4 w-4" />
+-          <span className="sr-only">Close</span>
+-        </DialogPrimitive.Close>
+-      ) : null}
+-    </DialogPrimitive.Content>
++    </SheetPrimitive.Content>
+   </SheetPortal>
+-));
+-SheetContent.displayName = DialogPrimitive.Content.displayName;
++))
++SheetContent.displayName = SheetPrimitive.Content.displayName
+ 
+ const SheetHeader = ({
+   className,
+   ...props
+ }: React.HTMLAttributes<HTMLDivElement>) => (
+-  <div className={cn("flex flex-col space-y-2 text-center sm:text-left", className)} {...props} />
+-);
+-SheetHeader.displayName = "SheetHeader";
++  <div
++    className={cn(
++      "flex flex-col space-y-2 text-center sm:text-left",
++      className
++    )}
++    {...props}
++  />
++)
++SheetHeader.displayName = "SheetHeader"
++
++const SheetFooter = ({
++  className,
++  ...props
++}: React.HTMLAttributes<HTMLDivElement>) => (
++  <div
++    className={cn(
++      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
++      className
++    )}
++    {...props}
++  />
++)
++SheetFooter.displayName = "SheetFooter"
+ 
+ const SheetTitle = React.forwardRef<
+-  React.ElementRef<typeof DialogPrimitive.Title>,
+-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
++  React.ElementRef<typeof SheetPrimitive.Title>,
++  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
+ >(({ className, ...props }, ref) => (
+-  <DialogPrimitive.Title
++  <SheetPrimitive.Title
+     ref={ref}
+     className={cn("text-lg font-semibold text-foreground", className)}
+     {...props}
+   />
+-));
+-SheetTitle.displayName = DialogPrimitive.Title.displayName;
++))
++SheetTitle.displayName = SheetPrimitive.Title.displayName
+ 
+-// `SheetDescription` was missing from the original nanobot port of this
+-// primitive but is referenced by the shadcn `sidebar` primitive (PR2 of
+-// 05-07-ocean-tech-frontend) which uses it as the accessible description
+-// inside its mobile-mode Sheet wrapper. Adding the canonical shadcn
+-// implementation here keeps the public surface aligned with upstream.
+ const SheetDescription = React.forwardRef<
+-  React.ElementRef<typeof DialogPrimitive.Description>,
+-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
++  React.ElementRef<typeof SheetPrimitive.Description>,
++  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
+ >(({ className, ...props }, ref) => (
+-  <DialogPrimitive.Description
++  <SheetPrimitive.Description
+     ref={ref}
+     className={cn("text-sm text-muted-foreground", className)}
+     {...props}
+   />
+-));
+-SheetDescription.displayName = DialogPrimitive.Description.displayName;
++))
++SheetDescription.displayName = SheetPrimitive.Description.displayName
+ 
+ export {
+   Sheet,
+-  SheetTrigger,
+-  SheetClose,
+   SheetPortal,
+   SheetOverlay,
++  SheetTrigger,
++  SheetClose,
+   SheetContent,
+   SheetHeader,
++  SheetFooter,
+   SheetTitle,
+   SheetDescription,
+-};
++}
+diff --git a/webui/src/components/ui/sidebar.tsx b/webui/src/components/ui/sidebar.tsx
+index 5158ed50..ed6f66db 100644
+--- a/webui/src/components/ui/sidebar.tsx
++++ b/webui/src/components/ui/sidebar.tsx
+@@ -1,5 +1,3 @@
+-"use client"
+-
+ import * as React from "react"
+ import { Slot } from "@radix-ui/react-slot"
+ import { cva, type VariantProps } from "class-variance-authority"
+diff --git a/webui/src/components/ui/tooltip.tsx b/webui/src/components/ui/tooltip.tsx
+index 95f7960c..99ad6306 100644
+--- a/webui/src/components/ui/tooltip.tsx
++++ b/webui/src/components/ui/tooltip.tsx
+@@ -1,26 +1,30 @@
+-import * as React from "react";
+-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
++import * as React from "react"
++import * as TooltipPrimitive from "@radix-ui/react-tooltip"
+ 
+-import { cn } from "@/lib/utils";
++import { cn } from "@/lib/utils"
+ 
+-const TooltipProvider = TooltipPrimitive.Provider;
+-const Tooltip = TooltipPrimitive.Root;
+-const TooltipTrigger = TooltipPrimitive.Trigger;
++const TooltipProvider = TooltipPrimitive.Provider
++
++const Tooltip = TooltipPrimitive.Root
++
++const TooltipTrigger = TooltipPrimitive.Trigger
+ 
+ const TooltipContent = React.forwardRef<
+   React.ElementRef<typeof TooltipPrimitive.Content>,
+   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+ >(({ className, sideOffset = 4, ...props }, ref) => (
+-  <TooltipPrimitive.Content
+-    ref={ref}
+-    sideOffset={sideOffset}
+-    className={cn(
+-      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95",
+-      className,
+-    )}
+-    {...props}
+-  />
+-));
+-TooltipContent.displayName = TooltipPrimitive.Content.displayName;
++  <TooltipPrimitive.Portal>
++    <TooltipPrimitive.Content
++      ref={ref}
++      sideOffset={sideOffset}
++      className={cn(
++        "z-50 overflow-hidden rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-tooltip-content-transform-origin]",
++        className
++      )}
++      {...props}
++    />
++  </TooltipPrimitive.Portal>
++))
++TooltipContent.displayName = TooltipPrimitive.Content.displayName
+ 
+-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };
++export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+diff --git a/webui/src/globals.css b/webui/src/globals.css
+index 4ae39847..5cc47748 100644
+--- a/webui/src/globals.css
++++ b/webui/src/globals.css
+@@ -26,10 +26,10 @@
+     --ring: 0 0% 3.9%;
+     --radius: 0.4375rem;
+     --sidebar: 0 0% 98.5%;
+-    --sidebar-foreground: 0 0% 3.9%;
+-    --sidebar-accent: 0 0% 95.8%;
+-    --sidebar-accent-foreground: 0 0% 9%;
+-    --sidebar-border: 0 0% 89.8%;
++    --sidebar-foreground: 240 5.3% 26.1%;
++    --sidebar-accent: 240 4.8% 95.9%;
++    --sidebar-accent-foreground: 240 5.9% 10%;
++    --sidebar-border: 220 13% 91%;
+     /* Sidebar tokens introduced for `@/components/ui/sidebar` (shadcn block
+        sidebar-07; PR2 of 05-07-ocean-tech-frontend). They sit alongside the
+        legacy `--sidebar`/`--sidebar-accent` set kept above for the existing
+@@ -61,10 +61,10 @@
+     --input: 0 0% 18%;
+     --ring: 0 0% 83.1%;
+     --sidebar: 0 0% 11.5%;
+-    --sidebar-foreground: 0 0% 98%;
+-    --sidebar-accent: 0 0% 15.5%;
+-    --sidebar-accent-foreground: 0 0% 98%;
+-    --sidebar-border: 0 0% 18%;
++    --sidebar-foreground: 240 4.8% 95.9%;
++    --sidebar-accent: 240 3.7% 15.9%;
++    --sidebar-accent-foreground: 240 4.8% 95.9%;
++    --sidebar-border: 240 3.7% 15.9%;
+     /* Sidebar tokens introduced for `@/components/ui/sidebar` — see :root
+        block above for rationale. */
+     --sidebar-background: 240 5.9% 10%;
+@@ -94,6 +94,19 @@
+     --brand-deep:  204 86% 36%;        /* #0E6BA8 — identity; 5.6:1 white-on-deep (AA) */
+     --brand-light: 210 100% 74%;       /* #7AB8FF — tint / hover; 9.49:1 on bg (AAA) */
+ 
++    /* Complete 8-step Blue ramp (50 → 900) for granular ocean-blue theming.
++       Provides full tonal range from pale sky to deep navy. */
++    --blue-50:  210 100% 97%;          /* #E6F4FF — pale sky */
++    --blue-100: 210 100% 94%;          /* #CCE9FF — very light */
++    --blue-200: 210 100% 88%;          /* #99D3FF — light */
++    --blue-300: 210 100% 80%;          /* #66BDFF — medium-light */
++    --blue-400: 210 100% 68%;          /* #33A7FF — medium */
++    --blue-500: 210 100% 56%;          /* #1E90FF — primary (Dodger Blue) */
++    --blue-600: 210 100% 48%;          /* #0080F5 — medium-dark */
++    --blue-700: 210 100% 40%;          /* #0066CC — dark */
++    --blue-800: 210 100% 32%;          /* #0052A3 — very dark */
++    --blue-900: 210 100% 24%;          /* #003D7A — deep navy */
++
+     --destructive: 0 100% 65%;         /* #FF4D4F (== Critical) */
+     --destructive-foreground: 0 0% 100%;
+     --text-primary: 220 10% 92%;
+@@ -153,6 +166,14 @@
+     --error:    0 72% 45%;             /* #C52020 — 5.45:1 (AA) */
+     --info:    199 89% 35%;            /* #0A76A9 — 4.70:1 (AA) */
+   }
++  .theme {
++    --animate-shine: shine var(--duration) infinite linear;
++    --animate-marquee: marquee var(--duration) infinite linear;
++    --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
++    --animate-shiny-text: shiny-text 8s infinite;
++    --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
++    --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
++  }
+ }
+ 
+ @layer base {
+@@ -226,3 +247,60 @@
+     border-radius: 9999px;
+   }
+ }
++
++@theme inline {
++  @keyframes shine {
++  0% {
++    background-position: 0% 0%;
++    }
++  50% {
++    background-position: 100% 100%;
++    }
++  to {
++    background-position: 0% 0%;
++    }
++  }
++  @keyframes marquee {
++  from {
++    transform: translateX(0);
++    }
++  to {
++    transform: translateX(calc(-100% - var(--gap)));
++    }
++  }
++  @keyframes marquee-vertical {
++  from {
++    transform: translateY(0);
++    }
++  to {
++    transform: translateY(calc(-100% - var(--gap)));
++    }
++  }
++  @keyframes shiny-text {
++  0%, 90%, 100% {
++    background-position: calc(-100% - var(--shiny-width)) 0;
++    }
++  30%, 60% {
++    background-position: calc(100% + var(--shiny-width)) 0;
++    }
++  }
++  @keyframes shimmer-slide {
++  to {
++    transform: translate(calc(100cqw - 100%), 0);
++    }
++  }
++  @keyframes spin-around {
++  0% {
++    transform: translateZ(0) rotate(0);
++    }
++  15%, 35% {
++    transform: translateZ(0) rotate(90deg);
++    }
++  65%, 85% {
++    transform: translateZ(0) rotate(270deg);
++    }
++  100% {
++    transform: translateZ(0) rotate(360deg);
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/webui/tailwind.config.js b/webui/tailwind.config.js
+index 775e43c8..55c93f39 100644
+--- a/webui/tailwind.config.js
++++ b/webui/tailwind.config.js
+@@ -16,173 +16,207 @@ export default {
+     "./src/blocks/**/*.{ts,tsx}",
+   ],
+   theme: {
+-    container: {
+-      center: true,
+-      padding: "1rem",
+-      screens: {
+-        "2xl": "1400px",
+-      },
+-    },
+-    extend: {
+-      fontFamily: {
+-        sans: [
+-          "system-ui",
+-          "-apple-system",
+-          "BlinkMacSystemFont",
+-          '"Segoe UI"',
+-          "Roboto",
+-          '"Helvetica Neue"',
+-          "Arial",
+-          '"Noto Sans"',
+-          '"Noto Sans SC"',
+-          '"PingFang SC"',
+-          '"Hiragino Sans GB"',
+-          '"Microsoft YaHei"',
+-          "sans-serif",
+-          '"Apple Color Emoji"',
+-          '"Segoe UI Emoji"',
+-        ],
+-        mono: [
+-          '"JetBrains Mono"',
+-          '"Fira Code"',
+-          '"Cascadia Code"',
+-          '"Source Code Pro"',
+-          "Menlo",
+-          "Consolas",
+-          "monospace",
+-        ],
+-      },
+-      borderRadius: {
+-        lg: "var(--radius)",
+-        md: "calc(var(--radius) - 2px)",
+-        sm: "calc(var(--radius) - 4px)",
+-      },
+-      colors: {
+-        background: "hsl(var(--background))",
+-        foreground: "hsl(var(--foreground))",
+-        card: {
+-          DEFAULT: "hsl(var(--card))",
+-          foreground: "hsl(var(--card-foreground))",
+-        },
+-        popover: {
+-          DEFAULT: "hsl(var(--popover))",
+-          foreground: "hsl(var(--popover-foreground))",
+-        },
+-        primary: {
+-          DEFAULT: "hsl(var(--primary))",
+-          foreground: "hsl(var(--primary-foreground))",
+-        },
+-        secondary: {
+-          DEFAULT: "hsl(var(--secondary))",
+-          foreground: "hsl(var(--secondary-foreground))",
+-        },
+-        muted: {
+-          DEFAULT: "hsl(var(--muted))",
+-          foreground: "hsl(var(--muted-foreground))",
+-        },
+-        accent: {
+-          DEFAULT: "hsl(var(--accent))",
+-          foreground: "hsl(var(--accent-foreground))",
+-        },
+-        destructive: {
+-          DEFAULT: "hsl(var(--destructive))",
+-          foreground: "hsl(var(--destructive-foreground))",
+-        },
+-        border: "hsl(var(--border))",
+-        "border-subtle": "hsl(var(--border-subtle))",
+-        "text-primary": "hsl(var(--text-primary))",
+-        "text-secondary": "hsl(var(--text-secondary))",
+-        // Dual-brand strategy (theme-tokens.md §2.2). Used together with
+-        // --primary; see spec for role separation.
+-        "brand-deep": "hsl(var(--brand-deep))",
+-        "brand-light": "hsl(var(--brand-light))",
+-        // Semantic state (theme-tokens.md §3.5).
+-        success: "hsl(var(--success))",
+-        warning: "hsl(var(--warning))",
+-        error: "hsl(var(--error))",
+-        info: "hsl(var(--info))",
+-        severity: {
+-          critical: "hsl(var(--sev-critical))",
+-          high: "hsl(var(--sev-high))",
+-          medium: "hsl(var(--sev-medium))",
+-          low: "hsl(var(--sev-low))",
+-          info: "hsl(var(--sev-info))",
+-        },
+-        input: "hsl(var(--input))",
+-        ring: "hsl(var(--ring))",
+-        sidebar: {
+-          // Legacy nanobot Sidebar tokens (kept for backwards compatibility
+-          // until PR3 reconciles old + new sidebar surfaces).
+-          DEFAULT: "hsl(var(--sidebar))",
+-          foreground: "hsl(var(--sidebar-foreground))",
+-          accent: "hsl(var(--sidebar-accent))",
+-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+-          border: "hsl(var(--sidebar-border))",
+-          // shadcn sidebar block (sidebar-07) tokens — see globals.css :root
+-          // block for the shadcn-managed CSS variables.
+-          primary: "hsl(var(--sidebar-primary))",
+-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+-          ring: "hsl(var(--sidebar-ring))",
+-        },
+-      },
+-      boxShadow: {
+-        // Glow accents for HUD surfaces (PR1 / theme-tokens.md §2.2).
+-        "glow-primary": "0 0 20px hsl(var(--primary) / 0.4)",
+-        "glow-brand": "0 0 20px hsl(var(--brand-deep) / 0.4)",
+-      },
+-      keyframes: {
+-        "accordion-down": {
+-          from: { height: "0" },
+-          to: { height: "var(--radix-accordion-content-height)" },
+-        },
+-        "accordion-up": {
+-          from: { height: "var(--radix-accordion-content-height)" },
+-          to: { height: "0" },
+-        },
+-        // MagicUI animation primitives — required by border-beam, marquee,
+-        // shine-border, animated-shiny-text, and shimmer-button. The
+-        // upstream package ships a Tailwind v4 plugin; we replicate the
+-        // keyframes inline so v3.4 JIT can resolve them. (PR2)
+-        marquee: {
+-          from: { transform: "translateX(0)" },
+-          to: { transform: "translateX(calc(-100% - var(--gap)))" },
+-        },
+-        "marquee-vertical": {
+-          from: { transform: "translateY(0)" },
+-          to: { transform: "translateY(calc(-100% - var(--gap)))" },
+-        },
+-        shine: {
+-          "0%": { "background-position": "0% 0%" },
+-          "50%": { "background-position": "100% 100%" },
+-          to: { "background-position": "0% 0%" },
+-        },
+-        "shiny-text": {
+-          "0%, 90%, 100%": { "background-position": "calc(-100% - var(--shiny-width)) 0" },
+-          "30%, 60%": { "background-position": "calc(100% + var(--shiny-width)) 0" },
+-        },
+-        "shimmer-slide": {
+-          to: { transform: "translate(calc(100cqw - 100%), 0)" },
+-        },
+-        "spin-around": {
+-          "0%": { transform: "translateZ(0) rotate(0)" },
+-          "15%, 35%": { transform: "translateZ(0) rotate(90deg)" },
+-          "65%, 85%": { transform: "translateZ(0) rotate(270deg)" },
+-          "100%": { transform: "translateZ(0) rotate(360deg)" },
+-        },
+-      },
+-      animation: {
+-        "accordion-down": "accordion-down 0.2s ease-out",
+-        "accordion-up": "accordion-up 0.2s ease-out",
+-        // MagicUI: bind the keyframes above to utility classes the
+-        // copied components rely on. Durations match upstream defaults.
+-        marquee: "marquee var(--duration, 40s) linear infinite",
+-        "marquee-vertical": "marquee-vertical var(--duration, 40s) linear infinite",
+-        shine: "shine var(--duration, 14s) infinite linear",
+-        "shiny-text": "shiny-text 8s infinite",
+-        "shimmer-slide": "shimmer-slide var(--speed, 3s) ease-in-out infinite alternate",
+-        "spin-around": "spin-around calc(var(--speed, 3s) * 2) infinite linear",
+-      },
+-    },
++  	container: {
++  		center: true,
++  		padding: '1rem',
++  		screens: {
++  			'2xl': '1400px'
++  		}
++  	},
++  	extend: {
++  		fontFamily: {
++  			sans: [
++  				'system-ui',
++  				'-apple-system',
++  				'BlinkMacSystemFont',
++  				'Segoe UI"',
++  				'Roboto',
++  				'Helvetica Neue"',
++  				'Arial',
++  				'Noto Sans"',
++  				'Noto Sans SC"',
++  				'PingFang SC"',
++  				'Hiragino Sans GB"',
++  				'Microsoft YaHei"',
++  				'sans-serif',
++  				'Apple Color Emoji"',
++  				'Segoe UI Emoji"'
++  			],
++  			mono: [
++  				'JetBrains Mono"',
++  				'Fira Code"',
++  				'Cascadia Code"',
++  				'Source Code Pro"',
++  				'Menlo',
++  				'Consolas',
++  				'monospace'
++  			]
++  		},
++  		borderRadius: {
++  			lg: 'var(--radius)',
++  			md: 'calc(var(--radius) - 2px)',
++  			sm: 'calc(var(--radius) - 4px)'
++  		},
++  		colors: {
++  			background: 'hsl(var(--background))',
++  			foreground: 'hsl(var(--foreground))',
++  			card: {
++  				DEFAULT: 'hsl(var(--card))',
++  				foreground: 'hsl(var(--card-foreground))'
++  			},
++  			popover: {
++  				DEFAULT: 'hsl(var(--popover))',
++  				foreground: 'hsl(var(--popover-foreground))'
++  			},
++  			primary: {
++  				DEFAULT: 'hsl(var(--primary))',
++  				foreground: 'hsl(var(--primary-foreground))'
++  			},
++  			secondary: {
++  				DEFAULT: 'hsl(var(--secondary))',
++  				foreground: 'hsl(var(--secondary-foreground))'
++  			},
++  			muted: {
++  				DEFAULT: 'hsl(var(--muted))',
++  				foreground: 'hsl(var(--muted-foreground))'
++  			},
++  			accent: {
++  				DEFAULT: 'hsl(var(--accent))',
++  				foreground: 'hsl(var(--accent-foreground))'
++  			},
++  			destructive: {
++  				DEFAULT: 'hsl(var(--destructive))',
++  				foreground: 'hsl(var(--destructive-foreground))'
++  			},
++  			border: 'hsl(var(--border))',
++  			'border-subtle': 'hsl(var(--border-subtle))',
++  			'text-primary': 'hsl(var(--text-primary))',
++  			'text-secondary': 'hsl(var(--text-secondary))',
++  			'brand-deep': 'hsl(var(--brand-deep))',
++  			'brand-light': 'hsl(var(--brand-light))',
++  			blue: {
++  				'50': 'hsl(var(--blue-50))',
++  				'100': 'hsl(var(--blue-100))',
++  				'200': 'hsl(var(--blue-200))',
++  				'300': 'hsl(var(--blue-300))',
++  				'400': 'hsl(var(--blue-400))',
++  				'500': 'hsl(var(--blue-500))',
++  				'600': 'hsl(var(--blue-600))',
++  				'700': 'hsl(var(--blue-700))',
++  				'800': 'hsl(var(--blue-800))',
++  				'900': 'hsl(var(--blue-900))'
++  			},
++  			success: 'hsl(var(--success))',
++  			warning: 'hsl(var(--warning))',
++  			error: 'hsl(var(--error))',
++  			info: 'hsl(var(--info))',
++  			severity: {
++  				critical: 'hsl(var(--sev-critical))',
++  				high: 'hsl(var(--sev-high))',
++  				medium: 'hsl(var(--sev-medium))',
++  				low: 'hsl(var(--sev-low))',
++  				info: 'hsl(var(--sev-info))'
++  			},
++  			input: 'hsl(var(--input))',
++  			ring: 'hsl(var(--ring))',
++  			sidebar: {
++  				DEFAULT: 'hsl(var(--sidebar-background))',
++  				foreground: 'hsl(var(--sidebar-foreground))',
++  				accent: 'hsl(var(--sidebar-accent))',
++  				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
++  				border: 'hsl(var(--sidebar-border))',
++  				primary: 'hsl(var(--sidebar-primary))',
++  				'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
++  				ring: 'hsl(var(--sidebar-ring))'
++  			}
++  		},
++  		boxShadow: {
++  			'glow-primary': '0 0 20px hsl(var(--primary) / 0.4)',
++  			'glow-brand': '0 0 20px hsl(var(--brand-deep) / 0.4)'
++  		},
++  		keyframes: {
++  			'accordion-down': {
++  				from: {
++  					height: '0'
++  				},
++  				to: {
++  					height: 'var(--radix-accordion-content-height)'
++  				}
++  			},
++  			'accordion-up': {
++  				from: {
++  					height: 'var(--radix-accordion-content-height)'
++  				},
++  				to: {
++  					height: '0'
++  				}
++  			},
++  			marquee: {
++  				from: {
++  					transform: 'translateX(0)'
++  				},
++  				to: {
++  					transform: 'translateX(calc(-100% - var(--gap)))'
++  				}
++  			},
++  			'marquee-vertical': {
++  				from: {
++  					transform: 'translateY(0)'
++  				},
++  				to: {
++  					transform: 'translateY(calc(-100% - var(--gap)))'
++  				}
++  			},
++  			shine: {
++  				'0%': {
++  					'background-position': '0% 0%'
++  				},
++  				'50%': {
++  					'background-position': '100% 100%'
++  				},
++  				to: {
++  					'background-position': '0% 0%'
++  				}
++  			},
++  			'shiny-text': {
++  				'0%, 90%, 100%': {
++  					'background-position': 'calc(-100% - var(--shiny-width)) 0'
++  				},
++  				'30%, 60%': {
++  					'background-position': 'calc(100% + var(--shiny-width)) 0'
++  				}
++  			},
++  			'shimmer-slide': {
++  				to: {
++  					transform: 'translate(calc(100cqw - 100%), 0)'
++  				}
++  			},
++  			'spin-around': {
++  				'0%': {
++  					transform: 'translateZ(0) rotate(0)'
++  				},
++  				'15%, 35%': {
++  					transform: 'translateZ(0) rotate(90deg)'
++  				},
++  				'65%, 85%': {
++  					transform: 'translateZ(0) rotate(270deg)'
++  				},
++  				'100%': {
++  					transform: 'translateZ(0) rotate(360deg)'
++  				}
++  			}
++  		},
++  		animation: {
++  			'accordion-down': 'accordion-down 0.2s ease-out',
++  			'accordion-up': 'accordion-up 0.2s ease-out',
++  			marquee: 'marquee var(--duration, 40s) linear infinite',
++  			'marquee-vertical': 'marquee-vertical var(--duration, 40s) linear infinite',
++  			shine: 'shine var(--duration, 14s) infinite linear',
++  			'shiny-text': 'shiny-text 8s infinite',
++  			'shimmer-slide': 'shimmer-slide var(--speed, 3s) ease-in-out infinite alternate',
++  			'spin-around': 'spin-around calc(var(--speed, 3s) * 2) infinite linear'
++  		}
++  	}
+   },
+   plugins: [animate, typography],
+ };

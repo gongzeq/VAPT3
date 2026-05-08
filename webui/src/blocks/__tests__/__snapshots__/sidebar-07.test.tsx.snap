@@ -49,6 +49,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-gallery-vertical-end size-4"
                     fill="none"
                     height="24"
@@ -90,6 +91,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   </span>
                 </div>
                 <svg
+                  aria-hidden="true"
                   class="lucide lucide-chevrons-up-down ml-auto"
                   fill="none"
                   height="24"
@@ -146,6 +148,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-square-terminal"
                     fill="none"
                     height="24"
@@ -176,6 +179,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                     Playground
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -256,6 +260,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-bot"
                     fill="none"
                     height="24"
@@ -294,6 +299,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                     Models
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -332,6 +338,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-book-open"
                     fill="none"
                     height="24"
@@ -354,6 +361,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                     Documentation
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -392,7 +400,8 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
-                    class="lucide lucide-settings2"
+                    aria-hidden="true"
+                    class="lucide lucide-settings2 lucide-settings-2"
                     fill="none"
                     height="24"
                     stroke="currentColor"
@@ -404,10 +413,10 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                     xmlns="http://www.w3.org/2000/svg"
                   >
                     <path
-                      d="M20 7h-9"
+                      d="M14 17H5"
                     />
                     <path
-                      d="M14 17H5"
+                      d="M19 7h-9"
                     />
                     <circle
                       cx="17"
@@ -424,6 +433,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                     Settings
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -474,6 +484,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-frame"
                     fill="none"
                     height="24"
@@ -524,6 +535,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -570,6 +582,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chart-pie"
                     fill="none"
                     height="24"
@@ -602,6 +615,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -648,6 +662,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-map"
                     fill="none"
                     height="24"
@@ -683,6 +698,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -728,6 +744,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   data-size="default"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis text-sidebar-foreground/70"
                     fill="none"
                     height="24"
@@ -810,6 +827,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
                   </span>
                 </div>
                 <svg
+                  aria-hidden="true"
                   class="lucide lucide-chevrons-up-down ml-auto size-4"
                   fill="none"
                   height="24"
@@ -856,6 +874,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
           data-sidebar="trigger"
         >
           <svg
+            aria-hidden="true"
             class="lucide lucide-panel-left"
             fill="none"
             height="24"
@@ -911,6 +930,7 @@ exports[`blocks/sidebar-07/page > renders the sidebar shell with the placeholder
               role="presentation"
             >
               <svg
+                aria-hidden="true"
                 class="lucide lucide-chevron-right"
                 fill="none"
                 height="24"

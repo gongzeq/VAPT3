@@ -3,5 +3,10 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "exclude": ["src/tests/**"]
+  "exclude": [
+    "src/tests/**",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ]
 }

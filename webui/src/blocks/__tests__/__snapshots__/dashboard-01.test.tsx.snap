@@ -49,6 +49,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-gallery-vertical-end size-4"
                     fill="none"
                     height="24"
@@ -90,6 +91,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   </span>
                 </div>
                 <svg
+                  aria-hidden="true"
                   class="lucide lucide-chevrons-up-down ml-auto"
                   fill="none"
                   height="24"
@@ -146,6 +148,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-square-terminal"
                     fill="none"
                     height="24"
@@ -176,6 +179,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     Playground
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -256,6 +260,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-bot"
                     fill="none"
                     height="24"
@@ -294,6 +299,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     Models
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -332,6 +338,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-book-open"
                     fill="none"
                     height="24"
@@ -354,6 +361,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     Documentation
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -392,7 +400,8 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
-                    class="lucide lucide-settings2"
+                    aria-hidden="true"
+                    class="lucide lucide-settings2 lucide-settings-2"
                     fill="none"
                     height="24"
                     stroke="currentColor"
@@ -404,10 +413,10 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     xmlns="http://www.w3.org/2000/svg"
                   >
                     <path
-                      d="M20 7h-9"
+                      d="M14 17H5"
                     />
                     <path
-                      d="M14 17H5"
+                      d="M19 7h-9"
                     />
                     <circle
                       cx="17"
@@ -424,6 +433,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     Settings
                   </span>
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
                     fill="none"
                     height="24"
@@ -474,6 +484,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-frame"
                     fill="none"
                     height="24"
@@ -524,6 +535,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -570,6 +582,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-chart-pie"
                     fill="none"
                     height="24"
@@ -602,6 +615,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -648,6 +662,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   href="#"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-map"
                     fill="none"
                     height="24"
@@ -683,6 +698,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   type="button"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis"
                     fill="none"
                     height="24"
@@ -728,6 +744,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   data-size="default"
                 >
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-ellipsis text-sidebar-foreground/70"
                     fill="none"
                     height="24"
@@ -810,6 +827,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                   </span>
                 </div>
                 <svg
+                  aria-hidden="true"
                   class="lucide lucide-chevrons-up-down ml-auto size-4"
                   fill="none"
                   height="24"
@@ -856,6 +874,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
           data-sidebar="trigger"
         >
           <svg
+            aria-hidden="true"
             class="lucide lucide-panel-left"
             fill="none"
             height="24"
@@ -931,6 +950,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
                   >
                     <svg
+                      aria-hidden="true"
                       class="lucide lucide-trending-up size-3"
                       fill="none"
                       height="24"
@@ -942,11 +962,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                       width="24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <polyline
-                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      <path
+                        d="M16 7h6v6"
                       />
-                      <polyline
-                        points="16 7 22 7 22 13"
+                      <path
+                        d="m22 7-8.5 8.5-5-5L2 17"
                       />
                     </svg>
                     +12.5%
@@ -961,6 +981,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                 >
                   Trending up this month 
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-trending-up size-4"
                     fill="none"
                     height="24"
@@ -972,11 +993,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     width="24"
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    <polyline
-                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    <path
+                      d="M16 7h6v6"
                     />
-                    <polyline
-                      points="16 7 22 7 22 13"
+                    <path
+                      d="m22 7-8.5 8.5-5-5L2 17"
                     />
                   </svg>
                 </div>
@@ -1010,6 +1031,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
                   >
                     <svg
+                      aria-hidden="true"
                       class="lucide lucide-trending-down size-3"
                       fill="none"
                       height="24"
@@ -1021,11 +1043,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                       width="24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <polyline
-                        points="22 17 13.5 8.5 8.5 13.5 2 7"
+                      <path
+                        d="M16 17h6v-6"
                       />
-                      <polyline
-                        points="16 17 22 17 22 11"
+                      <path
+                        d="m22 17-8.5-8.5-5 5L2 7"
                       />
                     </svg>
                     -20%
@@ -1040,6 +1062,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                 >
                   Down 20% this period 
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-trending-down size-4"
                     fill="none"
                     height="24"
@@ -1051,11 +1074,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     width="24"
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    <polyline
-                      points="22 17 13.5 8.5 8.5 13.5 2 7"
+                    <path
+                      d="M16 17h6v-6"
                     />
-                    <polyline
-                      points="16 17 22 17 22 11"
+                    <path
+                      d="m22 17-8.5-8.5-5 5L2 7"
                     />
                   </svg>
                 </div>
@@ -1089,6 +1112,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
                   >
                     <svg
+                      aria-hidden="true"
                       class="lucide lucide-trending-up size-3"
                       fill="none"
                       height="24"
@@ -1100,11 +1124,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                       width="24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <polyline
-                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      <path
+                        d="M16 7h6v6"
                       />
-                      <polyline
-                        points="16 7 22 7 22 13"
+                      <path
+                        d="m22 7-8.5 8.5-5-5L2 17"
                       />
                     </svg>
                     +12.5%
@@ -1119,6 +1143,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                 >
                   Strong user retention 
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-trending-up size-4"
                     fill="none"
                     height="24"
@@ -1130,11 +1155,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     width="24"
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    <polyline
-                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    <path
+                      d="M16 7h6v6"
                     />
-                    <polyline
-                      points="16 7 22 7 22 13"
+                    <path
+                      d="m22 7-8.5 8.5-5-5L2 17"
                     />
                   </svg>
                 </div>
@@ -1168,6 +1193,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
                   >
                     <svg
+                      aria-hidden="true"
                       class="lucide lucide-trending-up size-3"
                       fill="none"
                       height="24"
@@ -1179,11 +1205,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                       width="24"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <polyline
-                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      <path
+                        d="M16 7h6v6"
                       />
-                      <polyline
-                        points="16 7 22 7 22 13"
+                      <path
+                        d="m22 7-8.5 8.5-5-5L2 17"
                       />
                     </svg>
                     +4.5%
@@ -1198,6 +1224,7 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                 >
                   Steady performance 
                   <svg
+                    aria-hidden="true"
                     class="lucide lucide-trending-up size-4"
                     fill="none"
                     height="24"
@@ -1209,11 +1236,11 @@ exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section 
                     width="24"
                     xmlns="http://www.w3.org/2000/svg"
                   >
-                    <polyline
-                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    <path
+                      d="M16 7h6v6"
                     />
-                    <polyline
-                      points="16 7 22 7 22 13"
+                    <path
+                      d="m22 7-8.5 8.5-5-5L2 17"
                     />
                   </svg>
                 </div>

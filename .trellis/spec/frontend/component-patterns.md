@@ -34,6 +34,28 @@ Long-running skills (any `nmap` / `nuclei` / fuzzing tool) MUST conform to the f
 2. On completion → yield `summary_json` (structured, drives `<ScanResultTable>`) **and** `raw_log_path` (HTTP URL).
 3. UI shows summary inline; raw log is opened in a new tab via `[查看原始日志 ↗]`. **Do not** inline raw log in the bubble.
 
+### 1.3 Reasoning / Thought Stream (PR3 — 05-07-ocean-tech-frontend R6)
+
+Orchestrator reasoning ("思考链") is a **first-class but non-top-level** surface. It is NOT a fourth MessageBubble sub-component — it is a **specialised tool renderer** registered under the reserved tool name `__thought__` in `runtime.toolUI`. This keeps the triplet closed (see §5 forbidden) while giving thought tokens their own visual affordance.
+
+**Contract**:
+
+1. Backend emits reasoning via the existing `tool.call` / `tool.progress` / `tool.result` wire events with `tool_name === "__thought__"` (see [websocket-protocol.md §3.1](../backend/websocket-protocol.md#31-reserved-tool-name-__thought__-pr3)). Optionally, backend MAY emit the non-breaking `agent.thought` event as a typed shortcut.
+2. Frontend registers `<AgentThoughtChain>` at `SKILL_RENDERERS["__thought__"]`. The renderer is the ONLY place thought content renders — no inline branching inside `<ToolCallCard>` or `MessageBubble`.
+3. `args` shape: `{ step_id: string; title: string; icon?: "brain" \| "wrench" \| "search" \| "filetext"; parent_step_id?: string }`.
+4. `result` shape: `{ status: "running" \| "ok" \| "error"; tokens?: string; duration_ms?: number; next_action?: string }`. While `status === "running"`, incremental `tokens` are appended via standard `tool.progress` partial updates.
+5. Visual treatment: shadcn `<Collapsible>` + `<Card>` + lucide icons + `<BorderBeam>` on the currently-streaming step + `<AnimatedShinyText>` on incremental tokens. MUST degrade to static (no beam / no shimmer) under `prefers-reduced-motion: reduce`.
+6. Streaming tokens MUST NOT compete with assistant-ui auto-scroll. See [theme-tokens.md §3.5](./theme-tokens.md#35-semantic-state-palette-pr1) for status color sourcing (running → `--primary`, ok → `--success`, error → `--sev-critical`).
+
+Example registration (frontend `secbot/tool-ui.tsx`):
+
+```ts
+export const SKILL_RENDERERS: ToolRendererRegistry = {
+  // ...existing skill renderers
+  __thought__: AgentThoughtChainRenderer,
+};
+```
+
 ---
 
 ## 2. Tool-Call Folding
@@ -90,3 +112,4 @@ Inherited from research §1 as recommended baselines. They are **not** binding c
 - ❌ Branching renderer selection inside a single component (use `toolUI` registry).
 - ❌ Embedding raw scan logs inline in `<ToolCallCard>` (link out instead).
 - ❌ Adding a fourth top-level chat sub-component without amending §1.
+- ❌ Rendering orchestrator reasoning inline inside `<ToolCallCard>` — route via `<AgentThoughtChain>` at `SKILL_RENDERERS["__thought__"]` per §1.3.

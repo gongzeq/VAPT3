@@ -12,8 +12,9 @@ describe("SecbotThread v0.10 API compliance", () => {
     expect(typeof SecbotThreadModule.SecbotThread).toBe("function");
   });
 
-  it("exports all 8 skill renderers in SKILL_RENDERERS", () => {
+  it("exports all 9 skill renderers in SKILL_RENDERERS", () => {
     const expectedSkills = [
+      "__thought__",
       "cmdb-query",
       "nmap-port-scan",
       "nuclei-template-scan",
@@ -29,8 +30,8 @@ describe("SecbotThread v0.10 API compliance", () => {
       expect(typeof SKILL_RENDERERS[skill]).toBe("function");
     });
 
-    // Verify the registry has exactly these 8 entries
-    expect(Object.keys(SKILL_RENDERERS)).toHaveLength(8);
+    // Verify the registry has exactly these 9 entries
+    expect(Object.keys(SKILL_RENDERERS)).toHaveLength(9);
   });
 
   it("uses correct v0.10 imports from @assistant-ui/react", () => {
