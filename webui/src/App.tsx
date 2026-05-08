@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteConfirm } from "@/components/DeleteConfirm";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Sidebar } from "@/components/Sidebar";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
@@ -422,28 +423,30 @@ function Shell({ onModelNameChange, onLogout }: { onModelNameChange: (modelName:
       </Sheet>
 
       <main className="flex h-full min-w-0 flex-1 flex-col">
-        {view === "settings" ? (
-          <SettingsView
-            theme={theme}
-            onToggleTheme={toggle}
-            onBackToChat={() => setView("chat")}
-            onModelNameChange={onModelNameChange}
-            onLogout={onLogout}
-          />
-        ) : (
-          <ThreadShell
-            session={activeSession}
-            title={headerTitle}
-            onToggleSidebar={toggleSidebar}
-            onNewChat={onNewChat}
-            onCreateChat={onCreateChat}
-            onTurnEnd={onTurnEnd}
-            theme={theme}
-            onToggleTheme={toggle}
-            onOpenSettings={onOpenSettings}
-            hideSidebarToggleOnDesktop={desktopSidebarOpen}
-          />
-        )}
+        <ErrorBoundary>
+          {view === "settings" ? (
+            <SettingsView
+              theme={theme}
+              onToggleTheme={toggle}
+              onBackToChat={() => setView("chat")}
+              onModelNameChange={onModelNameChange}
+              onLogout={onLogout}
+            />
+          ) : (
+            <ThreadShell
+              session={activeSession}
+              title={headerTitle}
+              onToggleSidebar={toggleSidebar}
+              onNewChat={onNewChat}
+              onCreateChat={onCreateChat}
+              onTurnEnd={onTurnEnd}
+              theme={theme}
+              onToggleTheme={toggle}
+              onOpenSettings={onOpenSettings}
+              hideSidebarToggleOnDesktop={desktopSidebarOpen}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       <DeleteConfirm

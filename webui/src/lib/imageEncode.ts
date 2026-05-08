@@ -10,6 +10,7 @@ import {
   encodeImageInWorker,
   type EncodeResponse,
 } from "@/workers/imageEncode.worker";
+import { randomId } from "@/lib/utils";
 
 export type { EncodeResponse, EncodeSuccess, EncodeFailure } from "@/workers/imageEncode.worker";
 export { TARGET_MAX_BYTES } from "@/workers/imageEncode.worker";
@@ -55,11 +56,7 @@ function bootWorker(): Worker | null {
 }
 
 function newId(): string {
-  // ``crypto.randomUUID`` is widely available; fall back to Math.random if not.
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return (crypto as Crypto).randomUUID();
-  }
-  return `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return randomId();
 }
 
 /** Encode ``file`` off the main thread when possible. Always resolves — errors

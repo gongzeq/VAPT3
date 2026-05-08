@@ -21,6 +21,7 @@ import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { listSlashCommands } from "@/lib/api";
 import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
+import { randomId } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 
 interface ThreadShellProps {
@@ -148,7 +149,7 @@ export function ThreadShell({
     setMessages((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         role: "user",
         content: pending,
         createdAt: Date.now(),

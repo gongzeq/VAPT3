@@ -6,6 +6,7 @@ import { useClient } from "@/providers/ClientProvider";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import type { ChatSummary } from "@/lib/types";
+import { randomId } from "@/lib/utils";
 
 interface ChatPaneProps {
   session: ChatSummary | null;
@@ -50,7 +51,7 @@ export function ChatPane({ session, onNewChat }: ChatPaneProps) {
     setMessages((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: randomId(),
         role: "user",
         content: pending,
         createdAt: Date.now(),
