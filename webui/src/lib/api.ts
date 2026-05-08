@@ -157,3 +157,30 @@ export async function updateSettings(
     { headers },
   );
 }
+
+/**
+ * Probe the user-supplied OpenAI-compatible endpoint for its model list.
+ *
+ * ``apiKey`` is optional: omitting it reuses the persisted key on the server
+ * side, while a non-empty value travels over ``X-Settings-Api-Key`` so it is
+ * never appended to the URL / access logs / browser history.
+ */
+export async function fetchProviderModels(
+  token: string,
+  apiBase: string,
+  apiKey: string | undefined,
+  base: string = "",
+): Promise<string[]> {
+  const query = new URLSearchParams();
+  query.set("api_base", apiBase);
+  const headers: Record<string, string> = {};
+  if (apiKey !== undefined) {
+    headers["X-Settings-Api-Key"] = apiKey;
+  }
+  const body = await request<{ models: string[] }>(
+    `${base}/api/settings/models?${query}`,
+    token,
+    { headers },
+  );
+  return Array.isArray(body.models) ? body.models : [];
+}

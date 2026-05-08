@@ -580,6 +580,9 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/settings/update":
             return self._handle_settings_update(request)
 
+        if got == "/api/settings/models":
+            return await self._handle_settings_models(request)
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -800,6 +803,39 @@ class WebSocketChannel(BaseChannel):
         if changed:
             save_config(config)
         return _http_json_response(self._settings_payload(requires_restart=changed))
+
+    async def _handle_settings_models(self, request: WsRequest) -> Response:
+        """List models from the user-supplied OpenAI-compatible endpoint.
+
+        The client sends the draft ``api_base`` as a query param and the
+        draft ``api_key`` via the ``X-Settings-Api-Key`` header (same
+        channel as :meth:`_handle_settings_update` so the key never lands
+        in URL query strings or access logs). If the header is absent we
+        fall back to the persisted key so the user can re-query without
+        re-entering an already-saved key.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.command.builtin import _fetch_openai_models
+        from secbot.config.loader import load_config
+
+        query = _parse_query(request.path)
+        api_base = (_query_first(query, "api_base") or "").strip()
+        if not api_base:
+            return _http_error(400, "api_base is required")
+
+        if "X-Settings-Api-Key" in request.headers:
+            api_key = (request.headers.get("X-Settings-Api-Key") or "").strip()
+        else:
+            api_key = (load_config().providers.custom.api_key or "").strip()
+        if not api_key:
+            return _http_error(400, "api_key is required")
+
+        try:
+            ids = await _fetch_openai_models(api_base, api_key)
+        except Exception as exc:
+            return _http_error(502, f"failed to fetch models: {exc}")
+        return _http_json_response({"models": ids})
 
     @staticmethod
     def _is_webui_session_key(key: str) -> bool:

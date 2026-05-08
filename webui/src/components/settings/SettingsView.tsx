@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchSettings, updateSettings } from "@/lib/api";
+import { fetchProviderModels, fetchSettings, updateSettings } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 import type { SettingsPayload, SettingsUpdate } from "@/lib/types";
@@ -27,7 +27,6 @@ export function SettingsView({
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     model: "",
     provider: "auto",
@@ -43,33 +42,59 @@ export function SettingsView({
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  // "Fetch models" probe result + loading flag. Cleared whenever the
+  // endpoint fields change so a stale list doesn't linger after the user
+  // edits ``api_base`` or ``api_key``.
+  const [availableModels, setAvailableModels] = useState<string[] | null>(null);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  /**
+   * Last error from :func:`fetchSettings`. We surface it *inside* the page
+   * (alongside a Retry button) instead of flipping to an error-only view,
+   * per the project rule "errors go through alert() only, never a page
+   * switch". Without this the page would render as a blank panel after the
+   * alert is dismissed (e.g. token expired after a gateway restart).
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const applyPayload = useCallback((payload: SettingsPayload) => {
-    setSettings(payload);
-    setForm({
-      model: payload.agent.model,
-      provider: payload.agent.provider,
-      api_base: payload.custom.api_base,
-    });
-    // Server never returns the plaintext key — reset local draft state so the
-    // input shows the masked placeholder again.
-    setApiKeyInput("");
-    setApiKeyDirty(false);
-    setShowApiKey(false);
-  }, []);
+  const applyPayload = useCallback(
+    (payload: SettingsPayload) => {
+      setSettings(payload);
+      setForm({
+        model: payload.agent.model,
+        provider: payload.agent.provider,
+        api_base: payload.custom.api_base,
+      });
+      // Server never returns the plaintext key — reset local draft state so the
+      // input shows the masked placeholder again.
+      setApiKeyInput("");
+      setApiKeyDirty(false);
+      setShowApiKey(false);
+      setAvailableModels(null);
+      // Keep the top-bar model label in sync with whatever the server
+      // persisted (fixes the "configured DeepSeek but UI still shows Opus"
+      // case when the settings page reloads from cache).
+      onModelNameChange(payload.agent.model || null);
+    },
+    [onModelNameChange],
+  );
 
-  useEffect(() => {
+  const loadSettings = useCallback(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     fetchSettings(token)
       .then((payload) => {
-        if (!cancelled) {
-          applyPayload(payload);
-          setError(null);
-        }
+        if (!cancelled) applyPayload(payload);
       })
       .catch((err) => {
-        if (!cancelled) setError((err as Error).message);
+        if (cancelled) return;
+        const msg = (err as Error).message;
+        // Per project rule: surface the error through alert, never flip
+        // to an error-only page. But we ALSO record ``loadError`` so the
+        // body can render a retry affordance instead of a blank panel
+        // after the user dismisses the alert.
+        window.alert(`Could not load settings: ${msg}`);
+        setLoadError(msg);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -78,6 +103,21 @@ export function SettingsView({
       cancelled = true;
     };
   }, [applyPayload, token]);
+
+  useEffect(() => loadSettings(), [loadSettings]);
+
+  const trimmedModel = form.model.trim();
+  const trimmedApiBase = form.api_base.trim();
+  const trimmedApiKeyInput = apiKeyInput.trim();
+  // Effective "has key" state: either the user is typing a fresh key or the
+  // server already has one saved and the user hasn't cleared the field.
+  const hasEffectiveApiKey = apiKeyDirty
+    ? trimmedApiKeyInput.length > 0
+    : !!settings?.custom.has_api_key;
+  const allRequiredFilled =
+    trimmedModel.length > 0 &&
+    trimmedApiBase.length > 0 &&
+    hasEffectiveApiKey;
 
   const dirty = useMemo(() => {
     if (!settings) return false;
@@ -91,6 +131,12 @@ export function SettingsView({
 
   const save = async () => {
     if (!dirty || saving) return;
+    if (!allRequiredFilled) {
+      window.alert(
+        "Model, Base URL and API Key are all required before saving.",
+      );
+      return;
+    }
     setSaving(true);
     try {
       const update: SettingsUpdate = {
@@ -105,11 +151,42 @@ export function SettingsView({
       const payload = await updateSettings(token, update);
       applyPayload(payload);
       onModelNameChange(payload.agent.model || null);
-      setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      window.alert(`Save failed: ${(err as Error).message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (fetchingModels) return;
+    if (!trimmedApiBase) {
+      window.alert("Please enter the Base URL first.");
+      return;
+    }
+    if (!hasEffectiveApiKey) {
+      window.alert("Please enter the API Key first.");
+      return;
+    }
+    setFetchingModels(true);
+    try {
+      // ``undefined`` tells the backend to fall back to the saved key so the
+      // user doesn't have to re-enter an already-persisted one.
+      const models = await fetchProviderModels(
+        token,
+        trimmedApiBase,
+        apiKeyDirty ? apiKeyInput : undefined,
+      );
+      if (models.length === 0) {
+        window.alert("Endpoint returned no models.");
+        setAvailableModels([]);
+        return;
+      }
+      setAvailableModels(models);
+    } catch (err) {
+      window.alert(`Fetch models failed: ${(err as Error).message}`);
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -132,12 +209,25 @@ export function SettingsView({
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Loading settings...
           </div>
-        ) : error ? (
-          <SettingsGroup>
-            <SettingsRow title="Could not load settings">
-              <span className="max-w-[520px] text-sm text-muted-foreground">{error}</span>
-            </SettingsRow>
-          </SettingsGroup>
+        ) : loadError ? (
+          <div className="flex flex-col items-start gap-3 rounded-xl border border-border/60 bg-card/80 p-4">
+            <p className="text-sm">
+              Could not load settings: <span className="font-mono text-xs">{loadError}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Your session may have expired after a backend restart. Retry, or sign out to re-authenticate.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={loadSettings}>
+                Retry
+              </Button>
+              {onLogout ? (
+                <Button size="sm" variant="outline" onClick={onLogout}>
+                  Sign out
+                </Button>
+              ) : null}
+            </div>
+          </div>
         ) : settings ? (
           <SettingsSection
             form={form}
@@ -145,18 +235,35 @@ export function SettingsView({
             settings={settings}
             dirty={dirty}
             saving={saving}
+            canSave={allRequiredFilled}
             apiKeyInput={apiKeyInput}
             apiKeyDirty={apiKeyDirty}
             showApiKey={showApiKey}
             onApiKeyChange={(value) => {
               setApiKeyInput(value);
               setApiKeyDirty(true);
+              setAvailableModels(null);
             }}
             onToggleShowApiKey={() => setShowApiKey((prev) => !prev)}
             onSave={save}
             onLogout={onLogout}
+            availableModels={availableModels}
+            fetchingModels={fetchingModels}
+            onFetchModels={handleFetchModels}
           />
-        ) : null}
+        ) : (
+          // Fallback: neither loading nor errored, but settings is still
+          // null. Should not happen in normal flow, but HMR / unmounted
+          // effect race conditions can leave the state here. Render a
+          // visible affordance instead of a blank panel so the user can
+          // always recover.
+          <div className="flex flex-col items-start gap-3 rounded-xl border border-border/60 bg-card/80 p-4">
+            <p className="text-sm">Settings not loaded.</p>
+            <Button size="sm" variant="outline" onClick={loadSettings}>
+              Load settings
+            </Button>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -174,6 +281,7 @@ function SettingsSection({
   settings,
   dirty,
   saving,
+  canSave,
   apiKeyInput,
   apiKeyDirty,
   showApiKey,
@@ -181,12 +289,17 @@ function SettingsSection({
   onToggleShowApiKey,
   onSave,
   onLogout,
+  availableModels,
+  fetchingModels,
+  onFetchModels,
 }: {
   form: SettingsForm;
   setForm: React.Dispatch<React.SetStateAction<SettingsForm>>;
   settings: SettingsPayload;
   dirty: boolean;
   saving: boolean;
+  /** Whether all required fields (model / api_base / api_key) are filled. */
+  canSave: boolean;
   apiKeyInput: string;
   apiKeyDirty: boolean;
   showApiKey: boolean;
@@ -194,6 +307,9 @@ function SettingsSection({
   onToggleShowApiKey: () => void;
   onSave: () => void;
   onLogout?: () => void;
+  availableModels: string[] | null;
+  fetchingModels: boolean;
+  onFetchModels: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -219,11 +335,58 @@ function SettingsSection({
           </SettingsRow>
 
           <SettingsRow title="Model">
-            <Input
-              value={form.model}
-              onChange={(event) => setForm((prev) => ({ ...prev, model: event.target.value }))}
-              className="h-8 w-[280px]"
-            />
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={form.model}
+                  onChange={(event) => setForm((prev) => ({ ...prev, model: event.target.value }))}
+                  className="h-8 w-[280px]"
+                  list="settings-model-suggestions"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onFetchModels}
+                  disabled={fetchingModels}
+                  className="h-8"
+                >
+                  {fetchingModels ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Fetching
+                    </span>
+                  ) : (
+                    "Fetch models"
+                  )}
+                </Button>
+              </div>
+              {availableModels && availableModels.length > 0 ? (
+                <>
+                  <datalist id="settings-model-suggestions">
+                    {availableModels.map((mid) => (
+                      <option key={mid} value={mid} />
+                    ))}
+                  </datalist>
+                  <div className="flex max-w-[420px] flex-wrap justify-end gap-1">
+                    {availableModels.slice(0, 12).map((mid) => (
+                      <button
+                        key={mid}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, model: mid }))}
+                        className={cn(
+                          "rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground",
+                          "hover:bg-accent hover:text-foreground",
+                          form.model === mid && "border-primary text-foreground",
+                        )}
+                      >
+                        {mid}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
           </SettingsRow>
         </SettingsGroup>
       </section>
@@ -291,6 +454,7 @@ function SettingsSection({
             <SettingsFooter
               dirty={dirty}
               saving={saving}
+              canSave={canSave}
               saved={false}
               onSave={onSave}
             />
@@ -351,20 +515,33 @@ function SettingsRow({
 function SettingsFooter({
   dirty,
   saving,
+  canSave,
   saved,
   onSave,
 }: {
   dirty: boolean;
   saving: boolean;
+  /** When false, the Save button is disabled because required fields
+   * (model / Base URL / API Key) are not all filled in. */
+  canSave: boolean;
   saved: boolean;
   onSave: () => void;
 }) {
   return (
     <div className="flex min-h-[52px] items-center justify-between gap-4 px-3 py-2.5">
       <div className="text-sm text-muted-foreground">
-        {saved ? "Saved." : "Unsaved changes."}
+        {saved
+          ? "Saved."
+          : canSave
+            ? "Unsaved changes."
+            : "Model, Base URL and API Key are all required."}
       </div>
-      <Button size="sm" variant="outline" onClick={onSave} disabled={!dirty || saving}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onSave}
+        disabled={!dirty || saving || !canSave}
+      >
         {saving ? "Saving" : "Save"}
       </Button>
     </div>
