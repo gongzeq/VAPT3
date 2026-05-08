@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`magicui/BorderBeam > renders the masked beam wrapper with default props 1`] = `
+<div
+  class="pointer-events-none absolute inset-0 rounded-[inherit] border-[length:var(--border-beam-width)] border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
+  style="--border-beam-width: 1px;"
+>
+  <div
+    class="absolute aspect-square bg-gradient-to-l from-[var(--color-from)] via-[var(--color-to)] to-transparent"
+    style="width: 50px; offset-path: rect(0 auto auto 0 round 50px); --color-from: hsl(var(--brand-deep)); --color-to: hsl(var(--primary)); offset-distance: 0%;"
+  />
+</div>
+`;

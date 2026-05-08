@@ -1,0 +1,9 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`magicui/NumberTicker > renders the initial start value before animating into view 1`] = `
+<span
+  class="inline-block tracking-wider text-foreground tabular-nums"
+>
+  0
+</span>
+`;

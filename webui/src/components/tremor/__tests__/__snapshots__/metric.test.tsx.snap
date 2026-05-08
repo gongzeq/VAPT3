@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tremor/Metric > renders the KPI text with default styling 1`] = `
+<p
+  class="text-3xl font-semibold tracking-tight tabular-nums text-foreground"
+>
+  $ 12,699
+</p>
+`;
+
+exports[`tremor/Metric > supports a token text-color override 1`] = `
+<p
+  class="text-3xl font-semibold tracking-tight tabular-nums text-primary"
+>
+  42
+</p>
+`;

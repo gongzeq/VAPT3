@@ -1,0 +1,1463 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`blocks/dashboard-01/page > renders the dashboard scaffold with section cards + chart strip 1`] = `
+<div
+  class="group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar"
+  style="--sidebar-width: 16rem; --sidebar-width-icon: 3rem;"
+>
+  <div
+    class="group peer hidden text-sidebar-foreground md:block"
+    data-collapsible=""
+    data-side="left"
+    data-state="expanded"
+    data-variant="sidebar"
+  >
+    <div
+      class="relative w-[--sidebar-width] bg-transparent transition-[width] duration-200 ease-linear group-data-[collapsible=offcanvas]:w-0 group-data-[side=right]:rotate-180 group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
+    />
+    <div
+      class="fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] duration-200 ease-linear md:flex left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l"
+    >
+      <div
+        class="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+        data-sidebar="sidebar"
+      >
+        <div
+          class="flex flex-col gap-2 p-2"
+          data-sidebar="header"
+        >
+          <ul
+            class="flex w-full min-w-0 flex-col gap-1"
+            data-sidebar="menu"
+          >
+            <li
+              class="group/menu-item relative"
+              data-sidebar="menu-item"
+            >
+              <button
+                aria-expanded="false"
+                aria-haspopup="menu"
+                class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-12 text-sm group-data-[collapsible=icon]:!p-0 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                data-active="false"
+                data-sidebar="menu-button"
+                data-size="lg"
+                data-state="closed"
+                id="radix-:r0:"
+                type="button"
+              >
+                <div
+                  class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+                >
+                  <svg
+                    class="lucide lucide-gallery-vertical-end size-4"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M7 2h10"
+                    />
+                    <path
+                      d="M5 6h14"
+                    />
+                    <rect
+                      height="12"
+                      rx="2"
+                      width="18"
+                      x="3"
+                      y="10"
+                    />
+                  </svg>
+                </div>
+                <div
+                  class="grid flex-1 text-left text-sm leading-tight"
+                >
+                  <span
+                    class="truncate font-semibold"
+                  >
+                    Acme Inc
+                  </span>
+                  <span
+                    class="truncate text-xs"
+                  >
+                    Enterprise
+                  </span>
+                </div>
+                <svg
+                  class="lucide lucide-chevrons-up-down ml-auto"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="m7 15 5 5 5-5"
+                  />
+                  <path
+                    d="m7 9 5-5 5 5"
+                  />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div
+          class="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden"
+          data-sidebar="content"
+        >
+          <div
+            class="relative flex w-full min-w-0 flex-col p-2"
+            data-sidebar="group"
+          >
+            <div
+              class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-none ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0"
+              data-sidebar="group-label"
+            >
+              Platform
+            </div>
+            <ul
+              class="flex w-full min-w-0 flex-col gap-1"
+              data-sidebar="menu"
+            >
+              <li
+                class="group/menu-item relative group/collapsible"
+                data-sidebar="menu-item"
+                data-state="open"
+              >
+                <button
+                  aria-controls="radix-:r2:"
+                  aria-expanded="true"
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  data-state="open"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-square-terminal"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="m7 11 2-2-2-2"
+                    />
+                    <path
+                      d="M11 13h4"
+                    />
+                    <rect
+                      height="18"
+                      rx="2"
+                      ry="2"
+                      width="18"
+                      x="3"
+                      y="3"
+                    />
+                  </svg>
+                  <span>
+                    Playground
+                  </span>
+                  <svg
+                    class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="m9 18 6-6-6-6"
+                    />
+                  </svg>
+                </button>
+                <div
+                  data-state="open"
+                  id="radix-:r2:"
+                  style="transition-duration: 0s; animation-name: none;"
+                >
+                  <ul
+                    class="mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border px-2.5 py-0.5 group-data-[collapsible=icon]:hidden"
+                    data-sidebar="menu-sub"
+                  >
+                    <li>
+                      <a
+                        class="flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground text-sm group-data-[collapsible=icon]:hidden"
+                        data-sidebar="menu-sub-button"
+                        data-size="md"
+                        href="#"
+                      >
+                        <span>
+                          History
+                        </span>
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        class="flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground text-sm group-data-[collapsible=icon]:hidden"
+                        data-sidebar="menu-sub-button"
+                        data-size="md"
+                        href="#"
+                      >
+                        <span>
+                          Starred
+                        </span>
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        class="flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground text-sm group-data-[collapsible=icon]:hidden"
+                        data-sidebar="menu-sub-button"
+                        data-size="md"
+                        href="#"
+                      >
+                        <span>
+                          Settings
+                        </span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </li>
+              <li
+                class="group/menu-item relative group/collapsible"
+                data-sidebar="menu-item"
+                data-state="closed"
+              >
+                <button
+                  aria-controls="radix-:r4:"
+                  aria-expanded="false"
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  data-state="closed"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-bot"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M12 8V4H8"
+                    />
+                    <rect
+                      height="12"
+                      rx="2"
+                      width="16"
+                      x="4"
+                      y="8"
+                    />
+                    <path
+                      d="M2 14h2"
+                    />
+                    <path
+                      d="M20 14h2"
+                    />
+                    <path
+                      d="M15 13v2"
+                    />
+                    <path
+                      d="M9 13v2"
+                    />
+                  </svg>
+                  <span>
+                    Models
+                  </span>
+                  <svg
+                    class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="m9 18 6-6-6-6"
+                    />
+                  </svg>
+                </button>
+                <div
+                  data-state="closed"
+                  hidden=""
+                  id="radix-:r4:"
+                />
+              </li>
+              <li
+                class="group/menu-item relative group/collapsible"
+                data-sidebar="menu-item"
+                data-state="closed"
+              >
+                <button
+                  aria-controls="radix-:r6:"
+                  aria-expanded="false"
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  data-state="closed"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-book-open"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M12 7v14"
+                    />
+                    <path
+                      d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
+                    />
+                  </svg>
+                  <span>
+                    Documentation
+                  </span>
+                  <svg
+                    class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="m9 18 6-6-6-6"
+                    />
+                  </svg>
+                </button>
+                <div
+                  data-state="closed"
+                  hidden=""
+                  id="radix-:r6:"
+                />
+              </li>
+              <li
+                class="group/menu-item relative group/collapsible"
+                data-sidebar="menu-item"
+                data-state="closed"
+              >
+                <button
+                  aria-controls="radix-:r8:"
+                  aria-expanded="false"
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  data-state="closed"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-settings2"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M20 7h-9"
+                    />
+                    <path
+                      d="M14 17H5"
+                    />
+                    <circle
+                      cx="17"
+                      cy="17"
+                      r="3"
+                    />
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="3"
+                    />
+                  </svg>
+                  <span>
+                    Settings
+                  </span>
+                  <svg
+                    class="lucide lucide-chevron-right ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="m9 18 6-6-6-6"
+                    />
+                  </svg>
+                </button>
+                <div
+                  data-state="closed"
+                  hidden=""
+                  id="radix-:r8:"
+                />
+              </li>
+            </ul>
+          </div>
+          <div
+            class="relative flex w-full min-w-0 flex-col p-2 group-data-[collapsible=icon]:hidden"
+            data-sidebar="group"
+          >
+            <div
+              class="flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-none ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0"
+              data-sidebar="group-label"
+            >
+              Projects
+            </div>
+            <ul
+              class="flex w-full min-w-0 flex-col gap-1"
+              data-sidebar="menu"
+            >
+              <li
+                class="group/menu-item relative"
+                data-sidebar="menu-item"
+              >
+                <a
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  href="#"
+                >
+                  <svg
+                    class="lucide lucide-frame"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <line
+                      x1="22"
+                      x2="2"
+                      y1="6"
+                      y2="6"
+                    />
+                    <line
+                      x1="22"
+                      x2="2"
+                      y1="18"
+                      y2="18"
+                    />
+                    <line
+                      x1="6"
+                      x2="6"
+                      y1="2"
+                      y2="22"
+                    />
+                    <line
+                      x1="18"
+                      x2="18"
+                      y1="2"
+                      y2="22"
+                    />
+                  </svg>
+                  <span>
+                    Design Engineering
+                  </span>
+                </a>
+                <button
+                  aria-expanded="false"
+                  aria-haspopup="menu"
+                  class="absolute right-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 after:absolute after:-inset-2 after:md:hidden peer-data-[size=sm]/menu-button:top-1 peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 group-data-[collapsible=icon]:hidden group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0"
+                  data-sidebar="menu-action"
+                  data-state="closed"
+                  id="radix-:ra:"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-ellipsis"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="19"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="5"
+                      cy="12"
+                      r="1"
+                    />
+                  </svg>
+                  <span
+                    class="sr-only"
+                  >
+                    More
+                  </span>
+                </button>
+              </li>
+              <li
+                class="group/menu-item relative"
+                data-sidebar="menu-item"
+              >
+                <a
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  href="#"
+                >
+                  <svg
+                    class="lucide lucide-chart-pie"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"
+                    />
+                    <path
+                      d="M21.21 15.89A10 10 0 1 1 8 2.83"
+                    />
+                  </svg>
+                  <span>
+                    Sales & Marketing
+                  </span>
+                </a>
+                <button
+                  aria-expanded="false"
+                  aria-haspopup="menu"
+                  class="absolute right-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 after:absolute after:-inset-2 after:md:hidden peer-data-[size=sm]/menu-button:top-1 peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 group-data-[collapsible=icon]:hidden group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0"
+                  data-sidebar="menu-action"
+                  data-state="closed"
+                  id="radix-:rc:"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-ellipsis"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="19"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="5"
+                      cy="12"
+                      r="1"
+                    />
+                  </svg>
+                  <span
+                    class="sr-only"
+                  >
+                    More
+                  </span>
+                </button>
+              </li>
+              <li
+                class="group/menu-item relative"
+                data-sidebar="menu-item"
+              >
+                <a
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                  href="#"
+                >
+                  <svg
+                    class="lucide lucide-map"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"
+                    />
+                    <path
+                      d="M15 5.764v15"
+                    />
+                    <path
+                      d="M9 3.236v15"
+                    />
+                  </svg>
+                  <span>
+                    Travel
+                  </span>
+                </a>
+                <button
+                  aria-expanded="false"
+                  aria-haspopup="menu"
+                  class="absolute right-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 after:absolute after:-inset-2 after:md:hidden peer-data-[size=sm]/menu-button:top-1 peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 group-data-[collapsible=icon]:hidden group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0"
+                  data-sidebar="menu-action"
+                  data-state="closed"
+                  id="radix-:re:"
+                  type="button"
+                >
+                  <svg
+                    class="lucide lucide-ellipsis"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="19"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="5"
+                      cy="12"
+                      r="1"
+                    />
+                  </svg>
+                  <span
+                    class="sr-only"
+                  >
+                    More
+                  </span>
+                </button>
+              </li>
+              <li
+                class="group/menu-item relative"
+                data-sidebar="menu-item"
+              >
+                <button
+                  class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 text-sm text-sidebar-foreground/70"
+                  data-active="false"
+                  data-sidebar="menu-button"
+                  data-size="default"
+                >
+                  <svg
+                    class="lucide lucide-ellipsis text-sidebar-foreground/70"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="19"
+                      cy="12"
+                      r="1"
+                    />
+                    <circle
+                      cx="5"
+                      cy="12"
+                      r="1"
+                    />
+                  </svg>
+                  <span>
+                    More
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div
+          class="flex flex-col gap-2 p-2"
+          data-sidebar="footer"
+        >
+          <ul
+            class="flex w-full min-w-0 flex-col gap-1"
+            data-sidebar="menu"
+          >
+            <li
+              class="group/menu-item relative"
+              data-sidebar="menu-item"
+            >
+              <button
+                aria-expanded="false"
+                aria-haspopup="menu"
+                class="peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left outline-none ring-sidebar-ring transition-[width,height,padding] focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:!size-8 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-12 text-sm group-data-[collapsible=icon]:!p-0 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                data-active="false"
+                data-sidebar="menu-button"
+                data-size="lg"
+                data-state="closed"
+                id="radix-:rg:"
+                type="button"
+              >
+                <span
+                  class="relative flex shrink-0 overflow-hidden h-8 w-8 rounded-lg"
+                >
+                  <span
+                    class="flex h-full w-full items-center justify-center bg-muted text-xs font-medium rounded-lg"
+                  >
+                    CN
+                  </span>
+                </span>
+                <div
+                  class="grid flex-1 text-left text-sm leading-tight"
+                >
+                  <span
+                    class="truncate font-semibold"
+                  >
+                    shadcn
+                  </span>
+                  <span
+                    class="truncate text-xs"
+                  >
+                    m@example.com
+                  </span>
+                </div>
+                <svg
+                  class="lucide lucide-chevrons-up-down ml-auto size-4"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="m7 15 5 5 5-5"
+                  />
+                  <path
+                    d="m7 9 5-5 5 5"
+                  />
+                </svg>
+              </button>
+            </li>
+          </ul>
+        </div>
+        <button
+          aria-label="Toggle Sidebar"
+          class="absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border group-data-[side=left]:-right-4 group-data-[side=right]:left-0 sm:flex [[data-side=left]_&]:cursor-w-resize [[data-side=right]_&]:cursor-e-resize [[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full group-data-[collapsible=offcanvas]:hover:bg-sidebar [[data-side=left][data-collapsible=offcanvas]_&]:-right-2 [[data-side=right][data-collapsible=offcanvas]_&]:-left-2"
+          data-sidebar="rail"
+          tabindex="-1"
+          title="Toggle Sidebar"
+        />
+      </div>
+    </div>
+  </div>
+  <main
+    class="relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow"
+  >
+    <header
+      class="flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear"
+    >
+      <div
+        class="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6"
+      >
+        <button
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-7 w-7 -ml-1"
+          data-sidebar="trigger"
+        >
+          <svg
+            class="lucide lucide-panel-left"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect
+              height="18"
+              rx="2"
+              width="18"
+              x="3"
+              y="3"
+            />
+            <path
+              d="M9 3v18"
+            />
+          </svg>
+          <span
+            class="sr-only"
+          >
+            Toggle Sidebar
+          </span>
+        </button>
+        <div
+          class="shrink-0 bg-border h-full w-[1px] mx-2 data-[orientation=vertical]:h-4"
+          data-orientation="vertical"
+          role="none"
+        />
+        <h1
+          class="text-base font-medium"
+        >
+          Documents
+        </h1>
+      </div>
+    </header>
+    <div
+      class="flex flex-1 flex-col"
+    >
+      <div
+        class="flex flex-1 flex-col gap-2"
+      >
+        <div
+          class="flex flex-col gap-4 py-4 md:gap-6 md:py-6"
+        >
+          <div
+            class="grid grid-cols-1 gap-4 px-4 md:grid-cols-2 xl:grid-cols-4 lg:px-6"
+          >
+            <div
+              class="rounded-xl border bg-card text-card-foreground shadow"
+            >
+              <div
+                class="flex flex-col space-y-1.5 p-6 relative"
+              >
+                <div
+                  class="text-sm text-muted-foreground"
+                >
+                  Total Revenue
+                </div>
+                <div
+                  class="tracking-tight text-2xl font-semibold tabular-nums"
+                >
+                  $1,250.00
+                </div>
+                <div
+                  class="absolute right-4 top-4"
+                >
+                  <div
+                    class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
+                  >
+                    <svg
+                      class="lucide lucide-trending-up size-3"
+                      fill="none"
+                      height="24"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                      width="24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <polyline
+                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      />
+                      <polyline
+                        points="16 7 22 7 22 13"
+                      />
+                    </svg>
+                    +12.5%
+                  </div>
+                </div>
+              </div>
+              <div
+                class="flex p-6 pt-0 flex-col items-start gap-1 text-sm"
+              >
+                <div
+                  class="line-clamp-1 flex gap-2 font-medium"
+                >
+                  Trending up this month 
+                  <svg
+                    class="lucide lucide-trending-up size-4"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <polyline
+                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    />
+                    <polyline
+                      points="16 7 22 7 22 13"
+                    />
+                  </svg>
+                </div>
+                <div
+                  class="text-muted-foreground"
+                >
+                  Visitors for the last 6 months
+                </div>
+              </div>
+            </div>
+            <div
+              class="rounded-xl border bg-card text-card-foreground shadow"
+            >
+              <div
+                class="flex flex-col space-y-1.5 p-6 relative"
+              >
+                <div
+                  class="text-sm text-muted-foreground"
+                >
+                  New Customers
+                </div>
+                <div
+                  class="tracking-tight text-2xl font-semibold tabular-nums"
+                >
+                  1,234
+                </div>
+                <div
+                  class="absolute right-4 top-4"
+                >
+                  <div
+                    class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
+                  >
+                    <svg
+                      class="lucide lucide-trending-down size-3"
+                      fill="none"
+                      height="24"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                      width="24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <polyline
+                        points="22 17 13.5 8.5 8.5 13.5 2 7"
+                      />
+                      <polyline
+                        points="16 17 22 17 22 11"
+                      />
+                    </svg>
+                    -20%
+                  </div>
+                </div>
+              </div>
+              <div
+                class="flex p-6 pt-0 flex-col items-start gap-1 text-sm"
+              >
+                <div
+                  class="line-clamp-1 flex gap-2 font-medium"
+                >
+                  Down 20% this period 
+                  <svg
+                    class="lucide lucide-trending-down size-4"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <polyline
+                      points="22 17 13.5 8.5 8.5 13.5 2 7"
+                    />
+                    <polyline
+                      points="16 17 22 17 22 11"
+                    />
+                  </svg>
+                </div>
+                <div
+                  class="text-muted-foreground"
+                >
+                  Acquisition needs attention
+                </div>
+              </div>
+            </div>
+            <div
+              class="rounded-xl border bg-card text-card-foreground shadow"
+            >
+              <div
+                class="flex flex-col space-y-1.5 p-6 relative"
+              >
+                <div
+                  class="text-sm text-muted-foreground"
+                >
+                  Active Accounts
+                </div>
+                <div
+                  class="tracking-tight text-2xl font-semibold tabular-nums"
+                >
+                  45,678
+                </div>
+                <div
+                  class="absolute right-4 top-4"
+                >
+                  <div
+                    class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
+                  >
+                    <svg
+                      class="lucide lucide-trending-up size-3"
+                      fill="none"
+                      height="24"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                      width="24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <polyline
+                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      />
+                      <polyline
+                        points="16 7 22 7 22 13"
+                      />
+                    </svg>
+                    +12.5%
+                  </div>
+                </div>
+              </div>
+              <div
+                class="flex p-6 pt-0 flex-col items-start gap-1 text-sm"
+              >
+                <div
+                  class="line-clamp-1 flex gap-2 font-medium"
+                >
+                  Strong user retention 
+                  <svg
+                    class="lucide lucide-trending-up size-4"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <polyline
+                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    />
+                    <polyline
+                      points="16 7 22 7 22 13"
+                    />
+                  </svg>
+                </div>
+                <div
+                  class="text-muted-foreground"
+                >
+                  Engagement exceed targets
+                </div>
+              </div>
+            </div>
+            <div
+              class="rounded-xl border bg-card text-card-foreground shadow"
+            >
+              <div
+                class="flex flex-col space-y-1.5 p-6 relative"
+              >
+                <div
+                  class="text-sm text-muted-foreground"
+                >
+                  Growth Rate
+                </div>
+                <div
+                  class="tracking-tight text-2xl font-semibold tabular-nums"
+                >
+                  4.5%
+                </div>
+                <div
+                  class="absolute right-4 top-4"
+                >
+                  <div
+                    class="items-center border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground flex gap-1 rounded-lg text-xs"
+                  >
+                    <svg
+                      class="lucide lucide-trending-up size-3"
+                      fill="none"
+                      height="24"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                      width="24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <polyline
+                        points="22 7 13.5 15.5 8.5 10.5 2 17"
+                      />
+                      <polyline
+                        points="16 7 22 7 22 13"
+                      />
+                    </svg>
+                    +4.5%
+                  </div>
+                </div>
+              </div>
+              <div
+                class="flex p-6 pt-0 flex-col items-start gap-1 text-sm"
+              >
+                <div
+                  class="line-clamp-1 flex gap-2 font-medium"
+                >
+                  Steady performance 
+                  <svg
+                    class="lucide lucide-trending-up size-4"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                    width="24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <polyline
+                      points="22 7 13.5 15.5 8.5 10.5 2 17"
+                    />
+                    <polyline
+                      points="16 7 22 7 22 13"
+                    />
+                  </svg>
+                </div>
+                <div
+                  class="text-muted-foreground"
+                >
+                  Meets growth projections
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="px-4 lg:px-6"
+          >
+            <div
+              class="rounded-xl border bg-card text-card-foreground shadow"
+            >
+              <div
+                class="flex flex-col space-y-1.5 p-6"
+              >
+                <div
+                  class="font-semibold leading-none tracking-tight"
+                >
+                  Findings over time
+                </div>
+              </div>
+              <div
+                class="px-6 pb-6"
+              >
+                <div
+                  class="h-80 w-full"
+                >
+                  <div
+                    class="recharts-responsive-container"
+                    style="width: 100%; height: 100%; min-width: 0;"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="rounded-xl border bg-card text-card-foreground shadow mx-4 lg:mx-6"
+          >
+            <div
+              class="flex flex-col space-y-1.5 p-6"
+            >
+              <div
+                class="font-semibold tracking-tight text-base"
+              >
+                Recent reports
+              </div>
+            </div>
+            <div
+              class="overflow-x-auto px-6 pb-6"
+            >
+              <table
+                class="w-full text-sm"
+              >
+                <thead>
+                  <tr
+                    class="border-b text-muted-foreground"
+                  >
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Header
+                    </th>
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Type
+                    </th>
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Status
+                    </th>
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Target
+                    </th>
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Limit
+                    </th>
+                    <th
+                      class="px-3 py-2 text-left font-medium tracking-tight"
+                      scope="col"
+                    >
+                      Reviewer
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    class="border-b last:border-0"
+                  >
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Cover page
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Cover page
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      In Process
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      18
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      5
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Eddie Lake
+                    </td>
+                  </tr>
+                  <tr
+                    class="border-b last:border-0"
+                  >
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Table of contents
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Table of contents
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Done
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      29
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      24
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Eddie Lake
+                    </td>
+                  </tr>
+                  <tr
+                    class="border-b last:border-0"
+                  >
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Executive summary
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Narrative
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Done
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      10
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      13
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Eddie Lake
+                    </td>
+                  </tr>
+                  <tr
+                    class="border-b last:border-0"
+                  >
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Technical approach
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Narrative
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Done
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      27
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      23
+                    </td>
+                    <td
+                      class="px-3 py-2 align-middle text-foreground"
+                    >
+                      Jamik Tashpulatov
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+`;
