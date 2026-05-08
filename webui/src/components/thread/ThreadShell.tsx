@@ -15,6 +15,8 @@ import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
+import { ShineBorder } from "@/components/magicui/shine-border";
+import { cn } from "@/lib/utils";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { listSlashCommands } from "@/lib/api";
@@ -235,32 +237,65 @@ export function ThreadShell({
         />
       ) : null}
       {session ? (
-        <ThreadComposer
-          onSend={send}
-          disabled={!chatId}
-          isStreaming={isStreaming}
-          placeholder={
-            showHeroComposer
-              ? t("thread.composer.placeholderHero")
-              : t("thread.composer.placeholderThread")
-          }
-          modelLabel={toModelBadgeLabel(modelName)}
-          variant={showHeroComposer ? "hero" : "thread"}
-          slashCommands={slashCommands}
-        />
+        <div
+          className={cn(
+            // PR3-R4 (05-07-ocean-tech-frontend): wrap the composer in a
+            // relative + rounded shell so <ShineBorder> can overlay a brand
+            // halo. The shine renders as an absolutely-positioned overlay;
+            // this wrapper provides its coordinate space. Degrades to static
+            // under reduced-motion via ShineBorder's internal handling.
+            "relative rounded-[26px]",
+          )}
+        >
+          <ShineBorder
+            borderWidth={1}
+            duration={18}
+            shineColor={[
+              "hsl(var(--brand-deep))",
+              "hsl(var(--primary))",
+              "hsl(var(--brand-light))",
+            ]}
+            className="motion-reduce:hidden"
+          />
+          <ThreadComposer
+            onSend={send}
+            disabled={!chatId}
+            isStreaming={isStreaming}
+            placeholder={
+              showHeroComposer
+                ? t("thread.composer.placeholderHero")
+                : t("thread.composer.placeholderThread")
+            }
+            modelLabel={toModelBadgeLabel(modelName)}
+            variant={showHeroComposer ? "hero" : "thread"}
+            slashCommands={slashCommands}
+          />
+        </div>
       ) : (
-        <ThreadComposer
-          onSend={handleWelcomeSend}
-          disabled={booting}
-          isStreaming={isStreaming}
-          placeholder={
-            booting
-              ? t("thread.composer.placeholderOpening")
-              : t("thread.composer.placeholderHero")
-          }
-          modelLabel={toModelBadgeLabel(modelName)}
-          variant="hero"
-        />
+        <div className="relative rounded-[26px]">
+          <ShineBorder
+            borderWidth={1}
+            duration={18}
+            shineColor={[
+              "hsl(var(--brand-deep))",
+              "hsl(var(--primary))",
+              "hsl(var(--brand-light))",
+            ]}
+            className="motion-reduce:hidden"
+          />
+          <ThreadComposer
+            onSend={handleWelcomeSend}
+            disabled={booting}
+            isStreaming={isStreaming}
+            placeholder={
+              booting
+                ? t("thread.composer.placeholderOpening")
+                : t("thread.composer.placeholderHero")
+            }
+            modelLabel={toModelBadgeLabel(modelName)}
+            variant="hero"
+          />
+        </div>
       )}
       {showHeroComposer ? quickActions : null}
     </>

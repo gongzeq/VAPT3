@@ -190,15 +190,16 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 
 ### Git Commits
 
-（待 commit——本 session 的改动列表见 `git status`；计划按 PR3-R6 单 commit 落地，再进入下一 session 的 R4 主 Shell 海蓝化）
+| Hash | Message |
+|------|---------|
+| `517bc8c0` | feat(secbot): PR3-R6 AgentThoughtChain renderer + spec amendments |
 
 ### Status
 
-[PARTIAL] **PR3-R6 代码 + 规范已完成、Quality check 全绿、待 commit**；R4 主 Shell 海蓝化推迟到下一 session（范围：`App.tsx` / `Sidebar.tsx` / `ThreadShell.tsx` / `MessageBubble.tsx` / `ConnectionBadge.tsx` + `SettingsView.tsx`）
+[PARTIAL] **PR3-R6 已落地**（commit `517bc8c0`）；R4 主 Shell 海蓝化推迟到下一 session（范围：`App.tsx` / `Sidebar.tsx` / `ThreadShell.tsx` / `MessageBubble.tsx` / `ConnectionBadge.tsx` + `SettingsView.tsx`）
 
 ### Next Steps
 
-- 当前：按 workflow 3.4 Commit PR3-R6（journal 留空 hash，commit 后回填）
 - 下一 session：PR3-R4 主 Shell 海蓝化 5 个文件
 - 后续：PR4（R5 xyflow agent DAG 消费）+ PR5（R7 feature flag + Lighthouse 基线）
 - shadcn CLI 污染事件的防御：以后不再对本仓跑 `npx shadcn add` init 命令——所有 HUD primitive 改动走手写 + PR Review；污染快照已归档在 `research/shadcn-cli-pollution.*`，archive 任务时一并保留

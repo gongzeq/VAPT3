@@ -206,12 +206,23 @@ export default function App() {
 
   if (state.status === "loading") {
     return (
-      <div className="flex h-full w-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3 animate-in fade-in-0 duration-300">
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
+        {/* PR3-R4 (05-07-ocean-tech-frontend): loading surface picks up a
+            deep-ocean radial gradient. Pure CSS / declarative — no runtime
+            animation under `prefers-reduced-motion` and no bundle impact. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 38%, hsl(var(--brand-deep) / 0.18), transparent 60%), radial-gradient(circle at 50% 80%, hsl(var(--primary) / 0.10), transparent 55%)",
+          }}
+        />
+        <div className="relative flex flex-col items-center gap-3 animate-in fade-in-0 duration-300 motion-reduce:animate-none">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-foreground/60" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[hsl(var(--primary)/0.55)] motion-reduce:hidden" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[hsl(var(--primary)/0.85)] shadow-[0_0_8px_hsl(var(--primary)/0.55)]" />
             </span>
             {t("app.loading.connecting")}
           </div>

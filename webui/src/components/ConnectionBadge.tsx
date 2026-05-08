@@ -5,22 +5,31 @@ import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 import type { ConnectionStatus } from "@/lib/types";
 
-const COPY: Record<ConnectionStatus, { color: string }> = {
-  idle: { color: "text-muted-foreground" },
+// PR3-R4 (05-07-ocean-tech-frontend): map status → semantic state tokens
+// defined in theme-tokens.md §3.5. `open` borrows --success with a brand-
+// light glow halo; `error` borrows --error. Keeping the palette as CSS
+// vars keeps light/dark modes honest.
+const COPY: Record<ConnectionStatus, { color: string; glow: string }> = {
+  idle: { color: "text-muted-foreground", glow: "" },
   connecting: {
-    color: "text-amber-700 dark:text-amber-300",
+    color: "text-[hsl(var(--warning))]",
+    glow: "shadow-[0_0_6px_hsl(var(--warning)/0.35)]",
   },
   open: {
-    color: "text-emerald-700 dark:text-emerald-400",
+    color: "text-[hsl(var(--success))]",
+    glow: "shadow-[0_0_8px_hsl(var(--success)/0.45)]",
   },
   reconnecting: {
-    color: "text-amber-700 dark:text-amber-300",
+    color: "text-[hsl(var(--warning))]",
+    glow: "shadow-[0_0_6px_hsl(var(--warning)/0.35)]",
   },
   closed: {
     color: "text-muted-foreground",
+    glow: "",
   },
   error: {
-    color: "text-destructive",
+    color: "text-[hsl(var(--error))]",
+    glow: "shadow-[0_0_8px_hsl(var(--error)/0.45)]",
   },
 };
 
@@ -46,9 +55,16 @@ export function ConnectionBadge() {
     >
       <span className="relative flex h-1.5 w-1.5" aria-hidden>
         {pulsing && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75 motion-reduce:hidden" />
         )}
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
+        <span
+          className={cn(
+            "relative inline-flex h-1.5 w-1.5 rounded-full bg-current",
+            // Brand-aware glow halo for active states (PR3-R4); falls back
+            // to no-op when `glow` is empty so idle/closed stay neutral.
+            meta.glow,
+          )}
+        />
       </span>
       {t(`connection.${status}`)}
     </span>
