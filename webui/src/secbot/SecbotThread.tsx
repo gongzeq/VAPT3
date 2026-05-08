@@ -5,6 +5,10 @@ import {
   ThreadPrimitive,
 } from "@assistant-ui/react";
 
+import { AnimatedShinyText } from "@/components/magicui/animated-shiny-text";
+import { BorderBeam } from "@/components/magicui/border-beam";
+import { cn } from "@/lib/utils";
+
 import { useSecbotRuntime, type SecbotRuntimeOptions } from "./runtime";
 import { SKILL_RENDERERS } from "./tool-ui";
 import { ToolCallCard } from "./renderers/tool-call-card";
@@ -24,15 +28,27 @@ import { ToolCallCard } from "./renderers/tool-call-card";
  * (the alias of `MessagePrimitive.Parts`), NOT on the (since-removed) styled
  * `<Thread>` component. See `.trellis/tasks/05-07-ocean-tech-frontend/research/
  * assistant-ui-customization.md` §4 for the verified contract.
+ *
+ * Ocean-tech styling (PR4-R5):
+ *   - Root wraps a `<BorderBeam>` (brand-deep → primary sweep) around the
+ *     whole chat surface. Beam is hidden under `motion-reduce` via its
+ *     container class.
+ *   - User bubble: brand-light tint (0.14) with 0.22 ring — mirrors main
+ *     Shell `<MessageBubble>` (PR3-R4) so secbot chat feels unified.
+ *   - Empty state: `<AnimatedShinyText>` streak on the prompt (motion-safe
+ *     only; falls back to muted text under motion-reduce).
+ *   - Composer: brand-deep top border + primary-glow send button.
  */
 
 function UserMessage() {
   return (
-    <MessagePrimitive.Root
-      data-role="user"
-      className="my-3 flex justify-end"
-    >
-      <div className="max-w-[80%] rounded-md bg-primary/10 px-3 py-2 text-sm text-text-primary">
+    <MessagePrimitive.Root data-role="user" className="my-3 flex justify-end">
+      <div
+        className={cn(
+          "max-w-[80%] rounded-[18px] px-3 py-2 text-sm text-text-primary",
+          "bg-[hsl(var(--brand-light)/0.14)] ring-1 ring-[hsl(var(--brand-light)/0.22)]",
+        )}
+      >
         <MessagePrimitive.Content />
       </div>
     </MessagePrimitive.Root>
@@ -61,27 +77,49 @@ function AssistantMessage() {
 
 function EmptyState() {
   return (
-    <div className="flex h-full items-center justify-center px-4 text-sm text-text-secondary">
-      开始与 secbot 对话以发起扫描或查询资产。
+    <div className="flex h-full items-center justify-center px-4">
+      <AnimatedShinyText className="text-sm text-text-secondary motion-reduce:animate-none">
+        开始与 secbot 对话以发起扫描或查询资产。
+      </AnimatedShinyText>
     </div>
   );
 }
 
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 border-t border-border bg-card px-4 py-3">
+    <ComposerPrimitive.Root
+      className={cn(
+        "flex items-end gap-2 border-t px-4 py-3",
+        "border-[hsl(var(--brand-deep)/0.25)] bg-card",
+      )}
+    >
       <ComposerPrimitive.Input
-        className="min-h-[2.25rem] flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-primary"
+        className={cn(
+          "min-h-[2.25rem] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm",
+          "border-[hsl(var(--brand-deep)/0.20)] text-text-primary placeholder:text-text-secondary",
+          "focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary))]",
+        )}
         placeholder="发送指令给 secbot…"
         rows={1}
       />
       <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel className="rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:bg-popover">
+        <ComposerPrimitive.Cancel
+          className={cn(
+            "rounded-md border px-3 py-2 text-sm",
+            "border-[hsl(var(--brand-deep)/0.25)] text-text-secondary hover:bg-[hsl(var(--brand-light)/0.08)]",
+          )}
+        >
           停止
         </ComposerPrimitive.Cancel>
       </ThreadPrimitive.If>
       <ThreadPrimitive.If running={false}>
-        <ComposerPrimitive.Send className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+        <ComposerPrimitive.Send
+          className={cn(
+            "rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground",
+            "shadow-[0_0_10px_hsl(var(--primary)/0.35)] hover:opacity-90",
+            "disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none",
+          )}
+        >
           发送
         </ComposerPrimitive.Send>
       </ThreadPrimitive.If>
@@ -94,7 +132,13 @@ export function SecbotThread(props: SecbotRuntimeOptions = {}) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col bg-background">
+      <ThreadPrimitive.Root className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
+        {/* Ambient beam sweep across the chat surface */}
+        <BorderBeam
+          size={140}
+          duration={22}
+          className="motion-reduce:hidden"
+        />
         <ThreadPrimitive.Viewport
           autoScroll
           className="flex-1 min-h-0 overflow-auto px-4 py-3 scrollbar-thin"

@@ -54,10 +54,10 @@ export function SeveritySummary({ counts }: { counts: Partial<Record<Severity, n
 export function StatusPill({ status }: { status: string }) {
   const cls =
     status === "ok"
-      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
+      ? "bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.40)]"
       : status === "error"
-        ? "bg-red-500/15 text-red-300 border-red-500/40"
-        : "bg-slate-500/15 text-slate-300 border-slate-500/40";
+        ? "bg-[hsl(var(--error)/0.15)] text-[hsl(var(--error))] border-[hsl(var(--error)/0.40)]"
+        : "bg-muted text-muted-foreground border-border";
   return (
     <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] ${cls}`}>
       {status}
