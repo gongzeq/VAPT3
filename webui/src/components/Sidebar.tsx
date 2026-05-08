@@ -46,26 +46,8 @@ export function Sidebar(props: SidebarProps) {
   return (
     <nav
       aria-label={t("sidebar.navigation")}
-      className={cn(
-        "relative flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground",
-        // PR3-R4 (05-07-ocean-tech-frontend): swap neutral divider for a
-        // brand-tinted subtle border; keeps wayfinding identity even when
-        // the sidebar token palette is overridden by a host theme.
-        "border-r border-[hsl(var(--brand-deep)/0.25)]",
-      )}
+      className="flex h-full w-full flex-col border-r border-sidebar-border/60 bg-sidebar text-sidebar-foreground"
     >
-      {/* Decorative brand-deep glow overlay; sits under content (z-0) and
-          is pointer-events: none so it can't steal clicks. Kept declarative
-          via fixed gradient — no JS, no motion. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-0"
-        style={{
-          background:
-            "linear-gradient(180deg, hsl(var(--brand-deep) / 0.10) 0%, transparent 30%, transparent 85%, hsl(var(--brand-deep) / 0.06) 100%)",
-        }}
-      />
-      <div className="relative z-[1] flex h-full w-full flex-col">
       <div className="flex items-center justify-between px-3 pb-2.5 pt-3">
         <picture className="block min-w-0">
           <source srcSet="/brand/nanobot_logo.webp" type="image/webp" />
@@ -130,10 +112,9 @@ export function Sidebar(props: SidebarProps) {
           onRequestDelete={props.onRequestDelete}
         />
       </div>
-      <Separator className="bg-[hsl(var(--brand-deep)/0.25)]" />
+      <Separator className="bg-sidebar-border/50" />
       <div className="flex items-center px-2.5 py-2.5 text-xs">
         <ConnectionBadge />
-      </div>
       </div>
     </nav>
   );

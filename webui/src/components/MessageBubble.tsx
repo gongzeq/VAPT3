@@ -24,11 +24,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const copyResetRef = useRef<number | null>(null);
-  // PR3-R4 (05-07-ocean-tech-frontend): keep the original fade+slide entry
-  // but degrade to instant under `prefers-reduced-motion: reduce` via the
-  // Tailwind `motion-reduce:animate-none` variant — declarative, zero JS.
-  const baseAnim =
-    "animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none";
+  const baseAnim = "animate-in fade-in-0 slide-in-from-bottom-1 duration-300";
 
   useEffect(() => {
     return () => {
@@ -76,11 +72,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {hasText ? (
           <p
             className={cn(
-              "ml-auto w-fit rounded-[18px] px-4 py-2",
-              // PR3-R4: user pill picks up a brand-light overlay + 1px ring so
-              // the ocean-theme is visible without fighting assistant prose.
-              // Fallbacks to secondary/70 in themes where --brand-light is unset.
-              "bg-[hsl(var(--brand-light)/0.14)] ring-1 ring-[hsl(var(--brand-light)/0.22)]",
+              "ml-auto w-fit rounded-[18px] bg-secondary/70 px-4 py-2",
               "text-left text-[18px]/[1.8] whitespace-pre-wrap break-words",
             )}
           >

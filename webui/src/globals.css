@@ -30,14 +30,6 @@
     --sidebar-accent: 0 0% 95.8%;
     --sidebar-accent-foreground: 0 0% 9%;
     --sidebar-border: 0 0% 89.8%;
-    /* Sidebar tokens introduced for `@/components/ui/sidebar` (shadcn block
-       sidebar-07; PR2 of 05-07-ocean-tech-frontend). They sit alongside the
-       legacy `--sidebar`/`--sidebar-accent` set kept above for the existing
-       nanobot Sidebar. PR3 reconciles the two. */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
@@ -65,17 +57,10 @@
     --sidebar-accent: 0 0% 15.5%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 18%;
-    /* Sidebar tokens introduced for `@/components/ui/sidebar` — see :root
-       block above for rationale. */
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   /* secbot dark theme overrides — applied when [data-theme="secbot"] is set
-     on the root element. Mirrors `.trellis/tasks/.../research/cybersec-ui-patterns.md` §3.3-§3.4
-     and `.trellis/spec/frontend/theme-tokens.md` (PR1 dual-brand + semantic state). */
+     on the root element. Mirrors `.trellis/tasks/.../research/cybersec-ui-patterns.md` §3.3-§3.4. */
   :root[data-theme="secbot"] {
     --background: 230 20% 5%;          /* #0A0B10 */
     --foreground: 220 10% 92%;         /* #E6E8EE */
@@ -85,84 +70,19 @@
     --popover-foreground: 220 10% 92%;
     --border: 230 12% 18%;             /* #262833 */
     --border-subtle: 230 14% 14%;      /* #1F2029 */
-
-    /* Dual-brand strategy (theme-tokens.md §2.2).
-       --primary stays as the interaction-highlight color; --brand-deep is the
-       brand identity color used for sidebar / hero / brand badge surfaces. */
-    --primary: 210 100% 56%;           /* #1E90FF — Dodger Blue, interaction */
+    --primary: 210 100% 56%;           /* #1E90FF — Dodger Blue */
     --primary-foreground: 230 20% 5%;
-    --brand-deep:  204 86% 36%;        /* #0E6BA8 — identity; 5.6:1 white-on-deep (AA) */
-    --brand-light: 210 100% 74%;       /* #7AB8FF — tint / hover; 9.49:1 on bg (AAA) */
-
     --destructive: 0 100% 65%;         /* #FF4D4F (== Critical) */
     --destructive-foreground: 0 0% 100%;
     --text-primary: 220 10% 92%;
     --text-secondary: 220 7% 64%;      /* #9AA0AC */
 
-    /* Severity palette (theme-tokens.md §3). */
+    /* Severity palette (per §3.2). */
     --sev-critical: 0 100% 65%;        /* #FF4D4F */
     --sev-high:     22 100% 62%;       /* #FF8A3D */
     --sev-medium:   48 96% 53%;        /* #FACC15 */
     --sev-low:      203 100% 62%;      /* #3FB6FF */
     --sev-info:     220 7% 64%;        /* #9AA0AC */
-
-    /* Semantic state palette (theme-tokens.md §3.5).
-       Functional state colors for form / toast / status surfaces.
-       Distinct from severity which classifies vulnerability/risk. */
-    --success: 142 71% 45%;            /* #21C45D — 8.54:1 on bg (AAA) */
-    --warning:  38 92% 50%;            /* #F59E0B — 9.22:1 on bg (AAA) */
-    --error:    0 72% 51%;             /* #DC2828 — 4.79:1 white-on-error bg (AA);
-                                          for severity-text-on-bg use --sev-critical */
-    --info:    199 89% 48%;            /* #0EA2E7 — 6.87:1 on bg (AA) */
-  }
-
-  /* secbot light variant — applied when [data-theme="secbot"][data-mode="light"]
-     are BOTH set on the root element. Per theme-tokens.md §7.
-     Specificity: :root[a][b] = (0,0,3,0) > :root[a] = (0,0,2,0), so this wins. */
-  :root[data-theme="secbot"][data-mode="light"] {
-    --background: 211 56% 97%;         /* #F4F8FD — pale ocean tint */
-    --foreground: 205 81% 16%;         /* #062E4D — deep navy; 13.07:1 on bg (AAA) */
-    --card: 0 0% 100%;                 /* #FFFFFF */
-    --card-foreground: 205 81% 16%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 205 81% 16%;
-    --border: 211 32% 86%;             /* light blue-grey */
-    --border-subtle: 211 38% 92%;
-
-    /* Dual-brand stays semantically the same in light mode. */
-    --primary: 210 100% 56%;           /* same #1E90FF; components needing AA on
-                                          primary-as-bg should swap to #0A74DA per §2 */
-    --primary-foreground: 230 20% 5%;  /* #0A0B10 — dark navy, mirrors dark mode.
-                                          Dark text on Dodger Blue gives 6.07:1 (AA);
-                                          white-on-primary would only be 3.24:1 (UI 3:1). */
-    --brand-deep:  204 86% 36%;        /* #0E6BA8 — 5.25:1 as text on light bg (AA) */
-    --brand-light: 210 100% 74%;       /* #7AB8FF — overlay role, non-text */
-
-    --destructive: 0 72% 45%;          /* #C52020 — 5.45:1 on light bg (AA) */
-    --destructive-foreground: 0 0% 100%;
-    --text-primary: 205 81% 16%;
-    --text-secondary: 211 25% 35%;
-
-    /* Severity tokens are NOT redefined here — see theme-tokens.md §7.3.
-       The dark severity values still meet ≥3:1 UI threshold on light bg.
-       If severity-as-body-text is ever needed in light mode, amend the spec first. */
-
-    /* Semantic state palette — darker lightness to maintain ≥4.5:1 on light bg. */
-    --success: 142 71% 30%;            /* #16833E — 4.54:1 (AA) */
-    --warning:  38 92% 30%;            /* #925F06 — 5.07:1 (AA) */
-    --error:    0 72% 45%;             /* #C52020 — 5.45:1 (AA) */
-    --info:    199 89% 35%;            /* #0A76A9 — 4.70:1 (AA) */
-  }
-
-  /* Ocean-tech HUD feature flag — see `main.tsx` and prd.md §Decision 6.
-     When `VITE_SECBOT_HUD=0` at build time, `main.tsx` writes
-     `<html data-ocean-hud="off">`, which rebinds the identity-layer tokens
-     (--brand-deep, --brand-light) to --primary so every
-     `hsl(var(--brand-deep)/...)` surface degrades gracefully into the main
-     nanobot look — no component-level branches required. */
-  :root[data-ocean-hud="off"] {
-    --brand-deep:  var(--primary);
-    --brand-light: var(--primary);
   }
 }
 

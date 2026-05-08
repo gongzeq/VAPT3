@@ -547,10 +547,7 @@ function SettingsSection({
 
 function SettingsGroup({ children }: { children: React.ReactNode }) {
   return (
-    // PR3-R4 (05-07-ocean-tech-frontend): pick up a 1px brand ring so
-    // settings surfaces read as ocean-themed even when the base card token
-    // is neutral. Kept subtle (alpha 0.22) to avoid competing with inputs.
-    <div className="overflow-hidden rounded-xl border border-border/60 bg-card/80 ring-1 ring-[hsl(var(--brand-light)/0.22)]">
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card/80">
       <div className="divide-y divide-border/50">{children}</div>
     </div>
   );

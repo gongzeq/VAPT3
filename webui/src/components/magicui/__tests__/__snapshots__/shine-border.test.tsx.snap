@@ -1,8 +1,0 @@
-// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
-
-exports[`magicui/ShineBorder > renders the masked overlay with default props 1`] = `
-<div
-  class="motion-safe:animate-shine pointer-events-none absolute inset-0 size-full rounded-[inherit] will-change-[background-position]"
-  style="--border-width: 1px; --duration: 14s; background-size: 300% 300%; mask: linear-gradient(hsl(var(--foreground)) 0 0) content-box, linear-gradient(hsl(var(--foreground)) 0 0); padding: var(--border-width);"
-/>
-`;
