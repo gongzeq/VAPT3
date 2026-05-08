@@ -24,7 +24,6 @@ import { Input } from "@/components/ui/input";
 
 type BootState =
   | { status: "loading" }
-  | { status: "error"; message: string }
   | { status: "auth"; failed?: boolean }
   | {
       status: "ready";
@@ -138,9 +137,14 @@ export default function App() {
           if (cancelled) return;
           const msg = (e as Error).message;
           if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) {
+            // 401/403 is the normal "not logged in" path, not a fatal error
+            // — show the auth form so the user can enter the shared secret.
             setState({ status: "auth", failed: true });
           } else {
-            setState({ status: "error", message: msg });
+            // Per project rule: surface every other error as an alert
+            // instead of flipping to an error-only page.
+            window.alert(`Connection failed: ${msg}`);
+            setState({ status: "auth" });
           }
         }
       })();
@@ -173,6 +177,33 @@ export default function App() {
     return () => globalThis.clearTimeout(id);
   }, []);
 
+  // NOTE: both handlers MUST be memoised AND declared before any early
+  // ``return`` so React's hook order stays stable across renders. They
+  // are wired down into ``SettingsView`` whose ``applyPayload`` keeps
+  // ``onModelNameChange`` in its useCallback deps; an unstable reference
+  // here turns the settings page's "fetch on mount" effect into an
+  // infinite loop (applyPayload → setState in App → new handler identity
+  // → applyPayload re-created → useEffect re-runs → loading forever).
+  const handleModelNameChange = useCallback((modelName: string | null) => {
+    setState((current) =>
+      current.status === "ready" ? { ...current, modelName } : current,
+    );
+  }, []);
+
+  // ``state`` is captured via a ref so ``handleLogout`` itself has no
+  // reactive dependencies and stays referentially stable. The ref write
+  // must also run on every render (no early return allowed in-between).
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const handleLogout = useCallback(() => {
+    const snap = stateRef.current;
+    if (snap.status === "ready") {
+      snap.client.close();
+    }
+    clearSavedSecret();
+    setState({ status: "auth" });
+  }, []);
+
   if (state.status === "loading") {
     return (
       <div className="flex h-full w-full items-center justify-center">
@@ -196,33 +227,6 @@ export default function App() {
       />
     );
   }
-  if (state.status === "error") {
-    return (
-      <div className="flex h-full w-full items-center justify-center px-4 text-center">
-        <div className="flex max-w-md flex-col items-center gap-3">
-          <p className="text-lg font-semibold">{t("app.error.title")}</p>
-          <p className="text-sm text-muted-foreground">{state.message}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("app.error.gatewayHint")}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const handleModelNameChange = (modelName: string | null) => {
-    setState((current) =>
-      current.status === "ready" ? { ...current, modelName } : current,
-    );
-  };
-
-  const handleLogout = () => {
-    if (state.status === "ready") {
-      state.client.close();
-    }
-    clearSavedSecret();
-    setState({ status: "auth" });
-  };
 
   return (
     <ClientProvider

@@ -35,7 +35,24 @@ From the repository root:
 pip install -e .
 ```
 
-### 2. Enable the WebSocket channel
+### 2. Install WebUI dependencies
+
+> [!IMPORTANT]
+> This step is required before opening `webui/` in your editor. Without
+> `node_modules`, TypeScript cannot resolve `react`, `lucide-react`,
+> `react-i18next`, etc., and every `.tsx` file will light up with dozens of
+> `JSX 元素隐式具有类型 "any"` / `找不到模块` errors. Those errors disappear
+> the moment dependencies are installed.
+
+```bash
+cd webui
+bun install            # npm install also works
+```
+
+Run this once after cloning and again whenever `package.json` / `bun.lock`
+changes.
+
+### 3. Enable the WebSocket channel
 
 In `~/.nanobot/config.json`:
 
@@ -43,7 +60,7 @@ In `~/.nanobot/config.json`:
 { "channels": { "websocket": { "enabled": true } } }
 ```
 
-### 3. Start the gateway
+### 4. Start the gateway
 
 In one terminal:
 
@@ -51,13 +68,12 @@ In one terminal:
 nanobot gateway
 ```
 
-### 4. Start the WebUI dev server
+### 5. Start the WebUI dev server
 
-In another terminal:
+In another terminal (dependencies from step 2 must already be installed):
 
 ```bash
 cd webui
-bun install            # npm install also works
 bun run dev
 ```
 
