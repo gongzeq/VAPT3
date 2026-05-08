@@ -106,14 +106,60 @@ export function SettingsView({
 
   useEffect(() => loadSettings(), [loadSettings]);
 
+  /**
+   * Config for whichever provider is currently selected in the dropdown.
+   * ``auto`` maps to the server-resolved active slot (``settings.custom``);
+   * any named provider looks itself up in ``provider_configs`` so the UI
+   * reflects that slot's saved values, not the active one.
+   */
+  const currentProviderCfg = useMemo(() => {
+    if (!settings) return null;
+    if (form.provider === "auto") return settings.custom;
+    return settings.provider_configs?.[form.provider] ?? settings.custom;
+  }, [settings, form.provider]);
+
+  /**
+   * Swap Base URL to the selected provider's saved value (or spec default)
+   * and reset the API key draft so the input falls back to that provider's
+   * masked placeholder. Without this, picking ``DeepSeek`` while the form
+   * still shows ``https://api.openai.com/v1`` silently routed saves to the
+   * wrong endpoint.
+   */
+  const onProviderChange = useCallback(
+    (newProvider: string) => {
+      setAvailableModels(null);
+      setApiKeyInput("");
+      setApiKeyDirty(false);
+      setShowApiKey(false);
+      setForm((prev) => {
+        if (!settings) return { ...prev, provider: newProvider };
+        const preset: {
+          api_base: string;
+          default_api_base?: string;
+        } | null =
+          newProvider === "auto"
+            ? settings.custom
+            : (settings.provider_configs?.[newProvider] ?? null);
+        if (!preset) return { ...prev, provider: newProvider };
+        // Prefer the user's saved ``api_base`` — fall back to the provider
+        // spec's ``default_api_base`` so e.g. DeepSeek lands on
+        // ``https://api.deepseek.com`` instead of a stale openai URL.
+        const apiBase: string =
+          preset.api_base || preset.default_api_base || "";
+        return { ...prev, provider: newProvider, api_base: apiBase };
+      });
+    },
+    [settings],
+  );
+
   const trimmedModel = form.model.trim();
   const trimmedApiBase = form.api_base.trim();
   const trimmedApiKeyInput = apiKeyInput.trim();
   // Effective "has key" state: either the user is typing a fresh key or the
-  // server already has one saved and the user hasn't cleared the field.
+  // currently selected provider already has one saved.
   const hasEffectiveApiKey = apiKeyDirty
     ? trimmedApiKeyInput.length > 0
-    : !!settings?.custom.has_api_key;
+    : !!currentProviderCfg?.has_api_key;
   const allRequiredFilled =
     trimmedModel.length > 0 &&
     trimmedApiBase.length > 0 &&
@@ -233,6 +279,8 @@ export function SettingsView({
             form={form}
             setForm={setForm}
             settings={settings}
+            currentProviderCfg={currentProviderCfg}
+            onProviderChange={onProviderChange}
             dirty={dirty}
             saving={saving}
             canSave={allRequiredFilled}
@@ -279,6 +327,8 @@ function SettingsSection({
   form,
   setForm,
   settings,
+  currentProviderCfg,
+  onProviderChange,
   dirty,
   saving,
   canSave,
@@ -296,6 +346,14 @@ function SettingsSection({
   form: SettingsForm;
   setForm: React.Dispatch<React.SetStateAction<SettingsForm>>;
   settings: SettingsPayload;
+  /** Snapshot of the provider the dropdown currently points at. */
+  currentProviderCfg: {
+    api_base: string;
+    api_key_masked: string;
+    has_api_key: boolean;
+  } | null;
+  /** Dropdown-change handler that swaps Base URL + resets api-key draft. */
+  onProviderChange: (newProvider: string) => void;
   dirty: boolean;
   saving: boolean;
   /** Whether all required fields (model / api_base / api_key) are filled. */
@@ -320,7 +378,7 @@ function SettingsSection({
           <SettingsRow title="Provider">
             <select
               value={form.provider}
-              onChange={(event) => setForm((prev) => ({ ...prev, provider: event.target.value }))}
+              onChange={(event) => onProviderChange(event.target.value)}
               className={cn(
                 "h-8 w-[210px] rounded-md border border-input bg-background px-2 text-sm",
                 "outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
@@ -419,7 +477,7 @@ function SettingsSection({
                   placeholder={
                     apiKeyDirty
                       ? ""
-                      : settings.custom.api_key_masked || "sk-..."
+                      : currentProviderCfg?.api_key_masked || "sk-..."
                   }
                   className="h-8 w-[280px] pr-8"
                   spellCheck={false}
@@ -442,7 +500,7 @@ function SettingsSection({
             </div>
           </SettingsRow>
 
-          {!apiKeyDirty && settings.custom.has_api_key ? (
+          {!apiKeyDirty && currentProviderCfg?.has_api_key ? (
             <SettingsRow title="">
               <span className="text-xs text-muted-foreground">
                 A key is already saved. Leave blank to keep it; type a new value to replace; clear and save to remove.

@@ -33,6 +33,7 @@ dmypy.json
 .tox/
 .nox/
 .hypothesis/
+arms_cache/
 
 # Build & packaging
 dist/

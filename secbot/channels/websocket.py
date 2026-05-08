@@ -711,7 +711,28 @@ class WebSocketChannel(BaseChannel):
         if defaults.provider != "auto":
             spec = find_by_name(defaults.provider)
             selected_provider = spec.name if spec else provider_name
-        custom = config.providers.custom
+        # Mirror whichever provider slot AgentLoop will actually hit
+        # (``providers.openai`` / ``providers.openrouter`` / ...) so the
+        # baseUrl + apiKey already persisted in config.json show up in the UI
+        # instead of forcing the user to re-enter them. Falls back to
+        # ``providers.custom`` only on a blank / first-run config.
+        custom = provider or config.providers.custom
+        # Per-provider config snapshot: lets the UI swap Base URL / API Key
+        # instantly when the Provider dropdown changes, without waiting for a
+        # round-trip. ``default_api_base`` carries the spec fallback so the
+        # UI can show e.g. ``https://api.deepseek.com`` even when the user
+        # hasn't overridden ``api_base`` in config.
+        provider_configs: dict[str, dict[str, Any]] = {}
+        for spec in PROVIDERS:
+            slot = getattr(config.providers, spec.name, None)
+            if slot is None:
+                continue
+            provider_configs[spec.name] = {
+                "api_base": slot.api_base or "",
+                "default_api_base": spec.default_api_base or "",
+                "api_key_masked": _mask_api_key(slot.api_key),
+                "has_api_key": bool(slot.api_key),
+            }
         return {
             "agent": {
                 "model": defaults.model,
@@ -726,13 +747,14 @@ class WebSocketChannel(BaseChannel):
                 for spec in PROVIDERS
             ],
             "custom": {
-                # OpenAI-compatible endpoint. ``api_base`` is non-sensitive so we
-                # return it plain; the key is masked (last 4 visible) so the UI
-                # can show it was set without exposing the secret.
+                # Active provider slot — the one AgentLoop will hit on the
+                # next turn. ``api_base`` is non-sensitive so we return it
+                # plain; the key is masked (last 4 visible).
                 "api_base": custom.api_base or "",
                 "api_key_masked": _mask_api_key(custom.api_key),
                 "has_api_key": bool(custom.api_key),
             },
+            "provider_configs": provider_configs,
             "runtime": {
                 "config_path": str(get_config_path().expanduser()),
             },
@@ -760,7 +782,6 @@ class WebSocketChannel(BaseChannel):
         query = _parse_query(request.path)
         config = load_config()
         defaults = config.agents.defaults
-        custom = config.providers.custom
         changed = False
 
         model = _query_first(query, "model")
@@ -780,6 +801,13 @@ class WebSocketChannel(BaseChannel):
             if defaults.provider != provider:
                 defaults.provider = provider
                 changed = True
+
+        # Pick the target slot AFTER applying model/provider updates so the
+        # write lands on the slot AgentLoop will now use. Pydantic models are
+        # returned by reference, so assigning to ``custom.api_key`` mutates
+        # the matching ``config.providers.<name>`` entry in place. Falls back
+        # to ``providers.custom`` only when nothing else is configured.
+        custom = config.get_provider(defaults.model) or config.providers.custom
 
         # ``api_base`` is non-sensitive — allowed in URL query.
         # Semantics: key absent = keep; empty string = clear; non-empty = set.
@@ -827,7 +855,13 @@ class WebSocketChannel(BaseChannel):
         if "X-Settings-Api-Key" in request.headers:
             api_key = (request.headers.get("X-Settings-Api-Key") or "").strip()
         else:
-            api_key = (load_config().providers.custom.api_key or "").strip()
+            # Fall back to whichever provider slot is currently active, not
+            # just ``providers.custom`` — otherwise a user whose key is saved
+            # under e.g. ``providers.openai`` gets a spurious
+            # ``api_key is required`` when clicking "Fetch models".
+            cfg = load_config()
+            slot = cfg.get_provider() or cfg.providers.custom
+            api_key = (slot.api_key or "").strip()
         if not api_key:
             return _http_error(400, "api_key is required")
 

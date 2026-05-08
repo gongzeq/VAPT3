@@ -547,11 +547,26 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert "secret-key" not in settings.text
         # Hot reload is always available — UI never needs to prompt for restart.
         assert body["requires_restart"] is False
-        assert body["custom"] == {
-            "api_base": "",
-            "api_key_masked": "",
-            "has_api_key": False,
-        }
+        # The settings panel mirrors the currently active provider slot
+        # (``providers.openai`` here), so a key already saved in config.json
+        # is returned masked — no re-entry required.
+        assert body["custom"]["api_base"] == ""
+        assert body["custom"]["has_api_key"] is True
+        assert body["custom"]["api_key_masked"].endswith("-key")
+        assert "*" in body["custom"]["api_key_masked"]
+        # Per-provider snapshot lets the UI swap URL/key instantly on
+        # dropdown change — assert the openai entry echoes the saved key.
+        assert body["provider_configs"]["openai"]["has_api_key"] is True
+        assert body["provider_configs"]["openai"]["api_key_masked"].endswith(
+            "-key"
+        )
+        # ``deepseek`` is unconfigured, but its spec-level default URL still
+        # shows up so the UI can pre-fill Base URL when the user picks it.
+        assert body["provider_configs"]["deepseek"]["has_api_key"] is False
+        assert (
+            body["provider_configs"]["deepseek"]["default_api_base"]
+            == "https://api.deepseek.com"
+        )
 
         updated = await _http_get(
             "http://127.0.0.1:"

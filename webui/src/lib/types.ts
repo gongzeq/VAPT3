@@ -79,15 +79,30 @@ export interface SettingsPayload {
     label: string;
   }>;
   /**
-   * OpenAI-compatible custom endpoint. ``api_base`` is plain text (non-sensitive);
-   * ``api_key_masked`` is shaped like ``sk-****abcd`` so the UI can confirm a
-   * key is saved without exposing it.
+   * Active provider slot — mirrors the one AgentLoop resolves for the
+   * current ``agent.model`` / ``agent.provider``. ``api_base`` is plain text
+   * (non-sensitive); ``api_key_masked`` is shaped like ``sk-****abcd`` so
+   * the UI can confirm a key is saved without exposing it.
    */
   custom: {
     api_base: string;
     api_key_masked: string;
     has_api_key: boolean;
   };
+  /**
+   * Per-provider config snapshot keyed by provider name (e.g. ``openai``,
+   * ``deepseek``, ``openrouter``). Lets the Provider dropdown swap Base URL
+   * and API Key hints instantly without a network round-trip.
+   * ``default_api_base`` is the spec-level fallback URL (e.g.
+   * ``https://api.deepseek.com``) shown as a placeholder when the user has
+   * not overridden ``api_base`` in config.
+   */
+  provider_configs: Record<string, {
+    api_base: string;
+    default_api_base: string;
+    api_key_masked: string;
+    has_api_key: boolean;
+  }>;
   runtime: {
     config_path: string;
   };
