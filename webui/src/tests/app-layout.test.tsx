@@ -184,6 +184,15 @@ describe("App layout", () => {
                 { name: "auto", label: "Auto" },
                 { name: "openai", label: "OpenAI" },
               ],
+              // OpenAI-compatible custom endpoint fields (PR from Session 2 of
+              // 05-07-ocean-tech-frontend). SettingsView reads these three
+              // fields directly — omitting them causes
+              // `Cannot read properties of undefined (reading 'has_api_key')`.
+              custom: {
+                api_base: "https://api.openai.com/v1",
+                api_key_masked: "sk-****abcd",
+                has_api_key: true,
+              },
               runtime: {
                 config_path: "/tmp/config.json",
               },
