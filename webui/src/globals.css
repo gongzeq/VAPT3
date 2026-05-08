@@ -153,6 +153,17 @@
     --error:    0 72% 45%;             /* #C52020 — 5.45:1 (AA) */
     --info:    199 89% 35%;            /* #0A76A9 — 4.70:1 (AA) */
   }
+
+  /* Ocean-tech HUD feature flag — see `main.tsx` and prd.md §Decision 6.
+     When `VITE_SECBOT_HUD=0` at build time, `main.tsx` writes
+     `<html data-ocean-hud="off">`, which rebinds the identity-layer tokens
+     (--brand-deep, --brand-light) to --primary so every
+     `hsl(var(--brand-deep)/...)` surface degrades gracefully into the main
+     nanobot look — no component-level branches required. */
+  :root[data-ocean-hud="off"] {
+    --brand-deep:  var(--primary);
+    --brand-light: var(--primary);
+  }
 }
 
 @layer base {

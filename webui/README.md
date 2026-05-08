@@ -129,6 +129,43 @@ cd webui
 bun run test
 ```
 
+## Visual theme (ocean-tech HUD)
+
+Since task `05-07-ocean-tech-frontend`, the WebUI ships an "ocean-tech HUD"
+visual system layered on top of the shadcn/ui base:
+
+- **Dual-brand tokens** — `--brand-deep` (`#0E6BA8`, identity / sidebar / hero)
+  and `--brand-light` (`#7AB8FF`, tint / hover) sit alongside `--primary`
+  (`#1E90FF`, interaction). Semantic state tokens `--success / --warning /
+  --error / --info` gate toast / status surfaces. Full contract is in
+  `.trellis/spec/frontend/theme-tokens.md`.
+- **MagicUI primitives** (`src/components/magicui/*`) — `<BorderBeam>`,
+  `<ShineBorder>`, `<ShimmerButton>`, `<AnimatedGridPattern>`,
+  `<AnimatedShinyText>`, `<NumberTicker>`, `<AnimatedBeam>`, `<Marquee>`.
+  All animation paths honor `prefers-reduced-motion: reduce` via
+  `motion-reduce:*` Tailwind variants (zero runtime cost).
+- **Tremor Raw charts** (`src/components/tremor/*`) — `<AreaChart>`,
+  `<BarChart>`, `<DonutChart>`, `<Metric>`, `<ProgressBar>`, `<Tracker>`,
+  `<Callout>`. Palettes rewired to our PR1 token set — no raw `blue-500`
+  literals.
+- **xyflow** (`@xyflow/react`) — installed for future agent-graph
+  visualization on `ScanHistoryView` (PR4 Phase B).
+
+### Feature flag `VITE_SECBOT_HUD`
+
+The HUD is **on by default**. To ship a build that falls back to the
+pre-ocean main style (brand tokens collapse to `--primary`), set the flag
+to `0` at build time:
+
+```bash
+VITE_SECBOT_HUD=0 bun run build
+```
+
+Implementation: `src/main.tsx` reads `import.meta.env.VITE_SECBOT_HUD`
+and writes `<html data-ocean-hud="on|off">`; `src/globals.css` has a
+single `:root[data-ocean-hud="off"]` rule that rebinds `--brand-deep` /
+`--brand-light` to `--primary`. No per-component branches.
+
 ## Acknowledgements
 
 - [`agent-chat-ui`](https://github.com/langchain-ai/agent-chat-ui) for UI and
