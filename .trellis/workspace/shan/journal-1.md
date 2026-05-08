@@ -203,3 +203,38 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 - 下一 session：PR3-R4 主 Shell 海蓝化 5 个文件
 - 后续：PR4（R5 xyflow agent DAG 消费）+ PR5（R7 feature flag + Lighthouse 基线）
 - shadcn CLI 污染事件的防御：以后不再对本仓跑 `npx shadcn add` init 命令——所有 HUD primitive 改动走手写 + PR Review；污染快照已归档在 `research/shadcn-cli-pollution.*`，archive 任务时一并保留
+
+
+## Session 3: ocean-tech-frontend PR3-R4 / PR4 / PR5 收官
+
+**Date**: 2026-05-08
+**Task**: ocean-tech-frontend PR3-R4 / PR4 / PR5 收官
+**Branch**: `main`
+
+### Summary
+
+在 517bc8c0 (PR3-R6) 之上落完 ocean-tech-frontend 剩余 3 个 PR。PR3-R4: 主 Shell 海蓝化 (App/Sidebar/ThreadShell/MessageBubble/ConnectionBadge/SettingsView 6 文件, brand-deep identity + primary-glow + ShineBorder composer)。PR4-R5: secbot 4 Tab HUD (SecbotShell+AnimatedGridPattern tabs, SecbotThread+BorderBeam, Assets+Metric KPI, Reports+DonutChart+Callout, Scans+ProgressBar, _shared 状态色切 semantic tokens; DataTable/xyflow DAG 延期至 Phase B)。PR5-R7: feature flag VITE_SECBOT_HUD (main.tsx+globals.css 单点 CSS 变量 rebind, vite-env.d.ts, README Visual theme 段, lighthouse-baseline.md bundle 轨迹 PR3->PR5 只涨 0.62kB 远低于 110kB 目标)。Quality: tsc 0 / vitest 95/95 / build gzip 150.37kB.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `24422eba` | (see git log) |
+| `7e0d7dcd` | (see git log) |
+| `d344326d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
