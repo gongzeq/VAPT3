@@ -1,4 +1,3 @@
-import * as React from "react";
 import { useEffect, useState } from "react";
 
 import { secbotApi, type Asset } from "../api";

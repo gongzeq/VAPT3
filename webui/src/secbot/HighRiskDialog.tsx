@@ -1,5 +1,3 @@
-import * as React from "react";
-
 interface ConfirmPayload {
   scan_id: string;
   skill: string;

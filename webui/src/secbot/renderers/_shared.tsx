@@ -2,7 +2,6 @@
  * Common helpers for skill renderers (severity badges, status pills,
  * link to the raw log).
  */
-import * as React from "react";
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 

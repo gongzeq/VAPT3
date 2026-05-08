@@ -1,4 +1,3 @@
-import * as React from "react";
 import type { ToolCallContentPartComponent } from "@assistant-ui/react";
 
 import { RawLogLink, StatusPill } from "./_shared";

@@ -72,7 +72,9 @@ function buildAdapter(options: SecbotRuntimeOptions): ChatModelAdapter {
 
       // Aggregate state across the run.
       const text: string[] = [];
-      const toolCalls: Record<string, ChatModelRunResult["content"][number] & { type: "tool-call" }> = {};
+      type RunContentPart = NonNullable<ChatModelRunResult["content"]>[number];
+      type ToolCallPart = Extract<RunContentPart, { type: "tool-call" }>;
+      const toolCalls: Record<string, ToolCallPart> = {};
 
       const queue: SecbotEvent[] = [];
       let resolveNext: ((v: SecbotEvent | null) => void) | null = null;
@@ -110,11 +112,13 @@ function buildAdapter(options: SecbotRuntimeOptions): ChatModelAdapter {
         if (evt.type === "delta" && evt.text) {
           text.push(evt.text);
         } else if (evt.type === "tool_call_start" && evt.tool_call_id && evt.skill) {
+          // `evt.args` is wire-decoded JSON; cast satisfies assistant-ui's
+          // `ReadonlyJSONObject` constraint on ToolCallMessagePart["args"].
           toolCalls[evt.tool_call_id] = {
             type: "tool-call",
             toolCallId: evt.tool_call_id,
             toolName: evt.skill,
-            args: evt.args ?? {},
+            args: (evt.args ?? {}) as ToolCallPart["args"],
             argsText: JSON.stringify(evt.args ?? {}),
           };
         } else if (evt.type === "tool_call_result" && evt.tool_call_id) {

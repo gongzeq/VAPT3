@@ -1,4 +1,3 @@
-import * as React from "react";
 import type { ToolCallContentPartComponent } from "@assistant-ui/react";
 
 import { StatusPill } from "./_shared";
