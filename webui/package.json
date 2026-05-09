@@ -26,6 +26,8 @@
     "@tanstack/react-query": "^5.66.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "i18next": "^26.0.6",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",
