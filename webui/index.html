@@ -86,7 +86,7 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("nanobot-webui.theme");
+          var stored = localStorage.getItem("secbot-webui.theme");
           var dark =
             stored === "dark" ||
             (!stored &&
@@ -98,43 +98,43 @@
     </script>
     <script>
       (function () {
-        var localeKey = "nanobot.locale";
+        var localeKey = "secbot.locale";
         var copy = {
           en: {
-            boot: "Loading nanobot…",
-            description: "nanobot web UI — chat with your nanobot workspace."
+            boot: "Loading secbot…",
+            description: "secbot web UI — chat with your secbot workspace."
           },
           "zh-CN": {
-            boot: "正在加载 nanobot…",
-            description: "nanobot Web UI —— 与你的 nanobot 工作区对话。"
+            boot: "正在加载 secbot…",
+            description: "secbot Web UI —— 与你的 secbot 工作区对话。"
           },
           "zh-TW": {
-            boot: "正在載入 nanobot…",
-            description: "nanobot Web UI —— 與你的 nanobot 工作區對話。"
+            boot: "正在載入 secbot…",
+            description: "secbot Web UI —— 與你的 secbot 工作區對話。"
           },
           fr: {
-            boot: "Chargement de nanobot…",
-            description: "Interface web nanobot — discutez avec votre espace de travail nanobot."
+            boot: "Chargement de secbot…",
+            description: "Interface web secbot — discutez avec votre espace de travail secbot."
           },
           ja: {
-            boot: "nanobot を読み込み中…",
-            description: "nanobot Web UI — nanobot ワークスペースと会話します。"
+            boot: "secbot を読み込み中…",
+            description: "secbot Web UI — secbot ワークスペースと会話します。"
           },
           ko: {
-            boot: "nanobot 불러오는 중…",
-            description: "nanobot 웹 UI — nanobot 작업공간과 대화하세요."
+            boot: "secbot 불러오는 중…",
+            description: "secbot 웹 UI — secbot 작업공간과 대화하세요."
           },
           es: {
-            boot: "Cargando nanobot…",
-            description: "Interfaz web de nanobot: conversa con tu espacio de trabajo de nanobot."
+            boot: "Cargando secbot…",
+            description: "Interfaz web secbot: conversa con tu espacio de trabajo de secbot."
           },
           vi: {
-            boot: "Đang tải nanobot…",
-            description: "Giao diện web nanobot — trò chuyện với workspace nanobot của bạn."
+            boot: "Đang tải secbot…",
+            description: "Giao diện web secbot — trò chuyện với workspace secbot của bạn."
           },
           id: {
-            boot: "Memuat nanobot…",
-            description: "UI web nanobot — ngobrol dengan workspace nanobot Anda."
+            boot: "Memuat secbot…",
+            description: "UI web secbot — ngobrol dengan workspace secbot Anda."
           }
         };
 
@@ -176,14 +176,14 @@
         } catch {}
       })();
     </script>
-    <title>nanobot</title>
+    <title>secbot</title>
   </head>
   <body class="bg-background text-foreground antialiased">
     <div id="root">
       <div class="boot-splash">
         <div class="boot-splash-inner">
           <span class="boot-dot" aria-hidden="true"></span>
-          <span data-boot-copy>Loading nanobot…</span>
+          <span data-boot-copy>Loading secbot…</span>
         </div>
       </div>
     </div>
