@@ -79,6 +79,12 @@ describe("App layout", () => {
     createChatSpy.mockClear();
     deleteChatSpy.mockReset();
     toggleThemeSpy.mockReset();
+    // BrowserRouter shares window.location across tests; reset to "/" so
+    // navigation side-effects from earlier tests (e.g. opening /settings)
+    // don't leak into subsequent renders that expect the Home shell.
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", "/");
+    }
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
