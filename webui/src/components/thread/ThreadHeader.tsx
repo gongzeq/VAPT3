@@ -1,4 +1,5 @@
-import { Menu, Moon, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings, Sun } from "lucide-react";
+import { LayoutDashboard, Menu, Moon, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings, Sun } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ interface ThreadHeaderProps {
   minimal?: boolean;
   onToggleRightRail?: () => void;
   rightRailOpen?: boolean;
+  onOpenDashboard?: () => void;
 }
 
 export function ThreadHeader({
@@ -26,8 +28,11 @@ export function ThreadHeader({
   minimal = false,
   onToggleRightRail,
   rightRailOpen = true,
+  onOpenDashboard,
 }: ThreadHeaderProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const handleDashboard = onOpenDashboard ?? (() => navigate("/dashboard"));
   if (minimal) {
     return (
       <div className="relative z-10 flex h-11 items-center justify-between gap-3 px-3 py-2">
@@ -56,6 +61,15 @@ export function ThreadHeader({
             ) : (
               <Moon className="h-4 w-4" />
             )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("nav.dashboard", { defaultValue: "大屏" })}
+            onClick={handleDashboard}
+            className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
+          >
+            <LayoutDashboard className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
@@ -104,6 +118,15 @@ export function ThreadHeader({
           ) : (
             <Moon className="h-4 w-4" />
           )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t("nav.dashboard", { defaultValue: "大屏" })}
+          onClick={handleDashboard}
+          className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
+        >
+          <LayoutDashboard className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost"
