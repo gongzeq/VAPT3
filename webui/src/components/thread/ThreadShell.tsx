@@ -19,7 +19,6 @@ import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { listSlashCommands } from "@/lib/api";
 import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
-import { randomId } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 
 interface ThreadShellProps {
@@ -67,7 +66,7 @@ export function ThreadShell({
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
-  const { messages: historical, loading, hasPendingToolCalls } = useSessionHistory(historyKey);
+  const { messages: historical, loading } = useSessionHistory(historyKey);
   const { client, modelName, token } = useClient();
   const [booting, setBooting] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
@@ -86,7 +85,7 @@ export function ThreadShell({
     setMessages,
     streamError,
     dismissStreamError,
-  } = useNanobotStream(chatId, initial, hasPendingToolCalls, onTurnEnd);
+  } = useNanobotStream(chatId, initial, onTurnEnd);
   const showHeroComposer = messages.length === 0 && !loading;
   const pendingAsk = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -143,18 +142,14 @@ export function ThreadShell({
     const pending = pendingFirstRef.current;
     if (!pending) return;
     pendingFirstRef.current = null;
-    client.sendMessage(chatId, pending);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: randomId(),
-        role: "user",
-        content: pending,
-        createdAt: Date.now(),
-      },
-    ]);
+    // Route through ``send`` (instead of calling ``client.sendMessage``
+    // directly) so it pushes the user bubble AND flips ``isStreaming`` to
+    // ``true`` — without that flip the composer's Stop button stays hidden
+    // until the first ``delta`` arrives, which is never for turns whose
+    // opening action is a tool call.
+    send(pending);
     setBooting(false);
-  }, [chatId, client, setMessages]);
+  }, [chatId, send]);
 
   useEffect(() => {
     let cancelled = false;

@@ -187,14 +187,18 @@ export function useSessions(): {
   return { sessions, loading, error, refresh, createChat, deleteChat };
 }
 
-/** Lazy-load a session's on-disk messages the first time the UI displays it. */
+/** Lazy-load a session's on-disk messages the first time the UI displays it.
+ *
+ * NOTE: we intentionally do NOT try to infer "turn still running" from the
+ * persisted JSONL tail (e.g. trailing assistant row with ``tool_calls`` and
+ * no tool result). That heuristic is wrong when a process dies mid-turn or
+ * ``/stop`` trims the tail, and would resurrect the Stop button on idle
+ * chats. The authoritative live-turn signal comes from the backend's
+ * ``attached`` event (``active_turn`` flag) — see ``useNanobotStream``. */
 export function useSessionHistory(key: string | null): {
   messages: UIMessage[];
   loading: boolean;
   error: string | null;
-  /** ``true`` when the last persisted assistant turn has ``tool_calls`` but no
-   *  final text yet — the model was still processing when the page loaded. */
-  hasPendingToolCalls: boolean;
 } {
   const { token } = useClient();
   const [state, setState] = useState<{
@@ -202,13 +206,11 @@ export function useSessionHistory(key: string | null): {
     messages: UIMessage[];
     loading: boolean;
     error: string | null;
-    hasPendingToolCalls: boolean;
   }>({
     key: null,
     messages: [],
     loading: false,
     error: null,
-    hasPendingToolCalls: false,
   });
 
   useEffect(() => {
@@ -218,7 +220,6 @@ export function useSessionHistory(key: string | null): {
         messages: [],
         loading: false,
         error: null,
-        hasPendingToolCalls: false,
       });
       return;
     }
@@ -230,28 +231,17 @@ export function useSessionHistory(key: string | null): {
       messages: [],
       loading: true,
       error: null,
-      hasPendingToolCalls: false,
     });
     (async () => {
       try {
         const body = await fetchSessionMessages(token, key);
         if (cancelled) return;
         const ui = buildHistoryMessages(body.messages);
-        // Tool result rows can trail the assistant tool-call row while the turn
-        // is still running, so check the last conversational row.
-        const lastRaw = [...body.messages]
-          .reverse()
-          .find((m) => m.role === "user" || m.role === "assistant");
-        const hasPending =
-          lastRaw?.role === "assistant" &&
-          Array.isArray(lastRaw.tool_calls) &&
-          lastRaw.tool_calls.length > 0;
         setState({
           key,
           messages: ui,
           loading: false,
           error: null,
-          hasPendingToolCalls: hasPending,
         });
       } catch (e) {
         if (cancelled) return;
@@ -263,7 +253,6 @@ export function useSessionHistory(key: string | null): {
             messages: [],
             loading: false,
             error: null,
-            hasPendingToolCalls: false,
           });
         } else {
           setState({
@@ -271,7 +260,6 @@ export function useSessionHistory(key: string | null): {
             messages: [],
             loading: false,
             error: (e as Error).message,
-            hasPendingToolCalls: false,
           });
         }
       }
@@ -282,20 +270,19 @@ export function useSessionHistory(key: string | null): {
   }, [key, token]);
 
   if (!key) {
-    return { messages: EMPTY_MESSAGES, loading: false, error: null, hasPendingToolCalls: false };
+    return { messages: EMPTY_MESSAGES, loading: false, error: null };
   }
 
   // Even before the effect above commits its loading state, never surface the
   // previous session's payload for a brand-new key.
   if (state.key !== key) {
-    return { messages: EMPTY_MESSAGES, loading: true, error: null, hasPendingToolCalls: false };
+    return { messages: EMPTY_MESSAGES, loading: true, error: null };
   }
 
   return {
     messages: state.messages,
     loading: state.loading,
     error: state.error,
-    hasPendingToolCalls: state.hasPendingToolCalls,
   };
 }
 

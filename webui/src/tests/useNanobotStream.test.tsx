@@ -53,22 +53,41 @@ function wrap(client: ReturnType<typeof fakeClient>["client"]) {
 }
 
 describe("useNanobotStream", () => {
-  it("starts in streaming mode when history shows pending tool calls", () => {
+  it("lifts isStreaming only when the attached event reports an active turn", () => {
+    // After a refresh / reconnect the backend is the source of truth for
+    // whether a turn is still in flight. The hook must start idle and only
+    // raise the Stop button when the ``attached`` envelope says so.
     const fake = fakeClient();
-    const initialMessages = [{
-      id: "m1",
-      role: "assistant" as const,
-      content: "Using tools",
-      createdAt: Date.now(),
-    }];
-    const { result } = renderHook(
-      () => useNanobotStream("chat-p", initialMessages, true),
+    const { result, rerender } = renderHook(
+      ({ chatId }: { chatId: string }) => useNanobotStream(chatId, EMPTY_MESSAGES),
       {
         wrapper: wrap(fake.client),
+        initialProps: { chatId: "chat-p" },
       },
     );
 
+    expect(result.current.isStreaming).toBe(false);
+
+    act(() => {
+      fake.emit("chat-p", {
+        event: "attached",
+        chat_id: "chat-p",
+        active_turn: true,
+      });
+    });
     expect(result.current.isStreaming).toBe(true);
+
+    // An ``attached`` with ``active_turn: false`` must *lower* the flag even
+    // if a previous session left it true (e.g. cached optimistic send).
+    rerender({ chatId: "chat-q" });
+    act(() => {
+      fake.emit("chat-q", {
+        event: "attached",
+        chat_id: "chat-q",
+        active_turn: false,
+      });
+    });
+    expect(result.current.isStreaming).toBe(false);
   });
 
   it("collapses consecutive tool_hint frames into one trace row", () => {
@@ -160,7 +179,7 @@ describe("useNanobotStream", () => {
   it("keeps streaming alive across stream_end and completes on turn_end", () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();
-    const { result } = renderHook(() => useNanobotStream("chat-s", EMPTY_MESSAGES, false, onTurnEnd), {
+    const { result } = renderHook(() => useNanobotStream("chat-s", EMPTY_MESSAGES, onTurnEnd), {
       wrapper: wrap(fake.client),
     });
 
@@ -218,7 +237,7 @@ describe("useNanobotStream", () => {
   it("refreshes session metadata when the server reports a session update", () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();
-    renderHook(() => useNanobotStream("chat-title", EMPTY_MESSAGES, false, onTurnEnd), {
+    renderHook(() => useNanobotStream("chat-title", EMPTY_MESSAGES, onTurnEnd), {
       wrapper: wrap(fake.client),
     });
 

@@ -435,6 +435,14 @@ class WebSocketChannel(BaseChannel):
         self._conn_chats: dict[Any, set[str]] = {}
         # connection -> default chat_id for legacy frames that omit routing.
         self._conn_default: dict[Any, str] = {}
+        # chat_ids whose turn is currently in flight on the backend. Populated
+        # when the WebUI submits a ``message`` envelope and cleared as soon as
+        # the matching ``turn_end`` is emitted (whether the turn finished
+        # naturally or was aborted by ``/stop``). This is the authoritative
+        # source of truth the WebUI uses to decide whether to render the
+        # Stop button after a refresh or chat switch, replacing the older
+        # ``hasPendingToolCalls`` heuristic that inspected persisted history.
+        self._active_turns: set[str] = set()
         # Single-use tokens consumed at WebSocket handshake.
         self._issued_tokens: dict[str, float] = {}
         # Multi-use tokens for the embedded webui's REST surface; checked but not consumed.
@@ -1297,7 +1305,17 @@ class WebSocketChannel(BaseChannel):
                 await self._send_event(connection, "error", detail="invalid chat_id")
                 return
             self._attach(connection, cid)
-            await self._send_event(connection, "attached", chat_id=cid)
+            # ``active_turn`` lets the webui seed its streaming flag from the
+            # authoritative backend state: after a browser refresh or a chat
+            # switch, the Stop button must appear iff the server is still
+            # processing a turn for this chat. Stale persisted tool_calls no
+            # longer influence the UI.
+            await self._send_event(
+                connection,
+                "attached",
+                chat_id=cid,
+                active_turn=cid in self._active_turns,
+            )
             return
         if t == "stop":
             # Silent cancel request from the WebUI composer — route it as an
@@ -1358,6 +1376,14 @@ class WebSocketChannel(BaseChannel):
             metadata: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
             if envelope.get("webui") is True:
                 metadata["webui"] = True
+            # Mark this chat as having an in-flight turn only after all
+            # envelope validation has passed. A forthcoming ``turn_end`` is
+            # the authoritative cue to clear it again (whether the turn
+            # completes naturally or is aborted by ``/stop``). Concurrent
+            # ``attach`` probes (e.g. a second browser tab) can therefore
+            # read this set to decide whether to show the Stop button even
+            # before the first outbound frame arrives.
+            self._active_turns.add(cid)
             await self._handle_message(
                 sender_id=client_id,
                 chat_id=cid,
@@ -1469,6 +1495,10 @@ class WebSocketChannel(BaseChannel):
 
     async def send_turn_end(self, chat_id: str) -> None:
         """Signal that the agent has fully finished processing the current turn."""
+        # Clear the active-turn marker regardless of whether there are still
+        # subscribers attached: the turn really did end on the backend, and a
+        # client that reconnects later must not resurrect the Stop button.
+        self._active_turns.discard(chat_id)
         conns = list(self._subs.get(chat_id, ()))
         if not conns:
             return

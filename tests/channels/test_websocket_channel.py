@@ -202,6 +202,83 @@ async def test_plain_websocket_message_does_not_mark_webui(bus: MagicMock) -> No
 
 
 @pytest.mark.asyncio
+async def test_attach_reports_active_turn_flag(bus: MagicMock) -> None:
+    """``attach`` must hand the authoritative live-turn state to the WebUI.
+
+    The Stop button on a refreshed tab is driven by this flag; if we leak
+    ``active_turn=True`` on an idle chat the button will get stuck on, and if
+    we miss it during an in-flight turn the button will be hidden while the
+    agent is still busy calling tools."""
+    channel = _ch(bus)
+    conn = AsyncMock()
+
+    # Before any message submission the chat is idle.
+    await channel._dispatch_envelope(
+        conn, "tab-a", {"type": "attach", "chat_id": "chat-1"},
+    )
+    attached_idle = json.loads(conn.send.await_args_list[-1].args[0])
+    assert attached_idle == {
+        "event": "attached",
+        "chat_id": "chat-1",
+        "active_turn": False,
+    }
+
+    # Submitting a message primes the active-turn tracker synchronously, so
+    # a second tab attaching mid-turn should see ``active_turn=True``.
+    await channel._dispatch_envelope(
+        conn,
+        "tab-a",
+        {"type": "message", "chat_id": "chat-1", "content": "hi"},
+    )
+    await channel._dispatch_envelope(
+        conn, "tab-b", {"type": "attach", "chat_id": "chat-1"},
+    )
+    attached_busy = json.loads(conn.send.await_args_list[-1].args[0])
+    assert attached_busy == {
+        "event": "attached",
+        "chat_id": "chat-1",
+        "active_turn": True,
+    }
+
+    # After the turn ends the set is cleared and subsequent attaches flip back.
+    await channel.send(OutboundMessage(
+        channel="websocket",
+        chat_id="chat-1",
+        content="",
+        metadata={"_turn_end": True},
+    ))
+    await channel._dispatch_envelope(
+        conn, "tab-c", {"type": "attach", "chat_id": "chat-1"},
+    )
+    attached_done = json.loads(conn.send.await_args_list[-1].args[0])
+    assert attached_done == {
+        "event": "attached",
+        "chat_id": "chat-1",
+        "active_turn": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_message_validation_failure_does_not_mark_active_turn(
+    bus: MagicMock,
+) -> None:
+    """A rejected envelope (bad content / media) must not pollute the
+    active-turn set, otherwise future reconnects would incorrectly show a
+    Stop button for a chat that never actually started a turn."""
+    channel = _ch(bus)
+    conn = AsyncMock()
+
+    # Missing content + no media → rejected before ``_handle_message``.
+    await channel._dispatch_envelope(
+        conn,
+        "tab-a",
+        {"type": "message", "chat_id": "chat-1", "content": ""},
+    )
+
+    assert "chat-1" not in channel._active_turns
+
+
+@pytest.mark.asyncio
 async def test_send_delivers_json_message_with_media_and_reply() -> None:
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
@@ -327,6 +404,8 @@ async def test_send_turn_end_emits_turn_end_event() -> None:
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
     mock_ws = AsyncMock()
     channel._attach(mock_ws, "chat-1")
+    # Prime the active-turn tracker so we can assert ``turn_end`` clears it.
+    channel._active_turns.add("chat-1")
 
     await channel.send(OutboundMessage(
         channel="websocket",
@@ -338,6 +417,10 @@ async def test_send_turn_end_emits_turn_end_event() -> None:
     mock_ws.send.assert_awaited_once()
     body = json.loads(mock_ws.send.await_args.args[0])
     assert body == {"event": "turn_end", "chat_id": "chat-1"}
+    # The Stop-button rendering hinges on this: once ``turn_end`` fires the
+    # chat must no longer be considered live, so a subsequent ``attach``
+    # from a reconnecting tab reports ``active_turn=False``.
+    assert "chat-1" not in channel._active_turns
 
 
 @pytest.mark.asyncio

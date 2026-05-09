@@ -140,7 +140,17 @@ export type ConnectionStatus =
 
 export type InboundEvent =
   | { event: "ready"; chat_id: string; client_id: string }
-  | { event: "attached"; chat_id: string }
+  | {
+      event: "attached";
+      chat_id: string;
+      /** Authoritative backend flag: ``true`` when the agent is currently
+       * processing a turn for ``chat_id`` (user message submitted but no
+       * matching ``turn_end`` yet). The webui uses this to decide whether
+       * to show the Stop button after a refresh or chat switch — it must
+       * never be inferred from persisted ``tool_calls`` rows, which can
+       * linger past the actual turn boundary. Absent on older servers. */
+      active_turn?: boolean;
+    }
   | {
       event: "message";
       chat_id: string;

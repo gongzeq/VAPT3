@@ -38,7 +38,6 @@ export interface SendImage {
 export function useNanobotStream(
   chatId: string | null,
   initialMessages: UIMessage[] = [],
-  hasPendingToolCalls = false,
   onTurnEnd?: () => void,
 ): {
   messages: UIMessage[];
@@ -54,13 +53,18 @@ export function useNanobotStream(
 } {
   const { client } = useClient();
   const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
-  /** If the last loaded message is a trace row (e.g. "Using 2 tools"),
-   * the model was still processing when the page loaded — keep the
-   * loading spinner alive so the user sees the model is active. */
-  const initialStreaming = initialMessages.length > 0
-    ? initialMessages[initialMessages.length - 1].kind === "trace"
-    : false;
-  const [isStreaming, setIsStreaming] = useState(initialStreaming || hasPendingToolCalls);
+  // ``isStreaming`` is *only* toggled by live evidence of an in-flight turn:
+  //   - The authoritative ``attached`` event from the backend (``active_turn``
+  //     flag) after a refresh / chat switch.
+  //   - The user's own ``send()`` flipping it optimistically.
+  //   - Inbound stream events (``delta`` / ``message`` / ``tool_hint`` /
+  //     ``progress`` / ``stream_end``) keeping it true across tool boundaries.
+  //   - ``turn_end`` clearing it exactly once per completed or aborted turn.
+  // We deliberately do NOT infer it from persisted history (trailing trace
+  // row, stale ``tool_calls`` in the JSONL, etc.): those signals can outlive
+  // the real turn when a process crashes or ``/stop`` trims the tail, and
+  // would resurrect the Stop button on idle chats.
+  const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<StreamError | null>(null);
   const buffer = useRef<StreamBuffer | null>(null);
   /** Timer that defers ``isStreaming = false`` after ``stream_end``.
@@ -79,41 +83,73 @@ export function useNanobotStream(
   const dismissStreamError = useCallback(() => setStreamError(null), []);
 
   // Reset local state when switching chats. ``streamError`` is scoped to the
-     // send that triggered it, so a chat swap should wipe it out: a stale
-     // "Message too large" banner on a freshly-opened chat-B would confuse the
-     // user about which send actually failed (and in which chat).
-     useEffect(() => {
-       setMessages(initialMessages);
-       // Check if the new chat's last message is a trace row — if so, the
-       // model may still be processing.
-       setIsStreaming(
-         initialMessages.length > 0
-           ? initialMessages[initialMessages.length - 1].kind === "trace"
-           : false,
-       );
-       // Also consider hasPendingToolCalls from session history.
-       if (hasPendingToolCalls) {
-         setIsStreaming(true);
-       }
-       setStreamError(null);
-       buffer.current = null;
-       if (streamEndTimerRef.current !== null) {
-         clearTimeout(streamEndTimerRef.current);
-         streamEndTimerRef.current = null;
-       }
-       // eslint-disable-next-line react-hooks/exhaustive-deps
-     }, [chatId, initialMessages, hasPendingToolCalls]);
+  // send that triggered it, so a chat swap should wipe it out: a stale
+  // "Message too large" banner on a freshly-opened chat-B would confuse the
+  // user about which send actually failed (and in which chat).
+  //
+  // ``isStreaming`` is intentionally reset to ``false`` on every chat
+  // change; the authoritative ``attached`` event (see stream handler below)
+  // will raise it again when — and only when — the backend still has an
+  // in-flight turn for this chat.  Never seed it from persisted history:
+  // a stale ``tool_calls`` tail in the session JSONL outlives the real turn
+  // when a process dies or ``/stop`` cleans up, which would resurrect the
+  // Stop button on idle chats.
+  const prevChatIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const chatChanged = prevChatIdRef.current !== chatId;
+    prevChatIdRef.current = chatId;
+
+    setMessages(initialMessages);
+
+    if (chatChanged) {
+      setIsStreaming(false);
+      setStreamError(null);
+      buffer.current = null;
+      if (streamEndTimerRef.current !== null) {
+        clearTimeout(streamEndTimerRef.current);
+        streamEndTimerRef.current = null;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, initialMessages]);
 
   useEffect(() => {
     if (!chatId) return;
 
     const handle = (ev: InboundEvent) => {
+      // The ``attached`` confirmation carries the authoritative active-turn
+      // flag from the backend. It arrives right after ``client.attach`` (on
+      // chat open, refresh, or reconnect), so we use it as the source of
+      // truth for ``isStreaming`` — lifting it when the server still has an
+      // in-flight turn and (critically) *lowering* it when the server is
+      // idle, even if local state had a stale ``true`` (e.g. a cached
+      // optimistic send from a previous session that never got a
+      // ``turn_end`` delivery because the tab was closed mid-turn).
+      if (ev.event === "attached") {
+        setIsStreaming(Boolean(ev.active_turn));
+        return;
+      }
+
       // Any incoming event while the debounce timer is alive means the model
       // is still working (e.g. tool result arrived, more text to stream).
       // Cancel the pending "stream ended" timer so we don't hide the spinner.
       if (streamEndTimerRef.current !== null) {
         clearTimeout(streamEndTimerRef.current);
         streamEndTimerRef.current = null;
+      }
+
+      // Any event other than ``turn_end`` / ``session_updated`` / ``error`` is
+      // evidence the turn is still in flight. Keep the loading indicator (and
+      // the composer's Stop button) alive across tool-call boundaries —
+      // otherwise pure ``tool_hint`` / ``progress`` events (no deltas) would
+      // leave ``isStreaming`` stuck at ``false`` while the agent is busy
+      // calling tools.
+      if (
+        ev.event !== "turn_end"
+        && ev.event !== "session_updated"
+        && ev.event !== "error"
+      ) {
+        setIsStreaming(true);
       }
 
       if (ev.event === "delta") {
