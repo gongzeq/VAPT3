@@ -215,9 +215,12 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
-    expect(screen.getByText("AI")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("openai/gpt-4o")).toBeInTheDocument();
+    // After PR7, /settings renders the Tab layout. Default tab is "用户偏好".
+    // The "平台 Admin" tab (containing the old "General" heading) is reachable
+    // but not shown by default. Assert we landed on the settings surface.
+    expect(await screen.findByText("用户偏好")).toBeInTheDocument();
+    expect(screen.getByText("平台 Admin")).toBeInTheDocument();
+    expect(screen.getByText("危险区")).toBeInTheDocument();
   });
 
   it("filters sidebar sessions through the lightweight search row", async () => {
