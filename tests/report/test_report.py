@@ -114,11 +114,11 @@ async def test_render_markdown_contains_key_fields(cmdb_engine):
     async with cmdb_db.get_session() as session:
         model = await build_report_model(session, scan_id)
     md = render_markdown(model)
-    assert "# Security Scan Report" in md
+    assert "# 安全扫描报告" in md
     assert "Log4Shell" in md
     assert "CVE-2021-44228" in md
     assert "10.0.0.5" in md
-    assert "| critical | 1 |" in md
+    assert "| 严重 | 1 |" in md
 
 
 async def test_render_html_inlines_severity_badges(cmdb_engine):

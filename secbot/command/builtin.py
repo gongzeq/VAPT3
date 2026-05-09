@@ -112,6 +112,41 @@ async def cmd_stop(ctx: CommandContext) -> OutboundMessage | None:
     total = await loop._cancel_active_tasks(msg.session_key)
     metadata = dict(msg.metadata or {})
     silent = bool(metadata.get("silent"))
+    # If the cancelled turn left a trailing ``assistant`` message with
+    # ``tool_calls`` but no matching ``tool`` result on disk, the session
+    # file will remain in a "pending tool calls" state forever. The WebUI
+    # reads that as "the agent is still working" every time the user
+    # reopens the chat, so the Stop button never goes away. Inject synthetic
+    # ``tool`` results marking the calls as cancelled so the on-disk history
+    # is self-consistent again.
+    session = ctx.session
+    if session is not None and session.messages:
+        last = session.messages[-1]
+        if isinstance(last, dict):
+            tool_calls = last.get("tool_calls")
+            if (
+                last.get("role") == "assistant"
+                and isinstance(tool_calls, list)
+                and tool_calls
+            ):
+                for call in tool_calls:
+                    if not isinstance(call, dict):
+                        continue
+                    call_id = call.get("id") or ""
+                    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+                    name = fn.get("name") if isinstance(fn, dict) else None
+                    session.add_message(
+                        "tool",
+                        "[cancelled by user]",
+                        tool_call_id=call_id,
+                        **({"name": name} if isinstance(name, str) and name else {}),
+                    )
+                try:
+                    loop.sessions.save(session)
+                except Exception:
+                    # Persisting the cancel markers is best-effort; the next
+                    # turn's normal save path will flush them if this fails.
+                    pass
     # Cancelled agent tasks re-raise CancelledError before they can emit the
     # normal ``_turn_end`` for websocket channels, so the WebUI would stay
     # stuck in the "streaming" state. Emit one explicitly from the stop

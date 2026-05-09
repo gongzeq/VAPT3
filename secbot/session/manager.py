@@ -540,7 +540,9 @@ class SessionManager:
         for path in self.sessions_dir.glob("*.jsonl"):
             fallback_key = path.stem.replace("_", ":", 1)
             try:
-                # Read just the metadata line
+                # Read the metadata line and then keep scanning until the
+                # first ``role="user"`` turn so the sidebar can show the
+                # user's own opening line as the session title.
                 with open(path, encoding="utf-8") as f:
                     first_line = f.readline().strip()
                     if first_line:
@@ -549,11 +551,13 @@ class SessionManager:
                             key = data.get("key") or path.stem.replace("_", ":", 1)
                             metadata = data.get("metadata", {})
                             title = metadata.get("title") if isinstance(metadata, dict) else None
+                            preview = self._first_user_preview(f)
                             sessions.append({
                                 "key": key,
                                 "created_at": data.get("created_at"),
                                 "updated_at": data.get("updated_at"),
                                 "title": title if isinstance(title, str) else "",
+                                "preview": preview,
                                 "path": str(path)
                             })
             except Exception:
@@ -568,8 +572,61 @@ class SessionManager:
                             if isinstance(repaired.metadata.get("title"), str)
                             else ""
                         ),
+                        "preview": self._first_user_preview_from_messages(
+                            repaired.messages
+                        ),
                         "path": str(path)
                     })
                 continue
 
         return sorted(sessions, key=lambda x: x.get("updated_at", ""), reverse=True)
+
+    @staticmethod
+    def _first_user_preview(file_obj: Any) -> str:
+        """Scan an already-opened JSONL file for the first user message.
+
+        Returns a compact one-line preview used as the sidebar title. The
+        caller is expected to have already consumed the leading metadata
+        line so the iteration starts with the first message row.
+        """
+        for line in file_obj:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(row, dict):
+                continue
+            if row.get("role") != "user":
+                continue
+            content = row.get("content")
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if isinstance(text, str) and text.strip():
+                            return text.strip()
+        return ""
+
+    @staticmethod
+    def _first_user_preview_from_messages(
+        messages: list[dict[str, Any]],
+    ) -> str:
+        """Equivalent of ``_first_user_preview`` for in-memory message lists."""
+        for row in messages:
+            if not isinstance(row, dict) or row.get("role") != "user":
+                continue
+            content = row.get("content")
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        text = part.get("text")
+                        if isinstance(text, str) and text.strip():
+                            return text.strip()
+        return ""

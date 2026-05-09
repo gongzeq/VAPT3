@@ -394,6 +394,13 @@ _MEDIA_ALLOWED_MIMES: frozenset[str] = frozenset({
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+    "text/csv",
+    "text/markdown",
 })
 
 
@@ -958,6 +965,38 @@ class WebSocketChannel(BaseChannel):
         ).digest()[:16]
         return f"/api/media/{_b64url_encode(mac)}/{payload}"
 
+    def stage_media_path(self, path: Path) -> Path | None:
+        """Ensure *path* lives inside the media directory; return the staged path.
+
+        Paths already resolvable under ``get_media_dir`` are returned as-is
+        (no copy). Anything else is copied into the websocket media bucket so
+        later signed fetch URLs can address the file without exposing arbitrary
+        filesystem paths. Returns ``None`` when the file does not exist or the
+        copy fails.
+
+        Exposed so out-of-band writers (e.g. session history persistence for
+        MessageTool deliveries) can pin a stable path before the live ``send``
+        path stages its own copy.
+        """
+        try:
+            abs_path = path.resolve()
+            media_root = get_media_dir().resolve()
+            abs_path.relative_to(media_root)
+            return abs_path
+        except (OSError, ValueError):
+            pass
+        try:
+            if not path.is_file():
+                return None
+            media_dir = get_media_dir("websocket")
+            safe_name = safe_filename(path.name) or "attachment"
+            staged = media_dir / f"{uuid.uuid4().hex[:12]}-{safe_name}"
+            shutil.copyfile(path, staged)
+            return staged.resolve()
+        except OSError as exc:
+            self.logger.warning("failed to stage outbound media {}: {}", path, exc)
+            return None
+
     def _sign_or_stage_media_path(self, path: Path) -> dict[str, str] | None:
         """Return a signed media URL payload for *path*.
 
@@ -967,18 +1006,8 @@ class WebSocketChannel(BaseChannel):
         can fetch them through the existing signed media route without
         exposing arbitrary filesystem paths.
         """
-        signed = self._sign_media_path(path)
-        if signed is not None:
-            return {"url": signed, "name": path.name}
-        try:
-            if not path.is_file():
-                return None
-            media_dir = get_media_dir("websocket")
-            safe_name = safe_filename(path.name) or "attachment"
-            staged = media_dir / f"{uuid.uuid4().hex[:12]}-{safe_name}"
-            shutil.copyfile(path, staged)
-        except OSError as exc:
-            self.logger.warning("failed to stage outbound media {}: {}", path, exc)
+        staged = self.stage_media_path(path)
+        if staged is None:
             return None
         signed = self._sign_media_path(staged)
         if signed is None:

@@ -22,7 +22,11 @@ interface ChatListProps {
 
 function titleFor(s: ChatSummary, fallbackTitle: string): string {
   const p = (s.title || s.preview)?.trim();
-  if (p) return p.length > 48 ? `${p.slice(0, 45)}…` : p;
+  if (p) {
+    // Collapse newlines so the sidebar line never wraps.
+    const oneLine = p.replace(/\s+/g, " ");
+    return [...oneLine].length > 8 ? `${[...oneLine].slice(0, 8).join("")}…` : oneLine;
+  }
   return fallbackTitle;
 }
 
@@ -92,10 +96,9 @@ export function ChatList({
                       <DropdownMenu modal={false}>
                         <DropdownMenuTrigger
                           className={cn(
-                            "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/75 opacity-0 transition-opacity",
-                            "hover:bg-sidebar-accent hover:text-sidebar-foreground group-hover:opacity-100",
-                            "focus-visible:opacity-100",
-                            active && "opacity-100",
+                            "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/75",
+                            "hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                            "focus-visible:text-sidebar-foreground",
                           )}
                           aria-label={t("chat.actions", { title })}
                         >

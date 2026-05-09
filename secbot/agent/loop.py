@@ -491,7 +491,19 @@ class AgentLoop:
         dispatch_fn: Callable[[CommandContext], Awaitable[OutboundMessage | None]],
     ) -> None:
         """Dispatch a command directly from the run() loop and publish the result."""
-        ctx = CommandContext(msg=msg, session=None, key=key, raw=raw, loop=self)
+        # Priority / inline commands (e.g. ``/stop``) must see the live session
+        # so they can inspect or patch its message tail. Without this, a
+        # ``/stop`` issued while the agent is mid tool-call would leave a
+        # trailing ``assistant`` message with ``tool_calls`` but no matching
+        # ``tool`` result on disk — the WebUI then reads that as "still
+        # working" every time the user reopens the chat, so the Stop button
+        # never goes away. ``get_or_create`` is safe: if the session really
+        # does not exist yet, the cancel-cleanup branches become no-ops.
+        try:
+            session = self.sessions.get_or_create(key)
+        except Exception:
+            session = None
+        ctx = CommandContext(msg=msg, session=session, key=key, raw=raw, loop=self)
         result = await dispatch_fn(ctx)
         if result:
             await self.bus.publish_outbound(result)

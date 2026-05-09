@@ -716,6 +716,41 @@ def _run_gateway(
         """Publish a user-visible message and mirror it into that channel's session."""
         metadata = dict(msg.metadata or {})
         record = record or bool(metadata.pop("_record_channel_delivery", False))
+        # MessageTool output is only streamed through the live bus; without
+        # persisting it as an assistant turn, webui history replay on refresh
+        # loses every message the agent sent through the tool (e.g. long
+        # reports). Default to recording non-cli deliveries with real content.
+        if not record and msg.channel != "cli" and (msg.content.strip() or msg.media):
+            record = True
+        # Stage outbound media into the channel's media bucket *before*
+        # persisting so a later replay can still resolve files the agent
+        # generated outside media_dir (e.g. <scan_dir>/report/report.pdf).
+        # Without this the saved path lives outside media_dir and the
+        # history-replay signer drops it, so the PDF attachment vanishes
+        # after refresh even though the live stream rendered it fine.
+        media_paths: list[str] = list(msg.media or []) if record else []
+        if record and media_paths:
+            channel_obj = channels.get_channel(msg.channel)
+            stager = getattr(channel_obj, "stage_media_path", None)
+            if callable(stager):
+                staged_media: list[str] = []
+                for entry in media_paths:
+                    if not isinstance(entry, str) or not entry:
+                        continue
+                    staged = stager(Path(entry))
+                    staged_media.append(str(staged) if staged is not None else entry)
+                media_paths = staged_media
+                if media_paths != list(msg.media or []):
+                    msg = OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=msg.content,
+                        reply_to=msg.reply_to,
+                        media=media_paths,
+                        metadata=metadata,
+                        buttons=msg.buttons,
+                    )
+                    metadata = dict(msg.metadata)
         if metadata != (msg.metadata or {}):
             msg = OutboundMessage(
                 channel=msg.channel,
@@ -729,13 +764,16 @@ def _run_gateway(
         if (
             record
             and msg.channel != "cli"
-            and msg.content.strip()
             and hasattr(session_manager, "get_or_create")
             and hasattr(session_manager, "save")
+            and (msg.content.strip() or msg.media)
         ):
             key = session_key or _channel_session_key(msg.channel, msg.chat_id)
             session = session_manager.get_or_create(key)
-            session.add_message("assistant", msg.content, _channel_delivery=True)
+            extras: dict[str, Any] = {"_channel_delivery": True}
+            if msg.media:
+                extras["media"] = [p for p in msg.media if isinstance(p, str) and p]
+            session.add_message("assistant", msg.content, **extras)
             session_manager.save(session)
         await bus.publish_outbound(msg)
 

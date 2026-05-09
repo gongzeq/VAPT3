@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { AuthForm } from "@/components/AuthForm";
+import { DeleteConfirm } from "@/components/DeleteConfirm";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Sidebar } from "@/components/Sidebar";
+import { SettingsView } from "@/components/settings/SettingsView";
+import { ThreadShell } from "@/components/thread/ThreadShell";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { preloadMarkdownText } from "@/components/MarkdownText";
-import { ProtectedRoute, type BootStatus } from "@/components/ProtectedRoute";
-import { Shell } from "@/components/Shell";
-import { ClientProvider } from "@/providers/ClientProvider";
+import { useSessions } from "@/hooks/useSessions";
+import { useTheme } from "@/hooks/useTheme";
+import { cn } from "@/lib/utils";
 import {
   clearSavedSecret,
   deriveWsUrl,
@@ -13,87 +17,144 @@ import {
   loadSavedSecret,
   saveSecret,
 } from "@/lib/bootstrap";
-import { SecbotClient } from "@/lib/secbot-client";
-import { DashboardPage } from "@/pages/DashboardPage";
-import { HomePage } from "@/pages/HomePage";
-import { LoginPage } from "@/pages/LoginPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { TaskDetailPage } from "@/pages/TaskDetailPage";
+import { NanobotClient } from "@/lib/nanobot-client";
+import { ClientProvider } from "@/providers/ClientProvider";
+import type { ChatSummary } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-/**
- * Default to ON so the refactor lands behind a default-true flag — flipping
- * `VITE_UIUX_TEMPLATE=false` at build time restores the legacy in-app view
- * switching for an emergency rollback without touching code.
- */
-const TEMPLATE_ENABLED =
-  (import.meta.env.VITE_UIUX_TEMPLATE ?? "true").toLowerCase() !== "false";
+type BootState =
+  | { status: "loading" }
+  | { status: "auth"; failed?: boolean }
+  | {
+      status: "ready";
+      client: NanobotClient;
+      token: string;
+      modelName: string | null;
+    };
 
-function GlobalLoading() {
+const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
+const SIDEBAR_WIDTH = 272;
+type ShellView = "chat" | "settings";
+
+function AuthForm({
+  failed,
+  onSecret,
+}: {
+  failed: boolean;
+  onSecret: (secret: string) => void;
+}) {
   const { t } = useTranslation();
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const secret = value.trim();
+    if (!secret) return;
+    setSubmitting(true);
+    onSecret(secret);
+  };
+
   return (
-    <div className="flex h-full w-full items-center justify-center">
-      <div className="flex flex-col items-center gap-3 animate-in fade-in-0 duration-300">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-foreground/60" />
-          </span>
-          {t("app.loading.connecting")}
+    <div className="flex h-full w-full items-center justify-center px-6">
+      <form
+        onSubmit={handleSubmit}
+        className="flex w-full max-w-sm flex-col gap-4"
+      >
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-lg font-semibold">{t("app.auth.title")}</p>
+          <p className="text-sm text-muted-foreground">{t("app.auth.hint")}</p>
         </div>
-      </div>
+        {failed && (
+          <p className="text-center text-sm text-destructive">
+            {t("app.auth.invalid")}
+          </p>
+        )}
+        <Input
+          type="password"
+          placeholder={t("app.auth.placeholder")}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={submitting}
+          autoFocus
+        />
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={!value.trim() || submitting}
+        >
+          {t("app.auth.submit")}
+        </Button>
+      </form>
     </div>
   );
 }
 
-export default function App() {
-  const [state, setState] = useState<BootStatus>({ status: "loading" });
+function readSidebarOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw === "1";
+  } catch {
+    return true;
+  }
+}
 
-  const bootstrapWithSecret = useCallback((secret: string) => {
-    let cancelled = false;
-    (async () => {
-      setState({ status: "loading" });
-      try {
-        const boot = await fetchBootstrap("", secret);
-        if (cancelled) return;
-        if (secret) saveSecret(secret);
-        const url = deriveWsUrl(boot.ws_path, boot.token);
-        const client = new SecbotClient({
-          url,
-          onReauth: async () => {
-            try {
-              const refreshed = await fetchBootstrap("", secret);
-              return deriveWsUrl(refreshed.ws_path, refreshed.token);
-            } catch {
-              return null;
-            }
-          },
-        });
-        client.connect();
-        setState({
-          status: "ready",
-          client,
-          token: boot.token,
-          modelName: boot.model_name ?? null,
-        });
-      } catch (e) {
-        if (cancelled) return;
-        const msg = (e as Error).message;
-        if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) {
-          // 401/403 is the normal "not logged in" path, not a fatal error
-          // — show the auth form so the user can enter the shared secret.
-          setState({ status: "auth", failed: true });
-        } else {
-          // Per project rule: surface every other error as an alert
-          // instead of flipping to an error-only page.
-          window.alert(`Connection failed: ${msg}`);
-          setState({ status: "auth" });
+export default function App() {
+  const { t } = useTranslation();
+  const [state, setState] = useState<BootState>({ status: "loading" });
+
+  const bootstrapWithSecret = useCallback(
+    (secret: string) => {
+      let cancelled = false;
+      (async () => {
+        setState({ status: "loading" });
+        try {
+          const boot = await fetchBootstrap("", secret);
+          if (cancelled) return;
+          if (secret) saveSecret(secret);
+          const url = deriveWsUrl(boot.ws_path, boot.token);
+          const client = new NanobotClient({
+            url,
+            onReauth: async () => {
+              try {
+                const refreshed = await fetchBootstrap("", secret);
+                return deriveWsUrl(refreshed.ws_path, refreshed.token);
+              } catch {
+                return null;
+              }
+            },
+          });
+          client.connect();
+          setState({
+            status: "ready",
+            client,
+            token: boot.token,
+            modelName: boot.model_name ?? null,
+          });
+        } catch (e) {
+          if (cancelled) return;
+          const msg = (e as Error).message;
+          if (msg.includes("HTTP 401") || msg.includes("HTTP 403")) {
+            // 401/403 is the normal "not logged in" path, not a fatal error
+            // — show the auth form so the user can enter the shared secret.
+            setState({ status: "auth", failed: true });
+          } else {
+            // Per project rule: surface every other error as an alert
+            // instead of flipping to an error-only page.
+            window.alert(`Connection failed: ${msg}`);
+            setState({ status: "auth" });
+          }
         }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    },
+    [],
+  );
 
   useEffect(() => {
     const saved = loadSavedSecret();
@@ -118,14 +179,21 @@ export default function App() {
   }, []);
 
   // NOTE: both handlers MUST be memoised AND declared before any early
-  // ``return`` so React's hook order stays stable across renders.
+  // ``return`` so React's hook order stays stable across renders. They
+  // are wired down into ``SettingsView`` whose ``applyPayload`` keeps
+  // ``onModelNameChange`` in its useCallback deps; an unstable reference
+  // here turns the settings page's "fetch on mount" effect into an
+  // infinite loop (applyPayload → setState in App → new handler identity
+  // → applyPayload re-created → useEffect re-runs → loading forever).
   const handleModelNameChange = useCallback((modelName: string | null) => {
     setState((current) =>
       current.status === "ready" ? { ...current, modelName } : current,
     );
   }, []);
 
-  // ``state`` captured via ref so handleLogout has no reactive deps.
+  // ``state`` is captured via a ref so ``handleLogout`` itself has no
+  // reactive dependencies and stays referentially stable. The ref write
+  // must also run on every render (no early return allowed in-between).
   const stateRef = useRef(state);
   stateRef.current = state;
   const handleLogout = useCallback(() => {
@@ -137,90 +205,240 @@ export default function App() {
     setState({ status: "auth" });
   }, []);
 
-  // ── Legacy code path ────────────────────────────────────────────────
-  // VITE_UIUX_TEMPLATE=false → keep the original in-place view switching.
-  if (!TEMPLATE_ENABLED) {
-    if (state.status === "loading") return <GlobalLoading />;
-    if (state.status === "auth") {
-      return (
-        <div className="flex h-full w-full items-center justify-center px-6">
-          <AuthForm
-            failed={!!state.failed}
-            onSecret={(s) => bootstrapWithSecret(s)}
-          />
-        </div>
-      );
-    }
+  if (state.status === "loading") {
     return (
-      <ClientProvider
-        client={state.client}
-        token={state.token}
-        modelName={state.modelName}
-      >
-        <Shell
-          onModelNameChange={handleModelNameChange}
-          onLogout={handleLogout}
-        />
-      </ClientProvider>
+      <div className="flex h-full w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-3 animate-in fade-in-0 duration-300">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-foreground/60" />
+            </span>
+            {t("app.loading.connecting")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (state.status === "auth") {
+    return (
+      <AuthForm
+        failed={!!state.failed}
+        onSecret={(s) => bootstrapWithSecret(s)}
+      />
     );
   }
 
-  // ── Template-mode router path ───────────────────────────────────────
-  // Loading is owned at App level so neither LoginPage nor protected pages
-  // ever flash before bootstrap has resolved.
-  if (state.status === "loading") return <GlobalLoading />;
+  return (
+    <ClientProvider
+      client={state.client}
+      token={state.token}
+      modelName={state.modelName}
+    >
+      <Shell onModelNameChange={handleModelNameChange} onLogout={handleLogout} />
+    </ClientProvider>
+  );
+}
+
+function Shell({ onModelNameChange, onLogout }: { onModelNameChange: (modelName: string | null) => void; onLogout: () => void }) {
+  const { t, i18n } = useTranslation();
+  const { theme, toggle } = useTheme();
+  const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [view, setView] = useState<ShellView>("chat");
+  const [desktopSidebarOpen, setDesktopSidebarOpen] =
+    useState<boolean>(readSidebarOpen);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    key: string;
+    label: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_STORAGE_KEY,
+        desktopSidebarOpen ? "1" : "0",
+      );
+    } catch {
+      // ignore storage errors (private mode, etc.)
+    }
+  }, [desktopSidebarOpen]);
+
+  // Default to the "new chat" landing view on first load and after refresh —
+  // never auto-jump into the most recent session. Users explicitly pick a
+  // session from the sidebar when they want to resume an existing chat.
+
+  const activeSession = useMemo<ChatSummary | null>(() => {
+    if (!activeKey) return null;
+    return sessions.find((s) => s.key === activeKey) ?? null;
+  }, [sessions, activeKey]);
+
+  const closeDesktopSidebar = useCallback(() => {
+    setDesktopSidebarOpen(false);
+  }, []);
+
+  const closeMobileSidebar = useCallback(() => {
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    const isDesktop =
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+      setDesktopSidebarOpen((v) => !v);
+    } else {
+      setMobileSidebarOpen((v) => !v);
+    }
+  }, []);
+
+  const onCreateChat = useCallback(async () => {
+    try {
+      const chatId = await createChat();
+      setActiveKey(`websocket:${chatId}`);
+      setView("chat");
+      setMobileSidebarOpen(false);
+      return chatId;
+    } catch (e) {
+      console.error("Failed to create chat", e);
+      return null;
+    }
+  }, [createChat]);
+
+  const onNewChat = useCallback(() => {
+    setActiveKey(null);
+    setView("chat");
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const onSelectChat = useCallback(
+    (key: string) => {
+      setActiveKey(key);
+      setView("chat");
+      setMobileSidebarOpen(false);
+    },
+    [],
+  );
+
+  const onOpenSettings = useCallback(() => {
+    setView("settings");
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const onTurnEnd = useCallback(() => {
+    void refresh();
+  }, [refresh]);
+
+  const onConfirmDelete = useCallback(async () => {
+    if (!pendingDelete) return;
+    const key = pendingDelete.key;
+    const deletingActive = activeKey === key;
+    const currentIndex = sessions.findIndex((s) => s.key === key);
+    const fallbackKey = deletingActive
+      ? (sessions[currentIndex + 1]?.key ?? sessions[currentIndex - 1]?.key ?? null)
+      : activeKey;
+    setPendingDelete(null);
+    if (deletingActive) setActiveKey(fallbackKey);
+    try {
+      await deleteChat(key);
+    } catch (e) {
+      if (deletingActive) setActiveKey(key);
+      console.error("Failed to delete session", e);
+    }
+  }, [pendingDelete, deleteChat, activeKey, sessions]);
+
+  const headerTitle = activeSession
+    ? activeSession.title ||
+      activeSession.preview ||
+      t("chat.fallbackTitle", { id: activeSession.chatId.slice(0, 6) })
+    : t("app.brand");
+
+  useEffect(() => {
+    document.title = activeSession
+      ? t("app.documentTitle.chat", { title: headerTitle })
+      : t("app.documentTitle.base");
+  }, [activeSession, headerTitle, i18n.resolvedLanguage, t]);
+
+  const sidebarProps = {
+    sessions,
+    activeKey,
+    loading,
+    onNewChat,
+    onSelect: onSelectChat,
+    onRequestDelete: (key: string, label: string) =>
+      setPendingDelete({ key, label }),
+  };
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/login"
-          element={<LoginPage state={state} onSecret={bootstrapWithSecret} />}
-        />
-
-        <Route
-          element={
-            <ProtectedRoute state={state} loadingFallback={<GlobalLoading />} />
-          }
+    <div className="relative flex h-full w-full overflow-hidden">
+      {/* Desktop sidebar: in normal flow, so the thread area width stays honest. */}
+      <aside
+        className={cn(
+          "relative z-20 hidden shrink-0 overflow-hidden lg:block",
+          "transition-[width] duration-300 ease-out",
+        )}
+        style={{ width: desktopSidebarOpen ? SIDEBAR_WIDTH : 0 }}
+      >
+        <div
+          className={cn(
+            "absolute inset-y-0 left-0 h-full overflow-hidden bg-sidebar shadow-inner-right",
+            "transition-transform duration-300 ease-out",
+            desktopSidebarOpen ? "translate-x-0" : "-translate-x-full",
+          )}
+          style={{ width: SIDEBAR_WIDTH }}
         >
-          <Route
-            element={
-              state.status === "ready" ? (
-                <ClientProvider
-                  client={state.client}
-                  token={state.token}
-                  modelName={state.modelName}
-                >
-                  <Outlet />
-                </ClientProvider>
-              ) : null
-            }
-          >
-            <Route
-              index
-              element={
-                <HomePage
-                  onModelNameChange={handleModelNameChange}
-                  onLogout={handleLogout}
-                />
-              }
-            />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/tasks/:id" element={<TaskDetailPage />} />
-            <Route
-              path="/settings"
-              element={
-                <SettingsPage
-                  onModelNameChange={handleModelNameChange}
-                  onLogout={handleLogout}
-                />
-              }
-            />
-          </Route>
-        </Route>
+          <Sidebar {...sidebarProps} onCollapse={closeDesktopSidebar} />
+        </div>
+      </aside>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+      <Sheet
+        open={mobileSidebarOpen}
+        onOpenChange={(open) => setMobileSidebarOpen(open)}
+      >
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="p-0 lg:hidden"
+          style={{ width: SIDEBAR_WIDTH, maxWidth: SIDEBAR_WIDTH }}
+        >
+          <Sidebar {...sidebarProps} onCollapse={closeMobileSidebar} />
+        </SheetContent>
+      </Sheet>
+
+      <main className="flex h-full min-w-0 flex-1 flex-col">
+        <ErrorBoundary>
+          {view === "settings" ? (
+            <SettingsView
+              theme={theme}
+              onToggleTheme={toggle}
+              onBackToChat={() => setView("chat")}
+              onModelNameChange={onModelNameChange}
+              onLogout={onLogout}
+            />
+          ) : (
+            <ThreadShell
+              session={activeSession}
+              title={headerTitle}
+              onToggleSidebar={toggleSidebar}
+              onNewChat={onNewChat}
+              onCreateChat={onCreateChat}
+              onTurnEnd={onTurnEnd}
+              theme={theme}
+              onToggleTheme={toggle}
+              onOpenSettings={onOpenSettings}
+              hideSidebarToggleOnDesktop={desktopSidebarOpen}
+            />
+          )}
+        </ErrorBoundary>
+      </main>
+
+      <DeleteConfirm
+        open={!!pendingDelete}
+        title={pendingDelete?.label ?? ""}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={onConfirmDelete}
+      />
+    </div>
   );
 }
