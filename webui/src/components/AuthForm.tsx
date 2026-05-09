@@ -17,9 +17,22 @@ export interface AuthFormProps {
   title?: React.ReactNode;
   /** Optional hint override (defaults to i18n `app.auth.hint`). */
   hint?: React.ReactNode;
+  /** When true, suppress the internal title/hint header. Use when the
+   * containing card already renders its own heading (e.g. /login page). */
+  hideHeader?: boolean;
+  /** When true, suppress the internal "failed" inline notice. Use when the
+   * caller renders a richer error block above the form. */
+  hideFailedNotice?: boolean;
 }
 
-export function AuthForm({ failed, onSecret, title, hint }: AuthFormProps) {
+export function AuthForm({
+  failed,
+  onSecret,
+  title,
+  hint,
+  hideHeader = false,
+  hideFailedNotice = false,
+}: AuthFormProps) {
   const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -34,11 +47,13 @@ export function AuthForm({ failed, onSecret, title, hint }: AuthFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="text-lg font-semibold">{title ?? t("app.auth.title")}</p>
-        <p className="text-sm text-muted-foreground">{hint ?? t("app.auth.hint")}</p>
-      </div>
-      {failed && (
+      {!hideHeader && (
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-lg font-semibold">{title ?? t("app.auth.title")}</p>
+          <p className="text-sm text-muted-foreground">{hint ?? t("app.auth.hint")}</p>
+        </div>
+      )}
+      {failed && !hideFailedNotice && (
         <p className="text-center text-sm text-destructive">
           {t("app.auth.invalid")}
         </p>

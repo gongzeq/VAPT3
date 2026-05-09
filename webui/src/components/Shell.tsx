@@ -24,6 +24,13 @@ export interface ShellProps {
    * If omitted, Shell falls back to the legacy in-place settings view.
    */
   onOpenSettingsExternal?: () => void;
+  /**
+   * Optional left rail rendered next to ThreadShell when view === "chat".
+   * Hidden below xl: to avoid crushing the chat surface on narrow viewports;
+   * the rail itself is purely presentational so dropping it on small screens
+   * never breaks core chat UX.
+   */
+  leftRail?: React.ReactNode;
 }
 
 function readSidebarOpen(): boolean {
@@ -48,6 +55,7 @@ export function Shell({
   onModelNameChange,
   onLogout,
   onOpenSettingsExternal,
+  leftRail,
 }: ShellProps) {
   const { t, i18n } = useTranslation();
   const { theme, toggle } = useTheme();
@@ -232,6 +240,31 @@ export function Shell({
               onModelNameChange={onModelNameChange}
               onLogout={onLogout}
             />
+          ) : leftRail ? (
+            // Template §7.2 left-1/right-3 split. We use flex (not grid) so
+            // ThreadShell keeps its existing height model intact — the rail
+            // gets a fixed-ish width that approximates the 1:3 ratio on
+            // common laptop widths (1440–1920) without forcing ThreadShell
+            // to re-derive its scroll containers.
+            <div className="flex h-full min-h-0 flex-1">
+              <div className="hidden h-full w-[320px] shrink-0 border-r border-border/40 bg-background/40 xl:block">
+                {leftRail}
+              </div>
+              <div className="flex h-full min-w-0 flex-1 flex-col">
+                <ThreadShell
+                  session={activeSession}
+                  title={headerTitle}
+                  onToggleSidebar={toggleSidebar}
+                  onNewChat={onNewChat}
+                  onCreateChat={onCreateChat}
+                  onTurnEnd={onTurnEnd}
+                  theme={theme}
+                  onToggleTheme={toggle}
+                  onOpenSettings={onOpenSettings}
+                  hideSidebarToggleOnDesktop={desktopSidebarOpen}
+                />
+              </div>
+            </div>
           ) : (
             <ThreadShell
               session={activeSession}

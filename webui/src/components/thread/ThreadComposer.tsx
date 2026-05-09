@@ -27,6 +27,10 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
+  COMPOSER_PREFILL_EVENT,
+  type ComposerPrefillDetail,
+} from "@/components/PromptSuggestions";
+import {
   useAttachedImages,
   type AttachedImage,
   type AttachmentError,
@@ -193,6 +197,38 @@ export function ThreadComposer({
       setSelectedCommandIndex(0);
     }
   }, [filteredSlashCommands.length, selectedCommandIndex]);
+
+  // Listen for cross-component prefill requests (e.g. PromptSuggestions in
+  // the HomePage left rail). We intentionally append to existing input —
+  // dropping in-progress text would be hostile to the user — except when the
+  // textarea is empty, in which case we replace.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ComposerPrefillDetail>).detail;
+      if (!detail || typeof detail.text !== "string" || !detail.text) return;
+      setValue((prev) => (prev.trim() === "" ? detail.text : `${prev}\n${detail.text}`));
+      setInlineError(null);
+      if (detail.focus !== false) {
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
+          el.focus();
+          // Move caret to end so the user can keep typing after the prefill.
+          const len = el.value.length;
+          el.setSelectionRange(len, len);
+        });
+      }
+    };
+    window.addEventListener(COMPOSER_PREFILL_EVENT, handler as EventListener);
+    return () => {
+      window.removeEventListener(
+        COMPOSER_PREFILL_EVENT,
+        handler as EventListener,
+      );
+    };
+  }, []);
 
   const resizeTextarea = useCallback(() => {
     requestAnimationFrame(() => {
