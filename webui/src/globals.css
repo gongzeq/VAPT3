@@ -83,6 +83,31 @@
     --sev-medium:   48 96% 53%;        /* #FACC15 */
     --sev-low:      203 100% 62%;      /* #3FB6FF */
     --sev-info:     220 7% 64%;        /* #9AA0AC */
+
+    /* Ocean accent ramp — derived from --primary 海蓝 (hsl 210 100% 56%).
+       Used by gradients, glow rings and dashboard chips. NOT a severity. */
+    --ocean-300: 210 100% 72%;         /* #7AB8FF */
+    --ocean-500: 210 100% 56%;         /* #1E90FF (== --primary) */
+    --ocean-700: 210 92% 38%;          /* #0A6AC2 deep ocean */
+
+    /* Cyan glow — kept as decorative companion (button rings, focus halos).
+       Distinct from --primary so we can layer two-stop gradients. */
+    --cyan-glow: 189 94% 56%;          /* #1FCFE8 */
+
+    /* Generic UI alert palette — separate from --sev-* (which is reserved for
+       vulnerability severity). Use these for toasts and inline banners. */
+    --alert-warning: 38 95% 56%;       /* #F4A52A */
+    --alert-success: 152 70% 45%;      /* #22B574 */
+    --alert-info:    210 100% 56%;     /* alias to --primary */
+
+    /* Gradients / shadows / transitions — sourced from UI 模板 §3, retuned
+       to the secbot 海蓝 primary so brand colour stays canonical. */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--ocean-500)), hsl(var(--cyan-glow)));
+    --gradient-subtle:  linear-gradient(180deg, hsl(var(--background)), hsl(230 18% 9%));
+    --gradient-card:    linear-gradient(145deg, hsl(230 18% 11%), hsl(230 20% 7%));
+    --shadow-elegant:   0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow:      0 0 40px hsl(var(--ocean-500) / 0.30);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 
@@ -141,6 +166,32 @@
   }
   :root {
     --cjk-line-height: 1.625;
+  }
+
+  /* Template §3 brand utilities — token-driven, no raw hex.
+     Bound to the secbot 海蓝 palette via --ocean-*, --cyan-glow, --shadow-*. */
+  .text-gradient {
+    background-image: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .bg-glass {
+    background-color: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .border-glow {
+    border: 1px solid hsl(var(--primary) / 0.25);
+    box-shadow: var(--shadow-elegant);
+  }
+  .hover-lift {
+    transition: var(--transition-smooth);
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
   }
 
   /* Subtle scrollbar that doesn't fight the dark background. */

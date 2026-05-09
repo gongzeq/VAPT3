@@ -16,6 +16,8 @@ export default {
     extend: {
       fontFamily: {
         sans: [
+          "Inter",
+          '"Noto Sans SC"',
           "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",
@@ -24,7 +26,6 @@ export default {
           '"Helvetica Neue"',
           "Arial",
           '"Noto Sans"',
-          '"Noto Sans SC"',
           '"PingFang SC"',
           '"Hiragino Sans GB"',
           '"Microsoft YaHei"',
@@ -89,6 +90,20 @@ export default {
           low: "hsl(var(--sev-low))",
           info: "hsl(var(--sev-info))",
         },
+        ocean: {
+          300: "hsl(var(--ocean-300))",
+          500: "hsl(var(--ocean-500))",
+          700: "hsl(var(--ocean-700))",
+          DEFAULT: "hsl(var(--ocean-500))",
+        },
+        cyan: {
+          glow: "hsl(var(--cyan-glow))",
+        },
+        alert: {
+          warning: "hsl(var(--alert-warning))",
+          success: "hsl(var(--alert-success))",
+          info: "hsl(var(--alert-info))",
+        },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         sidebar: {
@@ -99,6 +114,18 @@ export default {
           border: "hsl(var(--sidebar-border))",
         },
       },
+      backgroundImage: {
+        "gradient-primary": "var(--gradient-primary)",
+        "gradient-subtle": "var(--gradient-subtle)",
+        "gradient-card": "var(--gradient-card)",
+      },
+      boxShadow: {
+        elegant: "var(--shadow-elegant)",
+        glow: "var(--shadow-glow)",
+      },
+      transitionTimingFunction: {
+        smooth: "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -108,10 +135,29 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "pulse-glow": {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 hsl(var(--ocean-500) / 0.45)",
+          },
+          "50%": {
+            boxShadow: "0 0 24px 6px hsl(var(--ocean-500) / 0.0)",
+          },
+        },
+        "fade-in-up": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "slide-in-right": {
+          "0%": { opacity: "0", transform: "translateX(16px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "pulse-glow": "pulse-glow 2.4s ease-in-out infinite",
+        "fade-in-up": "fade-in-up 0.32s cubic-bezier(0.4, 0, 0.2, 1) both",
+        "slide-in-right": "slide-in-right 0.32s cubic-bezier(0.4, 0, 0.2, 1) both",
       },
     },
   },
