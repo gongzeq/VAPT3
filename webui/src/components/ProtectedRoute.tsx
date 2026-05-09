@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import type { NanobotClient } from "@/lib/nanobot-client";
+import type { SecbotClient } from "@/lib/secbot-client";
 
 /**
  * Bootstrapping state shared across the App. Lifted out of App.tsx so that
@@ -13,7 +13,7 @@ export type BootStatus =
   | { status: "auth"; failed?: boolean }
   | {
       status: "ready";
-      client: NanobotClient;
+      client: SecbotClient;
       token: string;
       modelName: string | null;
     };

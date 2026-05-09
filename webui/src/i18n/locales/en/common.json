@@ -1,13 +1,13 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "secbot",
     "loading": {
-      "connecting": "Connecting to nanobot…",
-      "boot": "Loading nanobot…"
+      "connecting": "Connecting to secbot…",
+      "boot": "Loading secbot…"
     },
     "error": {
-      "title": "Couldn't reach nanobot",
-      "gatewayHint": "Make sure the gateway is running (`nanobot gateway`) and that this page is open on the same machine."
+      "title": "Couldn't reach secbot",
+      "gatewayHint": "Make sure the gateway is running (`secbot gateway`) and that this page is open on the same machine."
     },
     "auth": {
       "title": "Authentication required",
@@ -22,11 +22,11 @@
       "logout": "Sign out"
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "secbot",
+      "chat": "{{title}} · secbot"
     },
     "meta": {
-      "description": "nanobot web UI — chat with your nanobot workspace."
+      "description": "secbot web UI — chat with your secbot workspace."
     }
   },
   "sidebar": {
@@ -144,7 +144,7 @@
             "description": "Cancel the active agent turn for this chat."
           },
           "restart": {
-            "title": "Restart nanobot",
+            "title": "Restart secbot",
             "description": "Restart the bot process in place."
           },
           "status": {

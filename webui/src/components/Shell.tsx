@@ -11,7 +11,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
-const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
+const SIDEBAR_STORAGE_KEY = "secbot-webui.sidebar";
 const SIDEBAR_WIDTH = 272;
 type ShellView = "chat" | "settings";
 

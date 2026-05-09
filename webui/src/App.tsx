@@ -13,7 +13,7 @@ import {
   loadSavedSecret,
   saveSecret,
 } from "@/lib/bootstrap";
-import { NanobotClient } from "@/lib/nanobot-client";
+import { SecbotClient } from "@/lib/secbot-client";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
@@ -57,7 +57,7 @@ export default function App() {
         if (cancelled) return;
         if (secret) saveSecret(secret);
         const url = deriveWsUrl(boot.ws_path, boot.token);
-        const client = new NanobotClient({
+        const client = new SecbotClient({
           url,
           onReauth: async () => {
             try {

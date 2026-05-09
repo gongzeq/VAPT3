@@ -1,20 +1,20 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "secbot",
     "loading": {
-      "connecting": "nanobot에 연결 중…",
-      "boot": "nanobot 불러오는 중…"
+      "connecting": "secbot에 연결 중…",
+      "boot": "secbot 불러오는 중…"
     },
     "error": {
-      "title": "nanobot에 연결할 수 없습니다",
-      "gatewayHint": "gateway(`nanobot gateway`)가 실행 중인지, 그리고 이 페이지가 같은 머신에서 열려 있는지 확인하세요."
+      "title": "secbot에 연결할 수 없습니다",
+      "gatewayHint": "gateway(`secbot gateway`)가 실행 중인지, 그리고 이 페이지가 같은 머신에서 열려 있는지 확인하세요."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "secbot",
+      "chat": "{{title}} · secbot"
     },
     "meta": {
-      "description": "nanobot 웹 UI — nanobot 작업공간과 대화하세요."
+      "description": "secbot 웹 UI — secbot 작업공간과 대화하세요."
     }
   },
   "sidebar": {
@@ -122,7 +122,7 @@
             "description": "이 채팅에서 실행 중인 agent 턴을 취소합니다."
           },
           "restart": {
-            "title": "nanobot 재시작",
+            "title": "secbot 재시작",
             "description": "bot 프로세스를 제자리에서 재시작합니다."
           },
           "status": {

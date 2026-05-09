@@ -1,20 +1,20 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "secbot",
     "loading": {
-      "connecting": "Connexion à nanobot…",
-      "boot": "Chargement de nanobot…"
+      "connecting": "Connexion à secbot…",
+      "boot": "Chargement de secbot…"
     },
     "error": {
-      "title": "Impossible de joindre nanobot",
-      "gatewayHint": "Assurez-vous que la gateway est en cours d’exécution (`nanobot gateway`) et que cette page est ouverte sur la même machine."
+      "title": "Impossible de joindre secbot",
+      "gatewayHint": "Assurez-vous que la gateway est en cours d’exécution (`secbot gateway`) et que cette page est ouverte sur la même machine."
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "secbot",
+      "chat": "{{title}} · secbot"
     },
     "meta": {
-      "description": "Interface web nanobot — discutez avec votre espace de travail nanobot."
+      "description": "Interface web secbot — discutez avec votre espace de travail secbot."
     }
   },
   "sidebar": {
@@ -122,7 +122,7 @@
             "description": "Annuler le tour agent actif pour cette discussion."
           },
           "restart": {
-            "title": "Redémarrer nanobot",
+            "title": "Redémarrer secbot",
             "description": "Redémarrer le processus du bot sur place."
           },
           "status": {

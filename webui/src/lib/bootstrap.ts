@@ -1,6 +1,6 @@
 import type { BootstrapResponse } from "./types";
 
-const SECRET_STORAGE_KEY = "nanobot-webui.bootstrap-secret";
+const SECRET_STORAGE_KEY = "secbot-webui.bootstrap-secret";
 
 /** Read a previously saved bootstrap secret from localStorage. */
 export function loadSavedSecret(): string {

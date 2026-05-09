@@ -1,20 +1,20 @@
 {
   "app": {
-    "brand": "nanobot",
+    "brand": "secbot",
     "loading": {
-      "connecting": "正在連線到 nanobot…",
-      "boot": "正在載入 nanobot…"
+      "connecting": "正在連線到 secbot…",
+      "boot": "正在載入 secbot…"
     },
     "error": {
-      "title": "無法連線到 nanobot",
-      "gatewayHint": "請確認 gateway 已啟動（`nanobot gateway`），並且目前頁面與 gateway 在同一台機器上開啟。"
+      "title": "無法連線到 secbot",
+      "gatewayHint": "請確認 gateway 已啟動（`secbot gateway`），並且目前頁面與 gateway 在同一台機器上開啟。"
     },
     "documentTitle": {
-      "base": "nanobot",
-      "chat": "{{title}} · nanobot"
+      "base": "secbot",
+      "chat": "{{title}} · secbot"
     },
     "meta": {
-      "description": "nanobot Web UI —— 與你的 nanobot 工作區對話。"
+      "description": "secbot Web UI —— 與你的 secbot 工作區對話。"
     }
   },
   "sidebar": {
@@ -122,7 +122,7 @@
             "description": "取消這個對話中正在執行的 agent 回合。"
           },
           "restart": {
-            "title": "重新啟動 nanobot",
+            "title": "重新啟動 secbot",
             "description": "原地重新啟動 bot 進程。"
           },
           "status": {

@@ -77,6 +77,6 @@ if (typeof window !== "undefined" && typeof window.alert !== "function") {
 beforeEach(async () => {
   await i18n.changeLanguage("en");
   document.documentElement.lang = "en";
-  document.title = "nanobot";
-  localStorage.setItem("nanobot.locale", "en");
+  document.title = "secbot";
+  localStorage.setItem("secbot.locale", "en");
 });
