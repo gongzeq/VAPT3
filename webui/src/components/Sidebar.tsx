@@ -50,10 +50,9 @@ export function Sidebar(props: SidebarProps) {
     >
       <div className="flex items-center justify-between px-3 pb-2.5 pt-3">
         <picture className="block min-w-0">
-          <source srcSet="/brand/nanobot_logo.webp" type="image/webp" />
           <img
-            src="/brand/nanobot_logo.png"
-            alt="nanobot"
+            src="/brand/text-logo.png"
+            alt="海盾智能体管控台"
             className="h-6 w-auto select-none object-contain opacity-95"
             draggable={false}
           />

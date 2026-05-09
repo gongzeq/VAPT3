@@ -248,7 +248,7 @@ secbot cmdb list-findings --severity high
 ## 🧪 WebUI（开发中）
 
 <p align="center">
-  <img src="images/nanobot_webui.png" alt="secbot webui preview" width="820">
+  <img src="banner.png" alt="secbot webui preview" width="820">
 </p>
 
 - 技术栈：React + Vite + Tailwind + assistant-ui
