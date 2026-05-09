@@ -33,6 +33,8 @@ interface ThreadShellProps {
   onToggleTheme?: () => void;
   onOpenSettings?: () => void;
   hideSidebarToggleOnDesktop?: boolean;
+  onToggleRightRail?: () => void;
+  rightRailOpen?: boolean;
 }
 
 function toModelBadgeLabel(modelName: string | null): string | null {
@@ -62,6 +64,8 @@ export function ThreadShell({
   onToggleTheme = () => {},
   onOpenSettings = () => {},
   hideSidebarToggleOnDesktop = false,
+  onToggleRightRail,
+  rightRailOpen,
 }: ThreadShellProps) {
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
@@ -285,6 +289,8 @@ export function ThreadShell({
         onOpenSettings={onOpenSettings}
         hideSidebarToggleOnDesktop={hideSidebarToggleOnDesktop}
         minimal={!session && !loading}
+        onToggleRightRail={onToggleRightRail}
+        rightRailOpen={rightRailOpen}
       />
       <ThreadViewport
         messages={messages}

@@ -1,4 +1,4 @@
-import { Menu, Moon, PanelLeftOpen, Settings, Sun } from "lucide-react";
+import { Menu, Moon, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ interface ThreadHeaderProps {
   onOpenSettings: () => void;
   hideSidebarToggleOnDesktop?: boolean;
   minimal?: boolean;
+  onToggleRightRail?: () => void;
+  rightRailOpen?: boolean;
 }
 
 export function ThreadHeader({
@@ -22,6 +24,8 @@ export function ThreadHeader({
   onOpenSettings,
   hideSidebarToggleOnDesktop = false,
   minimal = false,
+  onToggleRightRail,
+  rightRailOpen = true,
 }: ThreadHeaderProps) {
   const { t } = useTranslation();
   if (minimal) {
@@ -110,6 +114,21 @@ export function ThreadHeader({
         >
           <Settings className="h-4 w-4" />
         </Button>
+        {onToggleRightRail && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Toggle right panel"
+            onClick={onToggleRightRail}
+            className="hidden h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground xl:inline-flex"
+          >
+            {rightRailOpen ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" />
+            )}
+          </Button>
+        )}
       </div>
 
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-4" />

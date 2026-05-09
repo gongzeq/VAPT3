@@ -12,7 +12,9 @@ import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
 const SIDEBAR_STORAGE_KEY = "secbot-webui.sidebar";
+const RIGHT_RAIL_STORAGE_KEY = "secbot-webui.right-rail";
 const SIDEBAR_WIDTH = 272;
+const RIGHT_RAIL_WIDTH = 320;
 type ShellView = "chat" | "settings";
 
 export interface ShellProps {
@@ -25,18 +27,29 @@ export interface ShellProps {
    */
   onOpenSettingsExternal?: () => void;
   /**
-   * Optional left rail rendered next to ThreadShell when view === "chat".
+   * Optional right rail rendered next to ThreadShell when view === "chat".
    * Hidden below xl: to avoid crushing the chat surface on narrow viewports;
    * the rail itself is purely presentational so dropping it on small screens
-   * never breaks core chat UX.
+   * never breaks core chat UX. Includes a collapse toggle button.
    */
-  leftRail?: React.ReactNode;
+  rightRail?: React.ReactNode;
 }
 
 function readSidebarOpen(): boolean {
   if (typeof window === "undefined") return true;
   try {
     const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw === "1";
+  } catch {
+    return true;
+  }
+}
+
+function readRightRailOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(RIGHT_RAIL_STORAGE_KEY);
     if (raw === null) return true;
     return raw === "1";
   } catch {
@@ -55,7 +68,7 @@ export function Shell({
   onModelNameChange,
   onLogout,
   onOpenSettingsExternal,
-  leftRail,
+  rightRail,
 }: ShellProps) {
   const { t, i18n } = useTranslation();
   const { theme, toggle } = useTheme();
@@ -65,6 +78,7 @@ export function Shell({
   const [desktopSidebarOpen, setDesktopSidebarOpen] =
     useState<boolean>(readSidebarOpen);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [rightRailOpen, setRightRailOpen] = useState<boolean>(readRightRailOpen);
   const [pendingDelete, setPendingDelete] = useState<{
     key: string;
     label: string;
@@ -81,6 +95,17 @@ export function Shell({
       // ignore storage errors (private mode, etc.)
     }
   }, [desktopSidebarOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        RIGHT_RAIL_STORAGE_KEY,
+        rightRailOpen ? "1" : "0",
+      );
+    } catch {
+      // ignore storage errors
+    }
+  }, [rightRailOpen]);
 
   useEffect(() => {
     if (activeKey) return;
@@ -240,16 +265,8 @@ export function Shell({
               onModelNameChange={onModelNameChange}
               onLogout={onLogout}
             />
-          ) : leftRail ? (
-            // Template §7.2 left-1/right-3 split. We use flex (not grid) so
-            // ThreadShell keeps its existing height model intact — the rail
-            // gets a fixed-ish width that approximates the 1:3 ratio on
-            // common laptop widths (1440–1920) without forcing ThreadShell
-            // to re-derive its scroll containers.
+          ) : rightRail ? (
             <div className="flex h-full min-h-0 flex-1">
-              <div className="hidden h-full w-[320px] shrink-0 border-r border-border/40 bg-background/40 xl:block">
-                {leftRail}
-              </div>
               <div className="flex h-full min-w-0 flex-1 flex-col">
                 <ThreadShell
                   session={activeSession}
@@ -262,8 +279,28 @@ export function Shell({
                   onToggleTheme={toggle}
                   onOpenSettings={onOpenSettings}
                   hideSidebarToggleOnDesktop={desktopSidebarOpen}
+                  onToggleRightRail={() => setRightRailOpen((v) => !v)}
+                  rightRailOpen={rightRailOpen}
                 />
               </div>
+              <aside
+                className={cn(
+                  "relative z-10 hidden shrink-0 overflow-hidden xl:block",
+                  "transition-[width] duration-300 ease-out",
+                )}
+                style={{ width: rightRailOpen ? RIGHT_RAIL_WIDTH : 0 }}
+              >
+                <div
+                  className={cn(
+                    "absolute inset-y-0 right-0 h-full overflow-hidden border-l border-border/40 bg-background/40",
+                    "transition-transform duration-300 ease-out",
+                    rightRailOpen ? "translate-x-0" : "translate-x-full",
+                  )}
+                  style={{ width: RIGHT_RAIL_WIDTH }}
+                >
+                  {rightRail}
+                </div>
+              </aside>
             </div>
           ) : (
             <ThreadShell
