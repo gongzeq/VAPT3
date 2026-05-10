@@ -80,3 +80,37 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: P0 Dashboard 聚合功能数据层+接口层完整交付
+
+**Date**: 2026-05-10
+**Task**: P0 Dashboard 聚合功能数据层+接口层完整交付
+**Branch**: `main`
+
+### Summary
+
+完成 P0 dashboard-aggregation 两轮交付。R1：CMDB 层扩展 Vulnerability 类目枚举 + Asset.tags 对齐，repo.py 新增 summary_counts/vuln_trend/vuln_distribution/asset_type_distribution/asset_cluster 5 组聚合，18 个单测。R2：websocket.py 注册 /api/dashboard/{summary,vuln-trend,vuln-distribution,asset-distribution,asset-cluster} + /api/agents?include_status=true，新增 broadcast_task_update/blackboard_update（1s 节流），ChannelManager/cli.commands 注入 subagent_manager/agent_registry，20 个 channels 单测。全仓 2393 passed，ruff clean。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8cc98d02` | (see git log) |
+| `fc88c8da` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
