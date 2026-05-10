@@ -137,10 +137,10 @@ export default {
         },
         "pulse-glow": {
           "0%, 100%": {
-            boxShadow: "0 0 0 0 hsl(var(--ocean-500) / 0.45)",
+            boxShadow: "0 0 18px hsl(210 100% 70% / 0.35)",
           },
           "50%": {
-            boxShadow: "0 0 24px 6px hsl(var(--ocean-500) / 0.0)",
+            boxShadow: "0 0 32px hsl(210 100% 70% / 0.65)",
           },
         },
         "fade-in-up": {

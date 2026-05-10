@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="secbot" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -86,13 +86,7 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("secbot-webui.theme");
-          var dark =
-            stored === "dark" ||
-            (!stored &&
-              window.matchMedia &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
+          document.documentElement.classList.add("dark");
         } catch {}
       })();
     </script>

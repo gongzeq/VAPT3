@@ -72,6 +72,12 @@
     --border-subtle: 230 14% 14%;      /* #1F2029 */
     --primary: 210 100% 56%;           /* #1E90FF — Dodger Blue */
     --primary-foreground: 230 20% 5%;
+    --secondary: 222 28% 14%;
+    --secondary-foreground: 220 10% 92%;
+    --muted: 222 28% 14%;
+    --muted-foreground: 210 16% 65%;
+    --accent: 222 28% 14%;
+    --accent-foreground: 220 10% 92%;
     --destructive: 0 100% 65%;         /* #FF4D4F (== Critical) */
     --destructive-foreground: 0 0% 100%;
     --text-primary: 220 10% 92%;
@@ -102,9 +108,9 @@
 
     /* Gradients / shadows / transitions — sourced from UI 模板 §3, retuned
        to the secbot 海蓝 primary so brand colour stays canonical. */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--ocean-500)), hsl(var(--cyan-glow)));
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
     --gradient-subtle:  linear-gradient(180deg, hsl(var(--background)), hsl(230 18% 9%));
-    --gradient-card:    linear-gradient(145deg, hsl(230 18% 11%), hsl(230 20% 7%));
+    --gradient-card:    linear-gradient(140deg, hsl(222 47% 11% / 0.95), hsl(210 32% 14% / 0.85));
     --shadow-elegant:   0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
     --shadow-glow:      0 0 40px hsl(var(--ocean-500) / 0.30);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -124,6 +130,13 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Override index.html hard-coded dark body colour so the theme tokens
+     (e.g. --background for [data-theme="secbot"]) are authoritative. */
+  html.dark body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 
   ::selection {
@@ -190,8 +203,26 @@
     transition: var(--transition-smooth);
   }
   .hover-lift:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-glow);
+    transform: translateY(-3px);
+    box-shadow: 0 16px 36px -12px hsl(var(--primary) / 0.45);
+  }
+  .gradient-card {
+    background: var(--gradient-card);
+  }
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+  .scroll-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .typing-dot {
+    animation: pulse 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
   }
 
   /* Subtle scrollbar that doesn't fight the dark background. */
