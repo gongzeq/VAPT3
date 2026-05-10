@@ -1,1 +1,11 @@
 {"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 索引，子任务开工前必读"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "P0 已落地、P1/P2 扩展需对齐的聚合查询契约"}
+{"file": ".trellis/spec/backend/report-meta.md", "reason": "P1 子任务核心：report_meta 表与 /api/reports 契约"}
+{"file": ".trellis/spec/backend/prompts-config.md", "reason": "P1 子任务：/api/prompts YAML 配置热加载规范"}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "CMDB schema 约束（asset.tags / vuln.category / report_meta）"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "P0/P2 WS 事件协议：task_update / blackboard_update / activity_event"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "P2 活动事件流依赖的扫描生命周期定义"}
+{"file": "webui/src/gap/dashboard-data.md", "reason": "前端 Dashboard 数据缺口清单（驱动 P0+P1 报告接入）"}
+{"file": "webui/src/gap/home-assistant-data.md", "reason": "前端智能助手数据缺口清单（驱动 P1 prompts/sessions）"}
+{"file": "webui/src/gap/realtime-stream.md", "reason": "实时流能力缺口，P2 通知中心 + activity_event 依据"}

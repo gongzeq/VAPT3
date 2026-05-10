@@ -114,3 +114,27 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 ### Next Steps
 
 - None - task complete
+
+---
+
+## 2026-05-10 · backend-api-gap-fill 父任务复盘 + PRD 修正
+
+**Context**: `/trellis-continue` 恢复工作，原 current task 指针失效；P0 子任务已归档（R1+R2 已合入 main）。选择父任务 `05-10-backend-api-gap-fill` 作为聚合入口。
+
+### Phase 1.3 完成
+- 父任务 status: planning → in_progress
+- `implement.jsonl` 策划 10 条（backend spec + 前端 gap 文档）
+- `check.jsonl` 策划 8 条（质量/错误/schema/DB 指南）
+- `task.py validate` 通过
+
+### PRD 复盘发现 5 项偏差 → 修正完成
+1. **父 PRD §Design Decisions #2**：类目枚举实际落地为 8 项（injection/auth/xss/misconfig/exposure/weak_password/cve/other），非 PRD 声称的 4 项。修正锁定 P1/P2 不再扩展枚举。
+2. **P1 PRD §Contracts #3**：补"session archived 字段前置存储层改动"（当前 session/manager.py 未定义此属性）+ 验收项加一条。
+3. **P2 PRD §AC**：`on_vulnerability_insert` hook 不存在 → 改写为"在 insert_vulnerability 末尾直接 publish"，避免引入 observer 抽象。
+4. **P2 PRD §AC**：`activity_event` 广播明确复用 P0 R2 的 `broadcast_task_update` 节流模板（1s/event/scope）+ `WebSocketChannel` 依赖注入风格。
+5. **P2 PRD §Out of Scope**：前端 Navbar 铃铛/事件流面板显式划给 webui 侧后续任务，本任务 DoD 仅覆盖后端接口 + WS 契约。
+
+### Next Steps
+- 选择下一个启动的子任务（P1 或 P2），执行其 1.3 curate + 1.4 start 进入 Phase 2。
+- P1 前置：需要在 brainstorm 或实施起始确认 session 文件 schema 兼容策略（读旧文件不报错）。
+- P2 前置：需核对 `broadcast_task_update` 当前接口是否对 `activity_event` 类事件足够通用，或需要小重构。

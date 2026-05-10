@@ -1,1 +1,9 @@
 {"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 索引"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "通用后端质量核验清单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "新接口错误响应规范"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "P0 已合并，回归保护契约"}
+{"file": ".trellis/spec/backend/report-meta.md", "reason": "P1 report_meta 完工核验"}
+{"file": ".trellis/spec/backend/prompts-config.md", "reason": "P1 prompts 热加载核验"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "WS 事件负载/节流核验"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Alembic migration + SQLite 索引核验"}

@@ -17,7 +17,7 @@
 ## Design Decisions（已在 brainstorm 锁定）
 
 1. **Asset 业务系统 / 资产类型**：复用现有 `asset.tags: JSON`，资产发现 agent 写入 `{"system": "CRM", "type": "web_app"}`，不新增列。
-2. **Vulnerability.category 扩展**：直接扩展 `VALID_VULN_CATEGORIES` 枚举，新增 `injection / auth / xss / other`，统一一级分类。
+2. **Vulnerability.category 扩展**（P0 已落地）：`VALID_VULN_CATEGORIES` 现为 **8 项**权威枚举 — `injection / auth / xss / misconfig / exposure / weak_password / cve / other`（见 `secbot/cmdb/models.py::VALID_VULN_CATEGORIES`，P0 R1 提交 8cc98d02）。P1/P2 **不再扩展枚举**，仅消费已落地类目；分布聚合 order 与折叠逻辑以 `.trellis/spec/backend/dashboard-aggregation.md` 为准（`cve+weak_password<5` 折叠 `other`）。
 3. **KPI 卡片无合规等级字段**：当前 mock 仅有 6 项（活跃任务/已完成扫描/高危漏洞/资产总量/待处理告警/智能体在线），`/api/dashboard/summary` 仅返回这 6 项必要字段，不下发 compliance_grade/score。
 4. **Report 持久化**：新增 `report_meta` 表（Alembic migration），Orchestrator 在报告生成完成后写入元数据。
 5. **快捷指令**：新增 `GET /api/prompts` 从 YAML 配置读取（`secbot/config/prompts.yaml`），不入库。

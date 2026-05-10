@@ -74,6 +74,8 @@
 
 ### 3. `GET /api/sessions?q=&archived=0|1&limit=&offset=`
 
+**前置存储层改动**：当前 `secbot/session/manager.py` 未定义 session 级 `archived` 属性（仅在日志字符串出现）。本任务需在 session 元数据中新增 `archived: bool`（默认 `false`）字段，持久化到既有 session 文件头（兼容旧文件：读不到该字段时视为 `false`，不触发 migration）。
+
 在现有 `_handle_sessions_list` 基础上：
 - `q`：对 `title / last_message` 做 LIKE 模糊匹配。
 - `archived`：`0` 仅返回未归档（默认），`1` 仅归档，省略返回全部。
@@ -109,6 +111,7 @@
 - [ ] 新增 Alembic migration：创建 `report_meta` 表 + 2 个索引；`alembic upgrade head` 在全新 SQLite 成功。
 - [ ] `secbot/cmdb/repo.py` 新增 `insert_report_meta()` / `list_reports()` / `get_report()`。
 - [ ] Orchestrator 在 `build_report_model` 完成后写入 report_meta（可通过现有调用点 hook 注入）。
+- [ ] `secbot/session/manager.py` 新增 `archived: bool` 元数据字段；旧 session 文件兼容读取（不存在时视为未归档）。
 - [ ] 会话扩展参数向后兼容：不带参数调用返回形态与当前一致。
 - [ ] 归档接口支持幂等；对不存在的 session 返回 `404`。
 - [ ] `/api/prompts` YAML 缺失时返回 `200` 空数组（非 500），记录 warning 日志。
