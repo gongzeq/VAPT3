@@ -25,9 +25,24 @@ function titleFor(s: ChatSummary, fallbackTitle: string): string {
   if (p) {
     // Collapse newlines so the sidebar line never wraps.
     const oneLine = p.replace(/\s+/g, " ");
-    return [...oneLine].length > 8 ? `${[...oneLine].slice(0, 8).join("")}…` : oneLine;
+    return oneLine.length > 24 ? `${oneLine.slice(0, 21)}…` : oneLine;
   }
   return fallbackTitle;
+}
+
+function formatTimeLabel(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (d >= startOfToday) {
+    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+  const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+  if (d >= startOfYesterday) {
+    return "昨天";
+  }
+  return d.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
 export function ChatList({
@@ -63,44 +78,60 @@ export function ChatList({
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-3 px-2 py-1.5">
+      <div className="px-2 py-1.5">
         {groups.map((group) => (
           <section key={group.label} aria-label={group.label}>
-            <div className="px-2 pb-1 text-[12px] font-medium text-muted-foreground/65">
+            <div className="mt-5 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
               {group.label}
             </div>
-            <ul className="space-y-0.5">
+            <ul className="mt-1 space-y-1">
               {group.sessions.map((s) => {
                 const active = s.key === activeKey;
                 const title = titleFor(
                   s,
-                  t("chat.fallbackTitle", { id: s.chatId.slice(0, 6) }),
+                  t("chat.newChat", { defaultValue: "新对话" }),
                 );
+                const timeLabel = formatTimeLabel(s.updatedAt ?? s.createdAt);
                 return (
                   <li key={s.key}>
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => onSelect(s.key)}
                       className={cn(
-                        "group flex min-h-8 items-center gap-2 rounded-xl px-2 text-[13px] transition-colors",
+                        "group relative w-full rounded-lg px-3 py-2.5 text-left transition-colors",
                         active
-                          ? "bg-sidebar-accent/70 text-sidebar-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.28)]"
-                          : "text-sidebar-foreground/82 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                          ? "border border-primary/30 bg-primary/10"
+                          : "hover:bg-white/5",
                       )}
                     >
-                      <button
-                        type="button"
-                        onClick={() => onSelect(s.key)}
-                        className="min-w-0 flex-1 py-1.5 text-left"
-                      >
-                        <span className="block w-full truncate font-medium leading-5">{title}</span>
-                      </button>
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={cn(
+                            "truncate text-sm font-medium",
+                            active ? "text-primary" : "text-foreground",
+                          )}
+                        >
+                          {title}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {timeLabel}
+                        </span>
+                      </div>
+                      {s.preview && (
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {s.preview}
+                        </p>
+                      )}
                       <DropdownMenu modal={false}>
                         <DropdownMenuTrigger
                           className={cn(
-                            "inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/75",
-                            "hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                            "focus-visible:text-sidebar-foreground",
+                            "absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/75 opacity-0 transition-opacity",
+                            "hover:bg-white/5 hover:text-foreground group-hover:opacity-100",
+                            "focus-visible:opacity-100",
+                            active && "opacity-100",
                           )}
                           aria-label={t("chat.actions", { title })}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </DropdownMenuTrigger>
@@ -119,7 +150,7 @@ export function ChatList({
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </div>
+                    </button>
                   </li>
                 );
               })}
