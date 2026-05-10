@@ -7,7 +7,6 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useSessions } from "@/hooks/useSessions";
-import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
@@ -32,7 +31,7 @@ export interface ShellProps {
    * the rail itself is purely presentational so dropping it on small screens
    * never breaks core chat UX. Includes a collapse toggle button.
    */
-  rightRail?: React.ReactNode;
+  rightRail?: (props: { onToggleSidebar: () => void }) => React.ReactNode;
 }
 
 function readSidebarOpen(): boolean {
@@ -71,7 +70,6 @@ export function Shell({
   rightRail,
 }: ShellProps) {
   const { t, i18n } = useTranslation();
-  const { theme, toggle } = useTheme();
   const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [view, setView] = useState<ShellView>("chat");
@@ -221,17 +219,18 @@ export function Shell({
   };
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden">
+    <div className="relative flex h-full w-full gap-6 overflow-hidden p-6">
+      {/* Desktop Sidebar */}
       <aside
         className={cn(
-          "relative z-20 hidden shrink-0 overflow-hidden lg:block",
+          "relative z-20 hidden shrink-0 overflow-hidden rounded-2xl border border-border gradient-card lg:block",
           "transition-[width] duration-300 ease-out",
         )}
         style={{ width: desktopSidebarOpen ? SIDEBAR_WIDTH : 0 }}
       >
         <div
           className={cn(
-            "absolute inset-y-0 left-0 h-full overflow-hidden bg-sidebar shadow-inner-right",
+            "absolute inset-y-0 left-0 h-full overflow-hidden",
             "transition-transform duration-300 ease-out",
             desktopSidebarOpen ? "translate-x-0" : "-translate-x-full",
           )}
@@ -255,12 +254,11 @@ export function Shell({
         </SheetContent>
       </Sheet>
 
-      <main className="flex h-full min-w-0 flex-1 flex-col">
+      {/* Main chat area */}
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border gradient-card">
         <ErrorBoundary>
           {view === "settings" ? (
             <SettingsView
-              theme={theme}
-              onToggleTheme={toggle}
               onBackToChat={() => setView("chat")}
               onModelNameChange={onModelNameChange}
               onLogout={onLogout}
@@ -275,32 +273,12 @@ export function Shell({
                   onNewChat={onNewChat}
                   onCreateChat={onCreateChat}
                   onTurnEnd={onTurnEnd}
-                  theme={theme}
-                  onToggleTheme={toggle}
                   onOpenSettings={onOpenSettings}
                   hideSidebarToggleOnDesktop={desktopSidebarOpen}
                   onToggleRightRail={() => setRightRailOpen((v) => !v)}
                   rightRailOpen={rightRailOpen}
                 />
               </div>
-              <aside
-                className={cn(
-                  "relative z-10 hidden shrink-0 overflow-hidden xl:block",
-                  "transition-[width] duration-300 ease-out",
-                )}
-                style={{ width: rightRailOpen ? RIGHT_RAIL_WIDTH : 0 }}
-              >
-                <div
-                  className={cn(
-                    "absolute inset-y-0 right-0 h-full overflow-hidden border-l border-border/40 bg-background/40",
-                    "transition-transform duration-300 ease-out",
-                    rightRailOpen ? "translate-x-0" : "translate-x-full",
-                  )}
-                  style={{ width: RIGHT_RAIL_WIDTH }}
-                >
-                  {rightRail}
-                </div>
-              </aside>
             </div>
           ) : (
             <ThreadShell
@@ -310,14 +288,34 @@ export function Shell({
               onNewChat={onNewChat}
               onCreateChat={onCreateChat}
               onTurnEnd={onTurnEnd}
-              theme={theme}
-              onToggleTheme={toggle}
               onOpenSettings={onOpenSettings}
               hideSidebarToggleOnDesktop={desktopSidebarOpen}
             />
           )}
         </ErrorBoundary>
       </main>
+
+      {/* Right Rail */}
+      {rightRail && (
+        <aside
+          className={cn(
+            "relative z-10 hidden shrink-0 overflow-hidden rounded-2xl border border-border gradient-card xl:block",
+            "transition-[width] duration-300 ease-out",
+          )}
+          style={{ width: rightRailOpen ? RIGHT_RAIL_WIDTH : 0 }}
+        >
+          <div
+            className={cn(
+              "absolute inset-y-0 right-0 h-full overflow-hidden",
+              "transition-transform duration-300 ease-out",
+              rightRailOpen ? "translate-x-0" : "translate-x-full",
+            )}
+            style={{ width: RIGHT_RAIL_WIDTH }}
+          >
+            {rightRail?.({ onToggleSidebar: toggleSidebar })}
+          </div>
+        </aside>
+      )}
 
       <DeleteConfirm
         open={!!pendingDelete}

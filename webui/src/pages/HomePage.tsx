@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { Navbar } from "@/components/Navbar";
 import { PromptSuggestions } from "@/components/PromptSuggestions";
 import { Shell } from "@/components/Shell";
 
@@ -24,12 +25,19 @@ export interface HomePageProps {
 export function HomePage({ onModelNameChange, onLogout }: HomePageProps) {
   const navigate = useNavigate();
   return (
-    <Shell
-      onModelNameChange={onModelNameChange}
-      onLogout={onLogout}
-      onOpenSettingsExternal={() => navigate("/settings")}
-      rightRail={<PromptSuggestions />}
-    />
+    <div className="flex h-screen w-full flex-col overflow-hidden">
+      <Navbar />
+      <div className="flex-1 overflow-hidden">
+        <Shell
+          onModelNameChange={onModelNameChange}
+          onLogout={onLogout}
+          onOpenSettingsExternal={() => navigate("/settings")}
+          rightRail={({ onToggleSidebar }) => (
+            <PromptSuggestions onToggleSidebar={onToggleSidebar} />
+          )}
+        />
+      </div>
+    </div>
   );
 }
 

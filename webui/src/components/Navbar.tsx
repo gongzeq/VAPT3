@@ -1,111 +1,129 @@
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, ListChecks, Settings as SettingsIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Bell,
+  LayoutDashboard,
+  ListChecks,
+  Menu,
+  MessageSquare,
+  Settings,
+} from "lucide-react";
+
+import { useClient } from "@/providers/ClientProvider";
 import { cn } from "@/lib/utils";
+import type { ConnectionStatus } from "@/lib/types";
 
-/**
- * Sticky top navigation shared by secondary pages (Dashboard / TaskDetail /
- * Settings). The chat HomePage continues to use ThreadShell's own header so
- * the conversation surface keeps its tight, app-like chrome.
- *
- * Layout follows UI/UI-UX建设模版.md §6.1: sticky h-16 + backdrop-blur, with
- * a Shield-style logo tile on the left and a route menu + settings entry on
- * the right. Brand text logo uses the asset committed in PR1.
- */
-
-type NavItem = {
-  to: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
+const NAV_ITEMS = [
+  { to: "/", label: "智能助手", icon: MessageSquare },
+  { to: "/dashboard", label: "大屏分析", icon: LayoutDashboard },
+  { to: "/tasks", label: "任务详情", icon: ListChecks },
+  { to: "/settings", label: "设置", icon: Settings },
+];
 
 export interface NavbarProps {
-  /** Optional page-specific title/badge slotted next to the brand. */
+  /** Kept for backward compat; no longer rendered in the new global nav. */
   title?: React.ReactNode;
-  /** Optional trailing slot (e.g. action buttons) rendered before the settings entry. */
+  /** Kept for backward compat. */
   trailing?: React.ReactNode;
-  /** Hide the route menu (used on minimal pages such as TaskDetail headers). */
+  /** Kept for backward compat. */
   hideRouteMenu?: boolean;
 }
 
-export function Navbar({ title, trailing, hideRouteMenu = false }: NavbarProps) {
+export function Navbar(_props: NavbarProps) {
   const { t } = useTranslation();
+  const { client } = useClient();
   const location = useLocation();
+  const [status, setStatus] = useState<ConnectionStatus>(client.status);
 
-  const items: NavItem[] = [
-    { to: "/", label: t("nav.home", { defaultValue: "对话" }), icon: ListChecks },
-    {
-      to: "/dashboard",
-      label: t("nav.dashboard", { defaultValue: "大屏" }),
-      icon: LayoutDashboard,
-    },
-  ];
+  useEffect(() => client.onStatus(setStatus), [client]);
+
+  const isOpen = status === "open";
+  const statusLabel = isOpen
+    ? "WS · 已连接"
+    : t(`connection.${status}`, { defaultValue: status });
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/50 bg-background/80 backdrop-blur-md">
-      <div className="container flex h-16 items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link to="/" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <img
-                src="/brand/logo.png"
-                alt=""
-                aria-hidden
-                className="h-5 w-5 object-contain"
-                draggable={false}
-              />
-            </span>
-            <picture className="hidden md:block">
-              <img
-                src="/brand/text-logo.png"
-                alt={t("app.brand", { defaultValue: "海盾智能体管控台" })}
-                className="h-5 w-auto select-none object-contain opacity-95"
-                draggable={false}
-              />
-            </picture>
-          </Link>
-          {title ? (
-            <div className="ml-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-              <span className="text-border/70">/</span>
-              <div className="truncate text-foreground">{title}</div>
-            </div>
-          ) : null}
+    <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-6 px-6">
+        {/* Mobile hamburger */}
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-primary lg:hidden"
+          aria-label={t("thread.header.toggleSidebar")}
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        {/* Logo */}
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/brand/logo.png"
+            alt=""
+            className="h-9 w-9 rounded-lg ring-1 ring-primary/30"
+            draggable={false}
+          />
+          <img
+            src="/brand/text-logo.png"
+            alt="海盾"
+            className="hidden h-7 md:block"
+            draggable={false}
+          />
         </div>
 
-        <div className="flex items-center gap-2">
-          {!hideRouteMenu && (
-            <nav className="hidden items-center gap-1 md:flex">
-              {items.map((item) => {
-                const Icon = item.icon;
-                const active =
-                  item.to === "/"
-                    ? location.pathname === "/"
-                    : location.pathname.startsWith(item.to);
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={cn(
-                      "inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm transition-colors",
-                      active
-                        ? "bg-accent text-accent-foreground"
-                        : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {item.label}
-                  </NavLink>
-                );
-              })}
-            </nav>
-          )}
-          {trailing}
-          <Link to="/settings" aria-label={t("nav.settings", { defaultValue: "设置" })}>
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <SettingsIcon className="h-4 w-4" />
-            </Button>
-          </Link>
+        {/* Nav links */}
+        <nav className="ml-4 hidden items-center gap-1 md:flex">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active =
+              item.to === "/"
+                ? location.pathname === "/"
+                : location.pathname.startsWith(item.to);
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                  active
+                    ? "gradient-primary font-medium text-white shadow-md"
+                    : "text-muted-foreground hover:bg-white/5 hover:text-white",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <div className="flex-1" />
+
+        {/* Right section */}
+        <div className="hidden items-center gap-2 md:flex">
+          {/* WS status */}
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full animate-pulse",
+                isOpen ? "bg-emerald-500" : "bg-muted-foreground",
+              )}
+            />
+            <span className="font-mono text-muted-foreground">
+              {statusLabel}
+            </span>
+          </div>
+
+          {/* Bell */}
+          <button
+            type="button"
+            className="rounded-lg border border-border bg-muted/40 p-2 transition hover:border-primary/40"
+            aria-label={t("nav.notifications", { defaultValue: "通知" })}
+          >
+            <Bell className="h-4 w-4 text-muted-foreground" />
+          </button>
+
+
         </div>
       </div>
     </header>
