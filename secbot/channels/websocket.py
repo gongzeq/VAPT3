@@ -17,7 +17,7 @@ import shutil
 import ssl
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import parse_qs, unquote, urlparse
@@ -677,6 +677,16 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/dashboard/asset-cluster":
             return await self._handle_dashboard_asset_cluster(request)
 
+        # Report metadata surface (spec: `.trellis/spec/backend/report-meta.md`).
+        # List + single-row detail endpoints read from the ``report_meta`` table
+        # populated by the report skill handlers.
+        if got == "/api/reports":
+            return await self._handle_reports_list(request)
+
+        m = re.match(r"^/api/reports/([^/]+)$", got)
+        if m:
+            return await self._handle_report_detail(request, m.group(1))
+
         # Expert-agent registry + optional runtime status. Backwards compatible
         # when called without ``include_status=true``.
         if got == "/api/agents":
@@ -1121,6 +1131,101 @@ class WebSocketChannel(BaseChannel):
             for system, levels in cluster.items()
         ]
         return _http_json_response({"clusters": clusters})
+
+    # -- Report metadata surface --------------------------------------------
+    #
+    # Spec: `.trellis/spec/backend/report-meta.md`. The table is populated by
+    # report skill handlers (markdown/docx/pdf); these two HTTP endpoints are
+    # read-only, ``actor_id``-scoped, and surface the list + single-row detail
+    # consumed by the dashboard's "Recent Reports" module.
+
+    def _serialise_report_row(
+        self, row: Any, *, include_download_url: bool
+    ) -> dict[str, Any]:
+        created_at = row.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        payload: dict[str, Any] = {
+            "id": row.id,
+            "scan_id": row.scan_id,
+            "title": row.title,
+            "type": row.type,
+            "status": row.status,
+            "critical_count": int(row.critical_count or 0),
+            "author": row.author,
+            "created_at": created_at.astimezone().isoformat(timespec="seconds"),
+        }
+        if include_download_url:
+            # Detail endpoint exposes the download route even when no file is
+            # attached; 404 surfaces later at fetch time.
+            payload["download_url"] = f"/api/reports/{row.id}/download"
+        return payload
+
+    async def _handle_reports_list(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        query = _parse_query(request.path)
+        range_ = (_query_first(query, "range") or "30d").strip() or "30d"
+        type_ = _query_first(query, "type") or None
+        status = _query_first(query, "status") or None
+
+        try:
+            limit = int(_query_first(query, "limit") or "50")
+            offset = int(_query_first(query, "offset") or "0")
+        except ValueError:
+            return _http_error(400, "limit/offset must be integers")
+        # Cap ``limit`` at a generous but finite value to keep responses bounded.
+        limit = max(0, min(limit, 500))
+        offset = max(0, offset)
+
+        try:
+            async with get_session() as session:
+                rows, total = await repo.list_reports(
+                    session,
+                    DEFAULT_ACTOR,
+                    range_=range_,
+                    type=type_,
+                    status=status,
+                    limit=limit,
+                    offset=offset,
+                )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("reports.list: db error")
+            return _http_error(500, "reports unavailable")
+
+        items = [
+            self._serialise_report_row(r, include_download_url=False) for r in rows
+        ]
+        return _http_json_response(
+            {"items": items, "total": total, "limit": limit, "offset": offset}
+        )
+
+    async def _handle_report_detail(
+        self, request: WsRequest, report_id: str
+    ) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        try:
+            async with get_session() as session:
+                row = await repo.get_report(session, DEFAULT_ACTOR, report_id)
+        except Exception:
+            self.logger.exception("reports.detail: db error")
+            return _http_error(500, "report unavailable")
+        if row is None:
+            return _http_error(404, "report not found")
+        return _http_json_response(
+            self._serialise_report_row(row, include_download_url=True)
+        )
 
     # -- Agent registry + runtime status ------------------------------------
 

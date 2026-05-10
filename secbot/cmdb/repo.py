@@ -25,11 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from secbot.cmdb.models import (
     DEFAULT_ACTOR,
+    REPORT_STATUS_TRANSITIONS,
     VALID_ASSET_TYPES,
+    VALID_REPORT_STATUSES,
+    VALID_REPORT_TYPES,
     VALID_SCAN_STATUSES,
     VALID_SEVERITIES,
     VALID_VULN_CATEGORIES,
     Asset,
+    ReportMeta,
     Scan,
     Service,
     Vulnerability,
@@ -734,6 +738,212 @@ async def asset_cluster(
     return cluster
 
 
+# ---------------------------------------------------------------------------
+# Report metadata (report_meta)
+#
+# Contract: `.trellis/spec/backend/report-meta.md` + `cmdb-schema.md` §2.5.
+# One row per successful report render. All reads are ``actor_id`` scoped.
+# ---------------------------------------------------------------------------
+
+
+_REPORT_RANGE_DAYS: dict[str, Optional[int]] = {
+    "7d": 7,
+    "30d": 30,
+    "all": None,
+}
+
+
+def _format_report_id(created_at: datetime, seq: int) -> str:
+    """Format the public ``RPT-YYYY-MMDD-<seq>`` id.
+
+    Uses *local* time because operators read the id and expect the date to
+    match their wall-clock (same rationale as ``func.date(..., 'localtime')``
+    in the dashboard aggregations).
+    """
+
+    local = created_at.astimezone()
+    return f"RPT-{local.year:04d}-{local.month:02d}{local.day:02d}-{seq:03d}"
+
+
+async def _next_report_seq(
+    session: AsyncSession, actor_id: str, created_at: datetime
+) -> int:
+    """Return the 1-based sequence of the next report for this local date.
+
+    Per report-meta.md §3.2: ``seq = COUNT(*) WHERE DATE(created_at)=today``
+    (plus one). The formula is deliberately **not** partitioned by
+    ``actor_id`` — the display id is a public, globally-unique handle for
+    URL routing; v1 runs single-user so this keeps seq stable and avoids PK
+    collisions when multi-tenant lands.
+    """
+
+    del actor_id  # kept in signature for future per-actor display scoping
+    local_date = created_at.astimezone().date().isoformat()
+    date_expr = func.date(ReportMeta.created_at, "localtime")
+    stmt = (
+        select(func.count()).select_from(ReportMeta).where(date_expr == local_date)
+    )
+    current = int((await session.execute(stmt)).scalar() or 0)
+    return current + 1
+
+
+async def insert_report_meta(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scan_id: str,
+    title: str,
+    type: str,
+    author: str,
+    status: str = "published",
+    critical_count: int = 0,
+    download_path: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+) -> ReportMeta:
+    """Insert a ``report_meta`` row and return the persisted ORM object.
+
+    Validates ``type`` / ``status`` against the spec vocabularies. ``id`` is
+    auto-generated as ``RPT-YYYY-MMDD-<seq>`` where ``seq`` restarts per day
+    per actor.
+    """
+
+    if type not in VALID_REPORT_TYPES:
+        raise ValueError(
+            f"invalid report type {type!r}; expected one of {sorted(VALID_REPORT_TYPES)}"
+        )
+    if status not in VALID_REPORT_STATUSES:
+        raise ValueError(
+            f"invalid report status {status!r}; expected one of {sorted(VALID_REPORT_STATUSES)}"
+        )
+    if critical_count < 0:
+        raise ValueError("critical_count must be >= 0")
+
+    when = created_at or _utcnow()
+    seq = await _next_report_seq(session, actor_id, when)
+    rid = _format_report_id(when, seq)
+
+    row = ReportMeta(
+        id=rid,
+        scan_id=scan_id,
+        title=title,
+        type=type,
+        status=status,
+        critical_count=int(critical_count),
+        author=author,
+        download_path=download_path,
+        actor_id=actor_id or DEFAULT_ACTOR,
+        created_at=when,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def list_reports(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    range_: str = "30d",
+    type: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    now: Optional[datetime] = None,
+) -> tuple[list[ReportMeta], int]:
+    """Return ``(rows, total)`` for the ``/api/reports`` listing.
+
+    ``range_`` accepts ``'7d' | '30d' | 'all'``; unknown values raise
+    ``ValueError`` (HTTP layer maps to 400).
+    """
+
+    if range_ not in _REPORT_RANGE_DAYS:
+        raise ValueError(
+            f"invalid range {range_!r}; expected one of {sorted(_REPORT_RANGE_DAYS)}"
+        )
+    if type is not None and type not in VALID_REPORT_TYPES:
+        raise ValueError(
+            f"invalid report type {type!r}; expected one of {sorted(VALID_REPORT_TYPES)}"
+        )
+    if status is not None and status not in VALID_REPORT_STATUSES:
+        raise ValueError(
+            f"invalid report status {status!r}; expected one of {sorted(VALID_REPORT_STATUSES)}"
+        )
+    if limit < 0 or offset < 0:
+        raise ValueError("limit / offset must be non-negative")
+
+    base = select(ReportMeta).where(ReportMeta.actor_id == actor_id)
+    count_base = select(func.count()).select_from(ReportMeta).where(
+        ReportMeta.actor_id == actor_id
+    )
+
+    days = _REPORT_RANGE_DAYS[range_]
+    if days is not None:
+        now = now or _utcnow()
+        window_start = now - timedelta(days=days)
+        base = base.where(ReportMeta.created_at >= window_start)
+        count_base = count_base.where(ReportMeta.created_at >= window_start)
+    if type is not None:
+        base = base.where(ReportMeta.type == type)
+        count_base = count_base.where(ReportMeta.type == type)
+    if status is not None:
+        base = base.where(ReportMeta.status == status)
+        count_base = count_base.where(ReportMeta.status == status)
+
+    total = int((await session.execute(count_base)).scalar() or 0)
+    stmt = (
+        base.order_by(ReportMeta.created_at.desc(), ReportMeta.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = list((await session.execute(stmt)).scalars().all())
+    return rows, total
+
+
+async def get_report(
+    session: AsyncSession, actor_id: str, report_id: str
+) -> Optional[ReportMeta]:
+    stmt = select(ReportMeta).where(
+        ReportMeta.actor_id == actor_id, ReportMeta.id == report_id
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def update_report_status(
+    session: AsyncSession,
+    actor_id: str,
+    report_id: str,
+    *,
+    new_status: str,
+) -> ReportMeta:
+    """Transition a report to ``new_status``.
+
+    Enforces the state machine from report-meta.md §3.3. Raises
+    ``LookupError`` if the row does not exist for *actor_id*; ``ValueError``
+    when the transition is illegal.
+    """
+
+    if new_status not in VALID_REPORT_STATUSES:
+        raise ValueError(
+            f"invalid report status {new_status!r}; expected one of "
+            f"{sorted(VALID_REPORT_STATUSES)}"
+        )
+    row = await get_report(session, actor_id, report_id)
+    if row is None:
+        raise LookupError(
+            f"report {report_id!r} not found for actor {actor_id!r}"
+        )
+    if row.status == new_status:
+        return row
+    allowed = REPORT_STATUS_TRANSITIONS.get(row.status, frozenset())
+    if new_status not in allowed:
+        raise ValueError(
+            f"illegal report status transition: {row.status!r} -> {new_status!r}"
+        )
+    row.status = new_status
+    await session.flush()
+    return row
+
+
 __all__ = [
     # Scan
     "create_scan",
@@ -753,6 +963,11 @@ __all__ = [
     "vuln_distribution",
     "asset_type_distribution",
     "asset_cluster",
+    # Report meta
+    "insert_report_meta",
+    "list_reports",
+    "get_report",
+    "update_report_status",
     # Misc
     "new_ulid",
 ]

@@ -16,6 +16,7 @@ from secbot.report.builder import (
     ReportService,
     ReportSummary,
     build_report_model,
+    record_report_meta,
 )
 from secbot.report.render import render_docx, render_markdown, render_pdf
 
@@ -28,6 +29,7 @@ __all__ = [
     "ReportService",
     "ReportSummary",
     "build_report_model",
+    "record_report_meta",
     "render_docx",
     "render_markdown",
     "render_pdf",

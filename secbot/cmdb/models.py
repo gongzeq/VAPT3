@@ -174,6 +174,50 @@ class Vulnerability(Base):
     )
 
 
+class ReportMeta(Base):
+    """Persistent metadata row for a generated report.
+
+    Contract: `.trellis/spec/backend/report-meta.md` + `cmdb-schema.md` §2.5.
+    Written by each report skill handler (markdown/docx/pdf) **after** the
+    render artefacts have been flushed to ``~/.secbot/reports/`` — the
+    ``build_report_model`` helper remains pure per the spec §3.1 rule.
+    """
+
+    __tablename__ = "report_meta"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # RPT-YYYY-MMDD-<seq>
+    scan_id: Mapped[str] = mapped_column(
+        String, ForeignKey("scan.id", ondelete="RESTRICT"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, default="published", server_default="published"
+    )
+    critical_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    author: Mapped[str] = mapped_column(String, nullable=False)
+    download_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    actor_id: Mapped[str] = mapped_column(
+        String, nullable=False, default=DEFAULT_ACTOR, server_default=DEFAULT_ACTOR
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_report_meta_actor_status_created",
+            "actor_id",
+            "status",
+            "created_at",
+        ),
+        Index("ix_report_meta_scan", "scan_id"),
+    )
+
+
 VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info"})
 VALID_SCAN_STATUSES = frozenset(
     {"queued", "running", "awaiting_user", "completed", "failed", "cancelled"}
@@ -198,3 +242,21 @@ VALID_VULN_CATEGORIES = frozenset(
 VALID_ASSET_TYPES = frozenset(
     {"web_app", "api", "database", "server", "network", "other"}
 )
+
+# Allowed ``report_meta.type`` / ``report_meta.status`` values.
+# Spec: `.trellis/spec/backend/report-meta.md` §2.
+VALID_REPORT_TYPES = frozenset(
+    {"compliance_monthly", "vuln_summary", "asset_inventory", "custom"}
+)
+VALID_REPORT_STATUSES = frozenset(
+    {"published", "pending_review", "editing", "archived"}
+)
+
+# Legal status transitions per report-meta.md §3.3. Enforced at the repo layer
+# (``update_report_status``); insert_report_meta may set any starting state.
+REPORT_STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
+    "editing": frozenset({"pending_review", "published"}),
+    "pending_review": frozenset({"published"}),
+    "published": frozenset({"archived"}),
+    "archived": frozenset({"published"}),
+}

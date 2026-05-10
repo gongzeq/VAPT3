@@ -5,6 +5,7 @@ See spec §2 (ReportModel schema). All datetimes are UTC.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -18,6 +19,8 @@ from secbot.cmdb.repo import (
     list_services,
     list_vulnerabilities,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
@@ -175,3 +178,52 @@ async def build_report_model(
         assets=assets,
         appendix=appendix,
     )
+
+
+async def record_report_meta(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    model: ReportModel,
+    title: str,
+    type: str,
+    download_path: Optional[str],
+    author: Optional[str] = None,
+    status: str = "published",
+) -> Optional[str]:
+    """Best-effort insert into ``report_meta`` after a successful render.
+
+    Contract: `.trellis/spec/backend/report-meta.md` §3.1 — persistence is the
+    caller's concern (not ``build_report_model``'s). This helper centralises
+    the repo call so each skill handler stays two lines, while matching the
+    "log warning, do not roll back the render" rule.
+
+    Returns the generated ``RPT-...`` id on success, or ``None`` when the
+    insert fails.
+    """
+
+    # Local import avoids a module-load cycle (repo → models → migrations).
+    from secbot.cmdb import repo
+
+    critical_count = int(model.summary.severity_counts.get("critical", 0))
+    try:
+        row = await repo.insert_report_meta(
+            session,
+            actor_id or DEFAULT_ACTOR,
+            scan_id=model.scan_id,
+            title=title,
+            type=type,
+            author=author or actor_id or DEFAULT_ACTOR,
+            status=status,
+            critical_count=critical_count,
+            download_path=download_path,
+        )
+    except Exception:
+        _logger.warning(
+            "record_report_meta failed: scan_id=%s title=%r",
+            model.scan_id,
+            title,
+            exc_info=True,
+        )
+        return None
+    return row.id
