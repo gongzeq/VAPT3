@@ -136,12 +136,26 @@ export function useSessions(): {
   const [error, setError] = useState<string | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  /** Keys of optimistically-inserted sessions so ``refresh()`` does not
+   * wipe them before the server has persisted them. */
+  const optimisticKeysRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
       const rows = await listSessions(tokenRef.current);
-      setSessions(rows);
+      setSessions((prev) => {
+        const serverKeys = new Set(rows.map((r) => r.key));
+        // Keep optimistic sessions that the server has not returned yet.
+        const kept = prev.filter((s) => {
+          if (serverKeys.has(s.key)) {
+            optimisticKeysRef.current.delete(s.key);
+            return false;
+          }
+          return optimisticKeysRef.current.has(s.key);
+        });
+        return [...kept, ...rows];
+      });
       setError(null);
     } catch (e) {
       const msg =
@@ -159,6 +173,7 @@ export function useSessions(): {
   const createChat = useCallback(async (): Promise<string> => {
     const chatId = await client.newChat();
     const key = `websocket:${chatId}`;
+    optimisticKeysRef.current.add(key);
     // Optimistic insert; a subsequent refresh will replace it with the
     // authoritative row once the server persists the session.
     setSessions((prev) => [
