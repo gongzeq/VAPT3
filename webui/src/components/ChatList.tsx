@@ -94,11 +94,18 @@ export function ChatList({
                 const timeLabel = formatTimeLabel(s.updatedAt ?? s.createdAt);
                 return (
                   <li key={s.key}>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onSelect(s.key)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelect(s.key);
+                        }
+                      }}
                       className={cn(
-                        "group relative w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                        "group relative w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-colors",
                         active
                           ? "border border-primary/30 bg-primary/10"
                           : "hover:bg-white/5",
@@ -150,7 +157,7 @@ export function ChatList({
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </button>
+                    </div>
                   </li>
                 );
               })}
