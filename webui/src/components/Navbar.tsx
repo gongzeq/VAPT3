@@ -10,7 +10,13 @@ import {
   Settings,
 } from "lucide-react";
 
-import { useClient } from "@/providers/ClientProvider";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { NotificationPanel } from "@/components/NotificationPanel";
+import { useClient, useUnread } from "@/providers/ClientProvider";
 import { cn } from "@/lib/utils";
 import type { ConnectionStatus } from "@/lib/types";
 
@@ -32,9 +38,11 @@ export interface NavbarProps {
 
 export function Navbar(_props: NavbarProps) {
   const { t } = useTranslation();
-  const { client } = useClient();
+  const { client, token } = useClient();
+  const unread = useUnread();
   const location = useLocation();
   const [status, setStatus] = useState<ConnectionStatus>(client.status);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => client.onStatus(setStatus), [client]);
 
@@ -42,6 +50,10 @@ export function Navbar(_props: NavbarProps) {
   const statusLabel = isOpen
     ? "WS · 已连接"
     : t(`connection.${status}`, { defaultValue: status });
+
+  // Badge caps at ``99+`` so a runaway backend never blows the pill layout.
+  const unreadDisplay =
+    unread.unreadCount > 99 ? "99+" : String(unread.unreadCount);
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -114,16 +126,47 @@ export function Navbar(_props: NavbarProps) {
             </span>
           </div>
 
-          {/* Bell */}
-          <button
-            type="button"
-            className="rounded-lg border border-border bg-muted/40 p-2 transition hover:border-primary/40"
-            aria-label={t("nav.notifications", { defaultValue: "通知" })}
-          >
-            <Bell className="h-4 w-4 text-muted-foreground" />
-          </button>
-
-
+          {/* Bell + notification panel */}
+          <DropdownMenu open={panelOpen} onOpenChange={setPanelOpen}>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="relative rounded-lg border border-border bg-muted/40 p-2 transition hover:border-primary/40"
+                aria-label={t("nav.notifications", { defaultValue: "通知" })}
+                data-testid="notification-bell"
+              >
+                <Bell className="h-4 w-4 text-muted-foreground" />
+                {unread.unreadCount > 0 && (
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-none text-white shadow-md",
+                      unreadDisplay.length > 2 ? "h-[18px]" : "h-[18px]",
+                    )}
+                    data-testid="notification-badge"
+                    aria-label={t("notifications.badgeAria", {
+                      count: unread.unreadCount,
+                      defaultValue: `${unread.unreadCount} 条未读通知`,
+                    })}
+                  >
+                    {unreadDisplay}
+                  </span>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="p-0"
+            >
+              <NotificationPanel
+                token={token}
+                open={panelOpen}
+                onClose={() => setPanelOpen(false)}
+                onDecrementUnread={unread.decrement}
+                onResetUnread={unread.reset}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

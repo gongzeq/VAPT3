@@ -212,6 +212,61 @@
   "common": {
     "dismiss": "Dismiss"
   },
+  "nav": {
+    "notifications": "Notifications"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "loading": "Loading…",
+    "empty": "No notifications",
+    "retry": "Retry",
+    "badgeAria": "{{count}} unread notifications",
+    "error": {
+      "network": "Network error, failed to load",
+      "401": "Session expired, please refresh",
+      "403": "Access denied",
+      "500": "Server error"
+    },
+    "kind": {
+      "critical_vuln": "Critical Vulnerability",
+      "scan_failed": "Scan Failed",
+      "scan_completed": "Scan Completed",
+      "high_risk_confirm": "High-risk Confirmation"
+    }
+  },
+  "activity": {
+    "title": "Activity Stream",
+    "subtitle": "Live agent activity on the ops display",
+    "empty": "No events yet",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "live": "Live",
+    "paused": "Paused",
+    "source": {
+      "weak_password": "Weak Password",
+      "port_scan": "Port Scan",
+      "asset_discovery": "Asset Discovery",
+      "report": "Report",
+      "orchestrator": "Orchestrator"
+    },
+    "category": {
+      "thought": "Thought",
+      "tool_call": "Call",
+      "tool_result": "Result"
+    },
+    "level": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Info",
+      "ok": "OK"
+    },
+    "error": {
+      "network": "Network error, failed to load",
+      "401": "Session expired",
+      "500": "Server error"
+    }
+  },
   "errors": {
     "messageTooBig": {
       "title": "Message too large",

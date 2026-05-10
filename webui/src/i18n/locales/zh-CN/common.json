@@ -200,6 +200,61 @@
   "common": {
     "dismiss": "关闭"
   },
+  "nav": {
+    "notifications": "通知"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部标记已读",
+    "loading": "加载中…",
+    "empty": "暂无通知",
+    "retry": "重试",
+    "badgeAria": "{{count}} 条未读通知",
+    "error": {
+      "network": "网络异常，加载失败",
+      "401": "登录已失效，请刷新页面",
+      "403": "无权访问",
+      "500": "服务端异常"
+    },
+    "kind": {
+      "critical_vuln": "严重漏洞",
+      "scan_failed": "扫描失败",
+      "scan_completed": "扫描完成",
+      "high_risk_confirm": "高危操作确认"
+    }
+  },
+  "activity": {
+    "title": "活动事件流",
+    "subtitle": "大屏实时智能体行为",
+    "empty": "暂无事件",
+    "loading": "加载中…",
+    "retry": "重试",
+    "live": "实时",
+    "paused": "已暂停",
+    "source": {
+      "weak_password": "弱口令",
+      "port_scan": "端口扫描",
+      "asset_discovery": "资产发现",
+      "report": "报告",
+      "orchestrator": "调度器"
+    },
+    "category": {
+      "thought": "思考",
+      "tool_call": "调用",
+      "tool_result": "结果"
+    },
+    "level": {
+      "critical": "严重",
+      "warning": "警告",
+      "info": "信息",
+      "ok": "正常"
+    },
+    "error": {
+      "network": "网络异常，加载失败",
+      "401": "登录已失效",
+      "500": "服务端异常"
+    }
+  },
   "errors": {
     "messageTooBig": {
       "title": "消息过大",
