@@ -702,6 +702,13 @@ class WebSocketChannel(BaseChannel):
         if m:
             return self._handle_session_delete(request, m.group(1))
 
+        # Archive toggle (P1/R2). Same GET-only constraint as ``/delete`` —
+        # the desired archived state rides on ``?archived=0|1`` instead of a
+        # JSON body. Idempotent and scoped to websocket: sessions.
+        m = re.match(r"^/api/sessions/([^/]+)/archive$", got)
+        if m:
+            return self._handle_session_archive(request, m.group(1))
+
         # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
         # payload decodes to a path inside :func:`get_media_dir`. See
         # :meth:`_sign_media_path` for the inverse direction used to build
@@ -806,7 +813,54 @@ class WebSocketChannel(BaseChannel):
             for s in sessions
             if isinstance(s.get("key"), str) and s["key"].startswith("websocket:")
         ]
-        return _http_json_response({"sessions": cleaned})
+
+        # R2 extensions (P1). Existing clients that don't pass any of ``q /
+        # archived / limit / offset`` still see the original response shape —
+        # we only *add* a ``total`` field and per-row ``archived`` (which is
+        # already injected upstream by SessionManager.list_sessions).
+        query = _parse_query(request.path)
+        q = (_query_first(query, "q") or "").strip().lower()
+        archived_raw = _query_first(query, "archived")
+        try:
+            limit = int(_query_first(query, "limit") or "50")
+            offset = int(_query_first(query, "offset") or "0")
+        except ValueError:
+            return _http_error(400, "limit/offset must be integers")
+        # Cap ``limit`` to keep responses bounded; mirrors /api/reports.
+        limit = max(0, min(limit, 500))
+        offset = max(0, offset)
+
+        # ``archived`` filter: ``0`` → only un-archived, ``1`` → only archived,
+        # anything else (including missing) → all rows. Treating missing as
+        # "all" preserves the legacy response where archived rows were mixed
+        # in with active ones.
+        if archived_raw == "0":
+            cleaned = [s for s in cleaned if not s.get("archived")]
+        elif archived_raw == "1":
+            cleaned = [s for s in cleaned if s.get("archived")]
+
+        if q:
+            def _match(row: dict[str, Any]) -> bool:
+                hay = " ".join(
+                    str(row.get(k) or "") for k in ("title", "preview", "key")
+                ).lower()
+                return q in hay
+            cleaned = [s for s in cleaned if _match(s)]
+
+        total = len(cleaned)
+        if offset:
+            cleaned = cleaned[offset:]
+        if limit:
+            cleaned = cleaned[:limit]
+
+        return _http_json_response(
+            {
+                "sessions": cleaned,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
+        )
 
     def _settings_payload(self, *, requires_restart: bool = False) -> dict[str, Any]:
         from secbot.config.loader import get_config_path, load_config
@@ -1584,6 +1638,39 @@ class WebSocketChannel(BaseChannel):
             return _http_error(404, "session not found")
         deleted = self._session_manager.delete_session(decoded_key)
         return _http_json_response({"deleted": bool(deleted)})
+
+    def _handle_session_archive(self, request: WsRequest, key: str) -> Response:
+        """Flip the ``archived`` flag on a websocket session.
+
+        Spec: ``GET /api/sessions/{key}/archive?archived=0|1`` (GET-only due
+        to the websockets HTTP parser; the PRD lists it as POST). Default is
+        ``archived=1`` so the minimal call archives. Idempotent: re-archiving
+        an already-archived session returns 200 with the same payload. 404 on
+        missing sessions keeps parity with ``/messages`` and ``/delete``.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._session_manager is None:
+            return _http_error(503, "session manager unavailable")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not self._is_webui_session_key(decoded_key):
+            return _http_error(404, "session not found")
+
+        query = _parse_query(request.path)
+        raw = (_query_first(query, "archived") or "1").strip().lower()
+        if raw in ("1", "true", "yes"):
+            archived = True
+        elif raw in ("0", "false", "no"):
+            archived = False
+        else:
+            return _http_error(400, "archived must be 0 or 1")
+
+        ok = self._session_manager.set_archived(decoded_key, archived)
+        if not ok:
+            return _http_error(404, "session not found")
+        return _http_json_response({"key": decoded_key, "archived": archived})
 
     def _serve_static(self, request_path: str) -> Response | None:
         """Resolve *request_path* against the built SPA directory; SPA fallback to index.html."""

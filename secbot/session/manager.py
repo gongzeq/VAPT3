@@ -485,6 +485,21 @@ class SessionManager:
             logger.warning("Failed to delete session file {}: {}", path, e)
             return False
 
+    def set_archived(self, key: str, archived: bool) -> bool:
+        """Flip the ``archived`` metadata flag on an existing session.
+
+        Returns ``True`` on success, ``False`` if no session file exists for
+        *key* (caller surfaces a 404). Idempotent: calling with the current
+        value still rewrites the file and bumps no other metadata.
+        """
+        path = self._get_session_path(key)
+        if not path.exists():
+            return False
+        session = self.get_or_create(key)
+        session.metadata["archived"] = bool(archived)
+        self.save(session)
+        return True
+
     def read_session_file(self, key: str) -> dict[str, Any] | None:
         """Load a session from disk without caching; intended for read-only HTTP endpoints.
 
@@ -551,12 +566,22 @@ class SessionManager:
                             key = data.get("key") or path.stem.replace("_", ":", 1)
                             metadata = data.get("metadata", {})
                             title = metadata.get("title") if isinstance(metadata, dict) else None
+                            # ``archived`` is an opt-in metadata flag (P1/R2):
+                            # old session files predating archive semantics
+                            # simply have no ``archived`` key → treated as
+                            # un-archived. No migration is required.
+                            archived = (
+                                bool(metadata.get("archived"))
+                                if isinstance(metadata, dict)
+                                else False
+                            )
                             preview = self._first_user_preview(f)
                             sessions.append({
                                 "key": key,
                                 "created_at": data.get("created_at"),
                                 "updated_at": data.get("updated_at"),
                                 "title": title if isinstance(title, str) else "",
+                                "archived": archived,
                                 "preview": preview,
                                 "path": str(path)
                             })
@@ -572,6 +597,7 @@ class SessionManager:
                             if isinstance(repaired.metadata.get("title"), str)
                             else ""
                         ),
+                        "archived": bool(repaired.metadata.get("archived")),
                         "preview": self._first_user_preview_from_messages(
                             repaired.messages
                         ),
