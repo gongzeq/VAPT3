@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "frontend hard rules: no raw hex, no new chart lib, destructive via AlertDialog"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "severity palette (critical/warning/info/ok) drives event-stream level dots and notification icons"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "before adding new hook/fetcher, scan api.ts/hooks for existing patterns (useNanobotStream/request<T>)"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "frontend-only PR but consumes backend contract; do not alter backend wire format"}
+{"file": ".trellis/tasks/archive/2026-05/05-10-p2-notification-activity/prd.md", "reason": "authoritative backend contract: /api/notifications* + /api/events + WS activity_event payload"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "WS envelope reference; verify activity_event follows {v,type,data} or legacy chat_id envelope before wiring subscriber"}
