@@ -1,0 +1,30 @@
+{
+  "id": "backend-api-gap-fill",
+  "name": "backend-api-gap-fill",
+  "title": "backend API gap fill for dashboard & assistant",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "shan",
+  "assignee": "shan",
+  "createdAt": "2026-05-10",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-10-p0-dashboard-aggregation",
+    "05-10-p1-report-session-prompts",
+    "05-10-p2-notification-activity"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "质量核验主依据：逐字段比对 5 个 REST 响应结构与 SQL 形态是否符合契约"}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "核验 Vulnerability.category 新枚举落位、asset.tags JSON 写入/读取路径是否一致"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "核验 task_update / blackboard_update 事件的 envelope、event 名称、字段集合、版本号"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "核验 /api/agents?include_status=true 向后兼容：不带参数时响应与旧版字节级一致"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "核验 WS 推送触发点是否覆盖所有 Scan 状态转移（queued/running/awaiting_user/completed/failed）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核验空数据/非法参数场景的响应码与错误体结构"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核验是否存在 repo 外的裸 SQL 或 ORM 越界访问"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核验新代码落位是否合规（聚合函数在 repo、路由在 channels/websocket.py）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核验命名、注释语言、禁用模式、导入顺序等基线规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核验新增聚合/广播处的日志级别与结构化字段是否符合规范"}
+{"file": ".trellis/tasks/05-10-p0-dashboard-aggregation/prd.md", "reason": "Acceptance Criteria 清单（5 端点 + 向后兼容 + 空数据 200 + 单测 3 份 + 前端 mock 切换）逐项对照"}

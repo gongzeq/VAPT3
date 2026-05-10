@@ -29,12 +29,27 @@ Represents a host or domain discovered by `asset_discovery`.
 | `ip` | TEXT | resolved IPv4/IPv6, may be NULL for un-resolved domain |
 | `hostname` | TEXT | reverse DNS or supplied hostname |
 | `os_guess` | TEXT | from nmap `-O` or banner heuristic |
-| `tags` | JSON | free-form list, e.g. `["web", "internal"]` |
+| `tags` | JSON | structured object. **Reserved keys** (see §2.1.1): `system` (business system), `type` (asset class). Free-form extras permitted. |
 | `actor_id` | TEXT NOT NULL DEFAULT `'local'` | **reserved for multi-user**, see §4 |
 | `created_at` | DATETIME NOT NULL | UTC |
 | `updated_at` | DATETIME NOT NULL | UTC, bumped on any field change |
 
 Indexes: `(actor_id, ip)`, `(actor_id, hostname)`, `(scan_id)`.
+
+#### 2.1.1 `asset.tags` reserved keys
+
+The `tags` JSON column doubles as a lightweight classification store. To keep dashboard aggregations cheap and consistent across agents, two keys are reserved:
+
+| Key | Type | Values | Source |
+|-----|------|--------|--------|
+| `system` | string | Business system name, e.g. `"CRM"`, `"ERP"`, `"官网"`, `"OA"`, `"支付"`, `"大数据"`, `"BI"`, `"内部工具"`. May be `null` when unknown. | `asset_discovery` classifies based on target hostname/domain rules or user-supplied scope. |
+| `type` | string | One of `"web_app" / "api" / "database" / "server" / "network" / "other"`. | `asset_discovery` sets based on open-port heuristics; `other` as fallback. |
+
+**Rules**
+
+- Aggregation queries (see [dashboard-aggregation.md](./dashboard-aggregation.md)) read via `json_extract(tags, '$.system')` / `'$.type'`. Assets without these keys are excluded from `asset-cluster` and counted as `other` in `asset-distribution`.
+- Reserved keys MUST NOT be used for free-form labels; use additional keys (e.g. `tags.labels`) for that.
+- Changing the accepted vocabulary requires updating this spec + dashboard-aggregation.md; the backend returns display names (e.g. `"Web 应用"`) directly so the frontend does not need a separate mapping table.
 
 ### 2.2 `service`
 
@@ -66,7 +81,7 @@ Represents a finding from `vuln_scan` / `weak_password` / `pentest`.
 | `asset_id` | INTEGER NOT NULL | FK → `asset.id` |
 | `service_id` | INTEGER | FK → `service.id`, nullable when not port-bound |
 | `severity` | TEXT NOT NULL | one of `critical`/`high`/`medium`/`low`/`info` (see [theme-tokens.md §2](../frontend/theme-tokens.md#2-severity-palette)) |
-| `category` | TEXT NOT NULL | `cve` / `weak_password` / `misconfig` / `exposure` |
+| `category` | TEXT NOT NULL | one of `cve` / `weak_password` / `misconfig` / `exposure` / `injection` / `auth` / `xss` / `other`. See §2.3.1 for grouping semantics. |
 | `title` | TEXT NOT NULL | human-readable |
 | `cve_id` | TEXT | nullable, e.g. `CVE-2024-1234` |
 | `evidence` | JSON | structured evidence (request, response snippet, credentials hash) |
@@ -76,6 +91,27 @@ Represents a finding from `vuln_scan` / `weak_password` / `pentest`.
 | `created_at` | DATETIME NOT NULL | |
 
 Indexes: `(actor_id, severity, created_at)`, `(asset_id)`.
+
+#### 2.3.1 `vulnerability.category` vocabulary
+
+A single flat enum, shared with `/api/dashboard/vuln-distribution`:
+
+| Value | Display name | Typical finding |
+|-------|--------------|-----------------|
+| `injection` | 注入 | SQLi / command injection / template injection |
+| `auth` | 认证缺陷 | broken auth, session fixation, privilege escalation |
+| `xss` | XSS | reflected / stored / DOM-based XSS |
+| `misconfig` | 配置错误 | weak TLS, exposed admin panel, default passwords at path level |
+| `exposure` | 敏感数据暴露 | credentials in response, backup file leak, .git/.svn exposure |
+| `weak_password` | 弱口令 | dictionary-hit credentials on SSH/RDP/SMB/etc. (produced by `weak_password` agent) |
+| `cve` | CVE | known CVE matched by fingerprint (produced by `vuln_scan` agent) |
+| `other` | 其他 | anything that does not fit above |
+
+**Rules**
+
+- `VALID_VULN_CATEGORIES` in `secbot/cmdb/models.py` MUST exactly match this list.
+- Discovery skills decide the category at insertion time; post-hoc reclassification requires an update migration.
+- New categories require an ADR + update to this spec + dashboard-aggregation.md.
 
 ### 2.4 `scan`
 
@@ -94,6 +130,25 @@ Tracks a single user-initiated scan task. See [scan-lifecycle.md](./scan-lifecyc
 | `created_at` | DATETIME NOT NULL | |
 
 Indexes: `(actor_id, status)`, `(actor_id, created_at DESC)`.
+
+### 2.5 `report_meta`
+
+Persistent metadata for generated reports (see [report-meta.md](./report-meta.md) for full contract and [report-pipeline.md](./report-pipeline.md) for the render path).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | TEXT PK | ULID-flavoured, formatted as `RPT-YYYY-MMDD-<seq>` at display layer |
+| `scan_id` | TEXT NOT NULL | FK → `scan.id` |
+| `title` | TEXT NOT NULL | human-readable |
+| `type` | TEXT NOT NULL | `compliance_monthly` / `vuln_summary` / `asset_inventory` / `custom` |
+| `status` | TEXT NOT NULL | `published` / `pending_review` / `editing` / `archived` |
+| `critical_count` | INTEGER NOT NULL DEFAULT 0 | denormalised snapshot taken at build time |
+| `author` | TEXT NOT NULL | actor_id of the triggering user/agent |
+| `download_path` | TEXT | relative to `~/.secbot/reports/`, may be NULL if only markdown rendered |
+| `actor_id` | TEXT NOT NULL DEFAULT `'local'` | |
+| `created_at` | DATETIME NOT NULL | |
+
+Indexes: `(actor_id, status, created_at DESC)`, `(scan_id)`.
 
 ---
 

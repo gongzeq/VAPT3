@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 导航索引，定位各契约文档入口"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "P0 核心契约：5 个 /api/dashboard/* 端点响应结构、SQL 形态、agent 运行时状态字段的唯一权威来源"}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "asset.tags.system/type 约定与 Vulnerability.category 枚举扩展（injection/auth/xss/other）来源；聚合 SQL 需据此 JSON extract"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "task_update / blackboard_update 事件的 wire envelope、channel 广播语义、版本字段要求"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Scan 状态机 + bus 事件：确定 task_update 在哪些状态转移点触发"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "/api/agents 响应形态基线；include_status=true 扩展必须保持向后兼容"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "统一错误响应结构，空数据场景需 200 + 空数组而非 500"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "CMDB 访问必须走 secbot/cmdb/repo.py，禁止裸 SQL；聚合函数应加在 repo 层"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增聚合函数/路由的代码落位规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码规范基线（命名、注释语言、forbidden patterns）"}
+{"file": "webui/src/gap/dashboard-data.md", "reason": "前端 Dashboard 数据缺口清单；契约字段必须严格对齐（kpiCards 6 项、riskTrend/vulnDistribution/assetDistribution/assetCluster）"}
+{"file": ".trellis/tasks/05-09-uiux-template-refactor/api-design.md", "reason": "§2-3 既有接口契约草案（全局鉴权/分页/时间戳/错误响应规范），本期遵循 §0 全局规范"}
+{"file": ".trellis/tasks/05-10-backend-api-gap-fill/prd.md", "reason": "父任务 PRD：Design Decisions（asset.tags 复用、Vulnerability.category 扩展、KPI 6 项不含合规等级等）的锁定决议"}
