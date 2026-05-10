@@ -2,14 +2,16 @@ import { useTranslation } from "react-i18next";
 import {
   Activity,
   AlertTriangle,
+  Bug,
   CheckCircle2,
-  Search,
-  ShieldAlert,
-  Sparkles,
-  Wand2,
+  FileText,
+  Key,
+  Loader,
+  PanelLeftClose,
+  Radar,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,30 +35,40 @@ export interface ComposerPrefillDetail {
 interface PromptDef {
   /** i18n key under `home.prompts.<key>` (with defaultValue fallback). */
   key: string;
-  defaultText: string;
+  title: string;
+  subtitle: string;
+  prefill: string;
   icon: LucideIcon;
 }
 
 const PROMPTS: PromptDef[] = [
   {
     key: "scanAsset",
-    defaultText: "对资产 192.168.1.0/24 发起一次轻量端口扫描，重点看 Web 服务",
-    icon: Search,
+    title: "全网资产发现",
+    subtitle: "扫描内网所有存活主机并入库 CMDB",
+    prefill: "对资产 192.168.1.0/24 发起一次轻量端口扫描，重点看 Web 服务",
+    icon: Radar,
   },
   {
     key: "weakPwd",
-    defaultText: "对最近一周新增的资产做一轮弱口令探测，结果按高危聚合",
-    icon: ShieldAlert,
+    title: "弱口令检测",
+    subtitle: "SSH/RDP/SMB 常见服务字典爆破",
+    prefill: "对最近一周新增的资产做一轮弱口令探测，结果按高危聚合",
+    icon: Key,
   },
   {
     key: "summarize",
-    defaultText: "把今天的扫描发现按业务系统聚合，生成一份执行摘要",
-    icon: Sparkles,
+    title: "月度合规报告",
+    subtitle: "汇总当月扫描数据导出 PDF",
+    prefill: "把今天的扫描发现按业务系统聚合，生成一份执行摘要",
+    icon: FileText,
   },
   {
     key: "drill",
-    defaultText: "针对最近一条高危漏洞，给我一个验证 PoC 与修复建议",
-    icon: Wand2,
+    title: "CVE 影响排查",
+    subtitle: "输入 CVE 编号，自动定位受影响资产",
+    prefill: "针对最近一条高危漏洞，给我一个验证 PoC 与修复建议",
+    icon: Bug,
   },
 ];
 
@@ -104,6 +116,20 @@ const TONE_CLASSES: Record<QuickStat["tone"], { stripe: string; icon: string }> 
   success: { stripe: "border-l-alert-success", icon: "text-alert-success" },
 };
 
+interface AgentDef {
+  key: string;
+  name: string;
+  icon: LucideIcon;
+  status: "idle" | "running" | "queued";
+}
+
+const AGENTS: AgentDef[] = [
+  { key: "asset_discovery", name: "asset_discovery", icon: Radar, status: "idle" },
+  { key: "port_scan", name: "port_scan", icon: Loader, status: "running" },
+  { key: "vuln_scan", name: "vuln_scan", icon: Bug, status: "queued" },
+  { key: "weak_password", name: "weak_password", icon: Key, status: "idle" },
+];
+
 /**
  * Dispatches a composer prefill request. Exposed so other modules (tests,
  * future quick-action menus) can replay the same UX without instantiating
@@ -119,66 +145,50 @@ export function dispatchComposerPrefill(text: string, focus = true): void {
 
 export interface PromptSuggestionsProps {
   className?: string;
+  onToggleSidebar?: () => void;
 }
 
 /**
- * Left rail used by the HomePage chat surface. Combines:
- *   1. PromptSuggestions chips — onClick prefills the composer textarea.
- *   2. Quick stats card        — three KPI rows with mock values for now;
- *      PR5 (Dashboard) will hoist real data into a shared hook so this rail
- *      can subscribe rather than hard-code.
+ * Right rail used by the HomePage chat surface. Combines:
+ *   1. Quick stats card        — three KPI rows with mock values for now.
+ *   2. PromptSuggestions chips — onClick prefills the composer textarea.
+ *   3. Online agents card      — list of active expert agents.
  *
  * The rail is purely presentational — no data fetching, no navigation. It
  * never owns selection state, so it stays cheap to mount/unmount inside the
  * router shell.
  */
-export function PromptSuggestions({ className }: PromptSuggestionsProps) {
+export function PromptSuggestions({
+  className,
+  onToggleSidebar,
+}: PromptSuggestionsProps) {
   const { t } = useTranslation();
   return (
     <aside
       className={cn(
-        "flex h-full min-h-0 w-full flex-col gap-4 overflow-y-auto p-4",
+        "flex h-full min-h-0 w-full flex-col gap-4 overflow-y-auto scroll-hide",
         className,
       )}
       aria-label={t("home.leftRail.aria", { defaultValue: "建议与快捷指标" })}
     >
-      <section className="rounded-xl border border-border/40 bg-card/50 p-4 backdrop-blur">
-        <header className="mb-3 flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
-          <Sparkles className="h-3.5 w-3.5 text-primary" />
-          <span>
-            {t("home.prompts.title", { defaultValue: "试试这些任务" })}
-          </span>
-        </header>
-        <ul className="flex flex-col gap-2">
-          {PROMPTS.map((p) => {
-            const Icon = p.icon;
-            const label = t(`home.prompts.${p.key}`, {
-              defaultValue: p.defaultText,
-            });
-            return (
-              <li key={p.key}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className={cn(
-                    "h-auto w-full justify-start gap-2 whitespace-normal rounded-lg",
-                    "border border-border/40 bg-background/40 px-3 py-2 text-left text-sm font-normal",
-                    "hover:border-primary/40 hover:bg-primary/5 hover:text-foreground",
-                    "transition-smooth",
-                  )}
-                  onClick={() => dispatchComposerPrefill(label)}
-                >
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <span className="leading-snug">{label}</span>
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      {/* Top: sidebar collapse toggle */}
+      {onToggleSidebar && (
+        <div className="flex items-center justify-end px-1 pt-1">
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            aria-label={t("thread.header.toggleSidebar")}
+            title={t("thread.header.toggleSidebar")}
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
-      <section className="rounded-xl border border-border/40 bg-card/50 p-4 backdrop-blur">
-        <header className="mb-3 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+      {/* KPI 速览 — G1/G2  layout & content kept as-is */}
+      <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
+        <header className="flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
           <span>{t("home.stats.title", { defaultValue: "工作台速览" })}</span>
           <span className="text-[10px] normal-case text-muted-foreground/70">
             {t("home.stats.mockBadge", { defaultValue: "样例数据" })}
@@ -211,12 +221,92 @@ export function PromptSuggestions({ className }: PromptSuggestionsProps) {
         </ul>
       </section>
 
-      <p className="px-1 text-[10px] leading-relaxed text-muted-foreground/70">
-        {t("home.leftRail.footer", {
-          defaultValue:
-            "样例数据将在 Dashboard 上线后接入真实指标（PRD R4.3 / PR5）。",
-        })}
-      </p>
+      {/* 快捷指令 */}
+      <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
+        <header className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-primary" />
+          <h4 className="text-sm font-semibold">
+            {t("home.prompts.title", { defaultValue: "快捷指令" })}
+          </h4>
+        </header>
+        <div className="space-y-2">
+          {PROMPTS.map((p) => {
+            const Icon = p.icon;
+            const title = t(`home.prompts.${p.key}.title`, {
+              defaultValue: p.title,
+            });
+            const subtitle = t(`home.prompts.${p.key}.subtitle`, {
+              defaultValue: p.subtitle,
+            });
+            const prefill = t(`home.prompts.${p.key}.prefill`, {
+              defaultValue: p.prefill,
+            });
+            return (
+              <button
+                key={p.key}
+                type="button"
+                className="hover-lift group w-full rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
+                onClick={() => dispatchComposerPrefill(prefill)}
+              >
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <Icon className="h-3.5 w-3.5 text-primary" />
+                  {title}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground group-hover:text-white/70">
+                  {subtitle}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 在线智能体 */}
+      <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
+        <header className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold">
+            {t("home.agents.title", { defaultValue: "专家智能体 (4)" })}
+          </h4>
+          <span className="text-xs text-emerald-500">
+            {t("home.agents.status", { defaultValue: "● 全部在线" })}
+          </span>
+        </header>
+        <ul className="space-y-2 text-xs">
+          {AGENTS.map((agent) => {
+            const Icon = agent.icon;
+            const isRunning = agent.status === "running";
+            return (
+              <li
+                key={agent.key}
+                className={cn(
+                  "flex items-center justify-between rounded-md px-2.5 py-1.5",
+                  isRunning
+                    ? "border border-primary/30 bg-primary/10"
+                    : "bg-muted/40",
+                )}
+              >
+                <span className="flex items-center gap-2 text-foreground">
+                  <Icon
+                    className={cn(
+                      "h-3.5 w-3.5 text-primary",
+                      isRunning && "animate-spin",
+                    )}
+                  />
+                  {agent.name}
+                </span>
+                <span
+                  className={cn(
+                    "font-mono",
+                    isRunning ? "text-primary" : "text-muted-foreground",
+                  )}
+                >
+                  {agent.status}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </aside>
   );
 }
