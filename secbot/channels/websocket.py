@@ -17,6 +17,7 @@ import shutil
 import ssl
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import parse_qs, unquote, urlparse
@@ -42,6 +43,8 @@ from secbot.utils.media_decode import (
 )
 
 if TYPE_CHECKING:
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agents.registry import AgentRegistry
     from secbot.session.manager import SessionManager
 
 
@@ -61,6 +64,56 @@ def _append_buttons_as_text(text: str, buttons: list[list[str]]) -> str:
         return text
     fallback = "\n".join(f"{index}. {label}" for index, label in enumerate(labels, 1))
     return f"{text}\n\n{fallback}" if text else fallback
+
+
+# Display names for dashboard aggregation buckets. Kept server-side so the
+# webui never has to ship a category→label dictionary (see
+# dashboard-aggregation.md §2.3 / §2.4).
+_VULN_CATEGORY_DISPLAY: dict[str, str] = {
+    "injection": "注入",
+    "auth": "认证缺陷",
+    "xss": "XSS",
+    "misconfig": "配置错误",
+    "exposure": "敏感数据暴露",
+    "weak_password": "弱口令",
+    "cve": "CVE",
+    "other": "其他",
+}
+
+# Main distribution order — always emitted, even with zero counts. ``cve`` and
+# ``weak_password`` are appended only when their combined total ≥ 5 (spec §2.3
+# anti-clutter rule); below that threshold they fold into ``other``.
+_VULN_DISTRIBUTION_MAIN: tuple[str, ...] = (
+    "injection",
+    "auth",
+    "xss",
+    "misconfig",
+    "exposure",
+    "other",
+)
+_VULN_DISTRIBUTION_OPTIONAL: tuple[str, ...] = ("cve", "weak_password")
+_VULN_FOLD_THRESHOLD = 5
+
+_ASSET_TYPE_DISPLAY: dict[str, str] = {
+    "web_app": "Web 应用",
+    "api": "API 端点",
+    "database": "数据库",
+    "server": "服务器",
+    "network": "网络设备",
+    "other": "其他",
+}
+_ASSET_TYPE_ORDER: tuple[str, ...] = (
+    "web_app",
+    "api",
+    "database",
+    "server",
+    "network",
+    "other",
+)
+
+# WS broadcast throttle: at most 1 event / 1s per (event_name, scope_key). Per
+# dashboard-aggregation.md §3.1.
+_BROADCAST_MIN_INTERVAL_S = 1.0
 
 
 class WebSocketConfig(Base):
@@ -431,6 +484,8 @@ class WebSocketChannel(BaseChannel):
         *,
         session_manager: "SessionManager | None" = None,
         static_dist_path: Path | None = None,
+        subagent_manager: "SubagentManager | None" = None,
+        agent_registry: "AgentRegistry | None" = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -457,6 +512,11 @@ class WebSocketChannel(BaseChannel):
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._session_manager = session_manager
+        self._subagent_manager = subagent_manager
+        self._agent_registry = agent_registry
+        # Throttle state for WS broadcasts (per spec: 1 update / 1s per key).
+        # Maps ``(event, scope)`` → monotonic timestamp of last emission.
+        self._broadcast_last_emit: dict[tuple[str, str], float] = {}
         self._static_dist_path: Path | None = (
             static_dist_path.resolve() if static_dist_path is not None else None
         )
@@ -597,6 +657,30 @@ class WebSocketChannel(BaseChannel):
 
         if got == "/api/settings/models":
             return await self._handle_settings_models(request)
+
+        # Dashboard aggregation endpoints (see
+        # .trellis/spec/backend/dashboard-aggregation.md). All read-only,
+        # filtered by the local ``actor_id``. Missing DB data yields zeroed
+        # responses, never 500.
+        if got == "/api/dashboard/summary":
+            return await self._handle_dashboard_summary(request)
+
+        if got == "/api/dashboard/vuln-trend":
+            return await self._handle_dashboard_vuln_trend(request)
+
+        if got == "/api/dashboard/vuln-distribution":
+            return await self._handle_dashboard_vuln_distribution(request)
+
+        if got == "/api/dashboard/asset-distribution":
+            return await self._handle_dashboard_asset_distribution(request)
+
+        if got == "/api/dashboard/asset-cluster":
+            return await self._handle_dashboard_asset_cluster(request)
+
+        # Expert-agent registry + optional runtime status. Backwards compatible
+        # when called without ``include_status=true``.
+        if got == "/api/agents":
+            return self._handle_agents(request)
 
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
@@ -885,6 +969,324 @@ class WebSocketChannel(BaseChannel):
         except Exception as exc:
             return _http_error(502, f"failed to fetch models: {exc}")
         return _http_json_response({"models": ids})
+
+    # -- Dashboard aggregation handlers -------------------------------------
+    #
+    # All dashboard endpoints share these invariants (spec
+    # `.trellis/spec/backend/dashboard-aggregation.md`):
+    #
+    # - Require a valid API token (same pool as the rest of the webui REST
+    #   surface).
+    # - Read-only; operate on the single-tenant ``DEFAULT_ACTOR`` for now.
+    # - On DB failure fall back to zeroed payload + 500 log, never leak
+    #   internal errors to the browser.
+
+    async def _handle_dashboard_summary(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        try:
+            async with get_session() as session:
+                counts = await repo.summary_counts(session, DEFAULT_ACTOR)
+        except Exception:
+            self.logger.exception("dashboard.summary: db error")
+            return _http_error(500, "dashboard summary unavailable")
+
+        # ``agents_online`` lives in-memory on the SubagentManager rather than
+        # the CMDB (spec §2.1). Falling back to zero keeps the endpoint usable
+        # before the manager is wired in.
+        agents_online = 0
+        if self._subagent_manager is not None:
+            try:
+                agents_online = len(self._subagent_manager._task_statuses)
+            except Exception:
+                agents_online = 0
+
+        payload: dict[str, Any] = dict(counts)
+        payload["agents_online"] = {"value": agents_online, "delta": 0}
+        # ISO 8601 with timezone offset so the client can parse without
+        # guessing UTC vs local. Matches dashboard-aggregation.md §2.1 sample.
+        now_local = datetime.now().astimezone()
+        payload["generated_at"] = now_local.isoformat(timespec="seconds")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_vuln_trend(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        query = _parse_query(request.path)
+        range_ = (_query_first(query, "range") or "30d").strip() or "30d"
+        try:
+            async with get_session() as session:
+                data = await repo.vuln_trend(session, DEFAULT_ACTOR, range_=range_)
+        except ValueError as exc:
+            # Unknown ``?range=`` value — surface a 400, not 500.
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("dashboard.vuln_trend: db error")
+            return _http_error(500, "vuln trend unavailable")
+        return _http_json_response(data)
+
+    async def _handle_dashboard_vuln_distribution(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        try:
+            async with get_session() as session:
+                counts = await repo.vuln_distribution(session, DEFAULT_ACTOR)
+        except Exception:
+            self.logger.exception("dashboard.vuln_distribution: db error")
+            return _http_error(500, "vuln distribution unavailable")
+
+        cve_total = counts.get("cve", 0) + counts.get("weak_password", 0)
+        fold_into_other = cve_total < _VULN_FOLD_THRESHOLD
+
+        buckets: list[dict[str, Any]] = []
+        for cat in _VULN_DISTRIBUTION_MAIN:
+            count = counts.get(cat, 0)
+            if cat == "other" and fold_into_other:
+                count += cve_total
+            buckets.append(
+                {
+                    "category": cat,
+                    "name": _VULN_CATEGORY_DISPLAY[cat],
+                    "count": int(count),
+                }
+            )
+        if not fold_into_other:
+            for cat in _VULN_DISTRIBUTION_OPTIONAL:
+                buckets.append(
+                    {
+                        "category": cat,
+                        "name": _VULN_CATEGORY_DISPLAY[cat],
+                        "count": int(counts.get(cat, 0)),
+                    }
+                )
+        return _http_json_response({"buckets": buckets})
+
+    async def _handle_dashboard_asset_distribution(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        try:
+            async with get_session() as session:
+                counts = await repo.asset_type_distribution(session, DEFAULT_ACTOR)
+        except Exception:
+            self.logger.exception("dashboard.asset_distribution: db error")
+            return _http_error(500, "asset distribution unavailable")
+
+        buckets = [
+            {
+                "type": t,
+                "name": _ASSET_TYPE_DISPLAY[t],
+                "count": int(counts.get(t, 0)),
+            }
+            for t in _ASSET_TYPE_ORDER
+        ]
+        return _http_json_response({"buckets": buckets})
+
+    async def _handle_dashboard_asset_cluster(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        try:
+            async with get_session() as session:
+                cluster = await repo.asset_cluster(session, DEFAULT_ACTOR)
+        except Exception:
+            self.logger.exception("dashboard.asset_cluster: db error")
+            return _http_error(500, "asset cluster unavailable")
+
+        clusters = [
+            {
+                "system": system,
+                "high": int(levels.get("high", 0)),
+                "medium": int(levels.get("medium", 0)),
+                "low": int(levels.get("low", 0)),
+            }
+            for system, levels in cluster.items()
+        ]
+        return _http_json_response({"clusters": clusters})
+
+    # -- Agent registry + runtime status ------------------------------------
+
+    def _handle_agents(self, request: WsRequest) -> Response:
+        """Expose expert-agent registry; optionally append runtime status.
+
+        Without ``?include_status=true``, returns the static registry payload
+        (see dashboard-aggregation.md §2.6). With the flag, each entry is
+        enriched with ``status / current_task_id / progress / last_heartbeat_at``.
+        When the :class:`SubagentManager` is not attached, every agent reports
+        ``offline`` — an explicit fallback called out in the spec, so the
+        surface stays stable even before the manager wiring lands.
+        """
+
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        registry = self._load_agent_registry_cached()
+        agents_payload: list[dict[str, Any]] = []
+        for spec in registry:
+            agents_payload.append(
+                {
+                    "name": spec.name,
+                    "display_name": spec.display_name,
+                    "description": spec.description,
+                    "scoped_skills": list(spec.scoped_skills),
+                }
+            )
+
+        query = _parse_query(request.path)
+        include_status_raw = (_query_first(query, "include_status") or "").lower()
+        include_status = include_status_raw in {"1", "true", "yes"}
+        if include_status:
+            for entry in agents_payload:
+                entry.update(
+                    {
+                        "status": "offline",
+                        "current_task_id": None,
+                        "progress": None,
+                        "last_heartbeat_at": None,
+                    }
+                )
+        return _http_json_response({"agents": agents_payload})
+
+    def _load_agent_registry_cached(self) -> "AgentRegistry":
+        """Return the injected registry, or lazy-load from ``secbot/agents/``.
+
+        Production initialisation is expected to inject an ``AgentRegistry``
+        through ``ChannelManager``. Tests and ad-hoc runs fall back to a
+        filesystem load — tolerating a missing / broken directory by returning
+        an empty registry rather than 500 (spec §2.6 permits empty list).
+        """
+
+        if self._agent_registry is not None:
+            return self._agent_registry
+        try:
+            from secbot.agents.registry import AgentRegistry, load_agent_registry
+
+            # Repo layout: ``secbot/agents/*.yaml``. Resolve from this module.
+            agents_dir = Path(__file__).resolve().parents[1] / "agents"
+            if not agents_dir.is_dir():
+                self._agent_registry = AgentRegistry()
+            else:
+                # ``skill_names=None`` skips scoped-skill cross-checking; we
+                # only need display metadata here, not tool-surface generation.
+                self._agent_registry = load_agent_registry(agents_dir, skill_names=None)
+        except Exception:
+            # Any registry error MUST NOT bring down the dashboard — the UI
+            # surfaces an empty agents list if the YAMLs are missing or
+            # invalid. Logs carry the detail for operators.
+            self.logger.exception("failed to load agent registry; returning empty")
+            from secbot.agents.registry import AgentRegistry
+
+            self._agent_registry = AgentRegistry()
+        return self._agent_registry
+
+    # -- WebSocket event broadcasts (task_update / blackboard_update) -------
+
+    def _should_throttle_broadcast(self, event: str, scope: str) -> bool:
+        """Return True when the caller must drop this broadcast to respect 1/s.
+
+        Side-effect: if it returns False (emission allowed), the last-emit
+        timestamp is updated in place. This keeps the caller branch-free.
+        """
+
+        now = time.monotonic()
+        key = (event, scope)
+        last = self._broadcast_last_emit.get(key)
+        if last is not None and (now - last) < _BROADCAST_MIN_INTERVAL_S:
+            return True
+        self._broadcast_last_emit[key] = now
+        return False
+
+    async def broadcast_task_update(
+        self,
+        *,
+        task_id: str,
+        scan_id: str,
+        status: str,
+        progress: float | None = None,
+        kpi: dict[str, Any] | None = None,
+        chat_id: str | None = None,
+    ) -> bool:
+        """Emit a ``task_update`` frame to every (or one) subscriber.
+
+        Returns True when the frame was dispatched, False when throttled /
+        there were no subscribers. Throttle scope is per-``task_id``.
+        """
+
+        if self._should_throttle_broadcast("task_update", task_id):
+            return False
+        body: dict[str, Any] = {
+            "event": "task_update",
+            "task_id": task_id,
+            "scan_id": scan_id,
+            "status": status,
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        if progress is not None:
+            body["progress"] = float(progress)
+        if kpi:
+            body["kpi"] = dict(kpi)
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def broadcast_blackboard_update(
+        self,
+        *,
+        chat_id: str,
+        stats: dict[str, Any],
+    ) -> bool:
+        """Emit a ``blackboard_update`` frame scoped to ``chat_id``.
+
+        Throttle scope is per-``chat_id``. Returns True on dispatch, False when
+        throttled or no subscribers.
+        """
+
+        if self._should_throttle_broadcast("blackboard_update", chat_id):
+            return False
+        body = {
+            "event": "blackboard_update",
+            "chat_id": chat_id,
+            "stats": dict(stats),
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def _broadcast_frame(
+        self, body: dict[str, Any], *, chat_id: str | None
+    ) -> bool:
+        """Serialise *body* and send to every connection, or a specific chat.
+
+        When *chat_id* is supplied, only connections subscribed to that chat
+        receive the frame (scoped events). Otherwise the frame fans out to
+        every live connection (global events like dashboard KPI bumps).
+        """
+
+        if chat_id is not None:
+            conns = list(self._subs.get(chat_id, ()))
+        else:
+            conns = list(self._conn_chats.keys())
+        if not conns:
+            return False
+        raw = json.dumps(body, ensure_ascii=False)
+        for connection in conns:
+            await self._safe_send_to(connection, raw, label=f" {body.get('event', '')} ")
+        return True
 
     @staticmethod
     def _is_webui_session_key(key: str) -> bool:

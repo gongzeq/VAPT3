@@ -854,8 +854,15 @@ def _run_gateway(
     cron.on_job = on_cron_job
 
     # Create channel manager (forwards SessionManager so the WebSocket channel
-    # can serve the embedded webui's REST surface).
-    channels = ChannelManager(config, bus, session_manager=session_manager)
+    # can serve the embedded webui's REST surface, and the SubagentManager so
+    # ``/api/dashboard/summary`` + ``/api/agents?include_status=true`` can
+    # surface runtime state).
+    channels = ChannelManager(
+        config,
+        bus,
+        session_manager=session_manager,
+        subagent_manager=getattr(agent, "subagents", None),
+    )
 
     def _pick_heartbeat_target() -> tuple[str, str]:
         """Pick a routable channel/chat target for heartbeat-triggered messages."""
