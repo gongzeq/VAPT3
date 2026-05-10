@@ -32,8 +32,11 @@ export function HomePage({ onModelNameChange, onLogout }: HomePageProps) {
           onModelNameChange={onModelNameChange}
           onLogout={onLogout}
           onOpenSettingsExternal={() => navigate("/settings")}
-          rightRail={({ onToggleSidebar }) => (
-            <PromptSuggestions onToggleSidebar={onToggleSidebar} />
+          rightRail={({ onToggleSidebar, onToggleRightRail }) => (
+            <PromptSuggestions
+              onToggleSidebar={onToggleSidebar}
+              onToggleRightRail={onToggleRightRail}
+            />
           )}
         />
       </div>

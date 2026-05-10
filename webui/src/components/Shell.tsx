@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PanelLeftOpen, PanelRightOpen } from "lucide-react";
 import { DeleteConfirm } from "@/components/DeleteConfirm";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Sidebar } from "@/components/Sidebar";
@@ -31,7 +32,10 @@ export interface ShellProps {
    * the rail itself is purely presentational so dropping it on small screens
    * never breaks core chat UX. Includes a collapse toggle button.
    */
-  rightRail?: (props: { onToggleSidebar: () => void }) => React.ReactNode;
+  rightRail?: (props: {
+    onToggleSidebar: () => void;
+    onToggleRightRail: () => void;
+  }) => React.ReactNode;
 }
 
 function readSidebarOpen(): boolean {
@@ -255,7 +259,7 @@ export function Shell({
       </Sheet>
 
       {/* Main chat area */}
-      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border gradient-card">
+      <main className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border gradient-card">
         <ErrorBoundary>
           {view === "settings" ? (
             <SettingsView
@@ -293,6 +297,42 @@ export function Shell({
             />
           )}
         </ErrorBoundary>
+
+        {/* Expand sidebar floating button (visible only when collapsed) */}
+        {!desktopSidebarOpen && (
+          <button
+            type="button"
+            onClick={() => setDesktopSidebarOpen(true)}
+            className={cn(
+              "absolute left-3 top-3 z-20 hidden h-9 w-9 items-center justify-center",
+              "rounded-full border border-border bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm",
+              "transition-colors hover:bg-accent/40 hover:text-foreground",
+              "lg:flex",
+            )}
+            aria-label={t("thread.header.toggleSidebar", { defaultValue: "展开对话栏" })}
+            title={t("thread.header.toggleSidebar", { defaultValue: "展开对话栏" })}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        )}
+
+        {/* Expand right-rail floating button (visible only when collapsed) */}
+        {rightRail && !rightRailOpen && view === "chat" && (
+          <button
+            type="button"
+            onClick={() => setRightRailOpen(true)}
+            className={cn(
+              "absolute right-3 top-3 z-20 hidden h-9 w-9 items-center justify-center",
+              "rounded-full border border-border bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm",
+              "transition-colors hover:bg-accent/40 hover:text-foreground",
+              "xl:flex",
+            )}
+            aria-label={t("thread.header.toggleRightRail", { defaultValue: "展开工作台" })}
+            title={t("thread.header.toggleRightRail", { defaultValue: "展开工作台" })}
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
+        )}
       </main>
 
       {/* Right Rail */}
@@ -312,7 +352,10 @@ export function Shell({
             )}
             style={{ width: RIGHT_RAIL_WIDTH }}
           >
-            {rightRail?.({ onToggleSidebar: toggleSidebar })}
+            {rightRail?.({
+              onToggleSidebar: toggleSidebar,
+              onToggleRightRail: () => setRightRailOpen((v) => !v),
+            })}
           </div>
         </aside>
       )}

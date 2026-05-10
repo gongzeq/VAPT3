@@ -361,7 +361,7 @@ export function ThreadComposer({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={cn("relative w-full", isHero ? "px-0" : "px-1 pb-1.5 pt-1 sm:px-0")}
+      className={cn("relative w-full", isHero ? "px-0" : "px-01 pb-0 pt-0 sm:px-0")}
     >
       {showSlashMenu ? (
         <SlashCommandPalette

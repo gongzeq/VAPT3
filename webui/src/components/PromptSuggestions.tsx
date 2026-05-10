@@ -7,7 +7,7 @@ import {
   FileText,
   Key,
   Loader,
-  PanelLeftClose,
+  PanelRightClose,
   Radar,
   Zap,
   type LucideIcon,
@@ -146,6 +146,7 @@ export function dispatchComposerPrefill(text: string, focus = true): void {
 export interface PromptSuggestionsProps {
   className?: string;
   onToggleSidebar?: () => void;
+  onToggleRightRail?: () => void;
 }
 
 /**
@@ -160,7 +161,7 @@ export interface PromptSuggestionsProps {
  */
 export function PromptSuggestions({
   className,
-  onToggleSidebar,
+  onToggleRightRail,
 }: PromptSuggestionsProps) {
   const { t } = useTranslation();
   return (
@@ -171,28 +172,21 @@ export function PromptSuggestions({
       )}
       aria-label={t("home.leftRail.aria", { defaultValue: "建议与快捷指标" })}
     >
-      {/* Top: sidebar collapse toggle */}
-      {onToggleSidebar && (
-        <div className="flex items-center justify-end px-1 pt-1">
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-            aria-label={t("thread.header.toggleSidebar")}
-            title={t("thread.header.toggleSidebar")}
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
       {/* KPI 速览 — G1/G2  layout & content kept as-is */}
       <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
         <header className="flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
           <span>{t("home.stats.title", { defaultValue: "工作台速览" })}</span>
-          <span className="text-[10px] normal-case text-muted-foreground/70">
-            {t("home.stats.mockBadge", { defaultValue: "样例数据" })}
-          </span>
+          {onToggleRightRail && (
+            <button
+              type="button"
+              onClick={onToggleRightRail}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-white/5 hover:text-foreground"
+              aria-label={t("thread.header.toggleRightRail", { defaultValue: "折叠工作台" })}
+              title={t("thread.header.toggleRightRail", { defaultValue: "折叠工作台" })}
+            >
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </button>
+          )}
         </header>
         <ul className="flex flex-col gap-2">
           {QUICK_STATS.map((s) => {

@@ -30,7 +30,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: "preferences", label: "用户偏好", icon: Palette },
-  { id: "platform", label: "平台 Admin", icon: Server },
+  { id: "platform", label: "平台管理", icon: Server },
   { id: "danger", label: "危险区", icon: AlertTriangle },
 ];
 

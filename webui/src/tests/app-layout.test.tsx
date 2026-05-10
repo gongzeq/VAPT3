@@ -211,10 +211,10 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
     // After PR7, /settings renders the Tab layout. Default tab is "用户偏好".
-    // The "平台 Admin" tab (containing the old "General" heading) is reachable
+    // The "平台管理" tab (containing the old "General" heading) is reachable
     // but not shown by default. Assert we landed on the settings surface.
     expect(await screen.findByText("用户偏好")).toBeInTheDocument();
-    expect(screen.getByText("平台 Admin")).toBeInTheDocument();
+    expect(screen.getByText("平台管理")).toBeInTheDocument();
     expect(screen.getByText("危险区")).toBeInTheDocument();
   });
 

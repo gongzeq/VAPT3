@@ -159,10 +159,8 @@ export function ThreadViewport({
               </div>
             </div>
 
-            <div className="sticky bottom-0 z-10 mt-auto bg-gradient-to-b from-transparent via-background/80 to-background/95 backdrop-blur-sm">
-              <div className="px-4 pb-3">
-                {composer}
-              </div>
+            <div className="px-4 pb-3">
+              {composer}
             </div>
           </div>
         ) : (
