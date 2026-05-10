@@ -1,4 +1,5 @@
 import type {
+  ActivityEventFrame,
   ConnectionStatus,
   InboundEvent,
   Outbound,
@@ -13,6 +14,7 @@ const WS_CLOSING = 2;
 type Unsubscribe = () => void;
 type EventHandler = (ev: InboundEvent) => void;
 type StatusHandler = (status: ConnectionStatus) => void;
+type ActivityEventHandler = (frame: ActivityEventFrame) => void;
 
 /** Structured connection-level errors surfaced to the UI.
  *
@@ -60,6 +62,11 @@ export class SecbotClient {
   private errorHandlers = new Set<ErrorHandler>();
   // chat_id -> handlers listening on it
   private chatHandlers = new Map<string, Set<EventHandler>>();
+  // Global subscribers for ``activity_event`` frames. The server tags
+  // each activity event with a ``chat_id`` but the Dashboard stream wants
+  // the union of *all* chats, so we fan out these frames to a dedicated
+  // global set *in addition to* (not instead of) the per-chat dispatch.
+  private activityHandlers = new Set<ActivityEventHandler>();
   // chat_ids we've attached to since connect; re-attached after reconnects
   private knownChats = new Set<string>();
   private pendingNewChat: PendingNewChat | null = null;
@@ -128,6 +135,20 @@ export class SecbotClient {
       if (!current) return;
       current.delete(handler);
       if (current.size === 0) this.chatHandlers.delete(chatId);
+    };
+  }
+
+  /** Subscribe to ``activity_event`` frames across every chat.
+   *
+   * Unlike :meth:`onChat` this does *not* require a ``chat_id`` and does
+   * not trigger an ``attach``: activity broadcasts are server-pushed
+   * unconditionally, so the subscriber just tunes into the global fan-out
+   * set. The Dashboard's activity stream uses this to consume agent
+   * activity from any chat without binding to a specific session. */
+  onActivityEvent(handler: ActivityEventHandler): Unsubscribe {
+    this.activityHandlers.add(handler);
+    return () => {
+      this.activityHandlers.delete(handler);
     };
   }
 
@@ -247,6 +268,17 @@ export class SecbotClient {
       return;
     }
 
+    // ``activity_event`` is typed outside :type:`InboundEvent` — narrow
+    // through a structural check before fanning out, so unknown wire
+    // shapes stay ignored rather than crashing a subscriber.
+    const eventName = (parsed as { event?: string }).event;
+    if (eventName === "activity_event") {
+      this.dispatchActivity(parsed as unknown as ActivityEventFrame);
+      // Fall through so any per-chat subscriber that opted into this chat
+      // also receives it (legacy compat — does not fan out twice to the
+      // global set).
+    }
+
     const chatId = (parsed as { chat_id?: string }).chat_id;
     if (chatId) this.dispatch(chatId, parsed);
   }
@@ -255,6 +287,19 @@ export class SecbotClient {
     const handlers = this.chatHandlers.get(chatId);
     if (!handlers) return;
     for (const h of handlers) h(ev);
+  }
+
+  private dispatchActivity(frame: ActivityEventFrame): void {
+    // Isolate throwing subscribers so one bad handler cannot stall the
+    // rest of the global fan-out. Activity frames are best-effort
+    // telemetry, never load-bearing state.
+    for (const handler of this.activityHandlers) {
+      try {
+        handler(frame);
+      } catch {
+        // swallow: subscriber fault must not compound transport bookkeeping
+      }
+    }
   }
 
   private handleClose(event?: { code?: number }): void {

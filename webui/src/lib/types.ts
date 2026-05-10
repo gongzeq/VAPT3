@@ -206,3 +206,100 @@ export type Outbound =
        * generic websocket protocol for other clients. */
       webui?: true;
     };
+
+// ────────────────────────────────────────────────────────────────────────
+// Notification center (P2) — schema matches the backend contract shipped
+// in ``05-10-p2-notification-activity`` (archived PRD). Shape is frozen
+// by the REST responses, NOT by this file — if the backend changes the
+// contract, update both sides.
+// ────────────────────────────────────────────────────────────────────────
+
+/** Notification type emitted by backend. Unknown values must still
+ * render (F5: degrade-don't-crash) — consumers treat anything outside
+ * the union as a generic "info" notification. */
+export type NotificationKind =
+  | "critical_vuln"
+  | "scan_failed"
+  | "scan_completed"
+  | "high_risk_confirm";
+
+export interface Notification {
+  id: string;
+  /** See :type:`NotificationKind`. Typed as string to allow forward
+   * compat with kinds the backend may add later. */
+  kind: string;
+  title: string;
+  body: string;
+  /** ISO-8601 UTC timestamp. */
+  created_at: string;
+  read: boolean;
+  /** Optional in-app deep link (e.g. ``/tasks/TASK-...``). When set,
+   * clicking the notification navigates there. */
+  link?: string | null;
+}
+
+export interface NotificationListResponse {
+  items: Notification[];
+  total: number;
+  limit: number;
+  offset: number;
+  unread_count: number;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Activity event stream (P2). Two wire shapes feed the same UI list:
+//
+// 1. REST ``GET /api/events`` — canonical records with ``id``, ``level``,
+//    ``source``, ``task_id``, ``message``.
+// 2. WS ``activity_event`` — live broadcast without a stable ``id``
+//    field; carries ``chat_id``, ``category``, ``agent``, ``step``,
+//    ``duration_ms``. The hook normalises both into :type:`ActivityEvent`.
+// ────────────────────────────────────────────────────────────────────────
+
+export type ActivityLevel = "critical" | "warning" | "info" | "ok";
+
+export type ActivitySource =
+  | "weak_password"
+  | "port_scan"
+  | "asset_discovery"
+  | "report"
+  | "orchestrator";
+
+export type ActivityCategory = "thought" | "tool_call" | "tool_result";
+
+/** Canonical UI shape for one activity-stream row.
+ *
+ * ``id`` is stable across REST reloads; for WS-originated rows the hook
+ * derives it from ``chat_id|timestamp|step`` so dedupe works when the
+ * same event later surfaces via REST. */
+export interface ActivityEvent {
+  id: string;
+  timestamp: string;
+  level: ActivityLevel;
+  source: ActivitySource;
+  message: string;
+  task_id?: string | null;
+  /** WS-only enrichment. */
+  chat_id?: string | null;
+  agent?: string | null;
+  step?: string | null;
+  category?: ActivityCategory | null;
+  duration_ms?: number | null;
+}
+
+export interface ActivityEventListResponse {
+  items: ActivityEvent[];
+}
+
+/** Raw WS payload broadcast by :func:`WebSocketChannel.broadcast_activity_event`.
+ * Kept separate from :type:`ActivityEvent` because the WS frame omits
+ * ``id`` / ``level`` / ``source`` — the hook derives those client-side. */
+export interface ActivityEventFrame {
+  event: "activity_event";
+  chat_id: string;
+  category: ActivityCategory | string;
+  agent?: string;
+  step?: string;
+  timestamp: string;
+  duration_ms?: number;
+}

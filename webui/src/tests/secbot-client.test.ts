@@ -270,6 +270,78 @@ describe("SecbotClient", () => {
     expect(errors).toEqual([]);
   });
 
+  it("fans activity_event frames to global subscribers regardless of chat_id", () => {
+    const client = new SecbotClient({
+      url: "ws://test",
+      reconnect: false,
+      socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
+    });
+    const global = vi.fn();
+    const unsubscribe = client.onActivityEvent(global);
+    client.connect();
+    lastSocket().fakeOpen();
+
+    lastSocket().fakeMessage({
+      event: "activity_event",
+      chat_id: "chat-a",
+      category: "tool_call",
+      agent: "weak_password",
+      step: "scan",
+      timestamp: "2026-05-10T12:00:00Z",
+      duration_ms: 42,
+    });
+    lastSocket().fakeMessage({
+      event: "activity_event",
+      chat_id: "chat-b",
+      category: "tool_result",
+      timestamp: "2026-05-10T12:00:01Z",
+    });
+
+    expect(global).toHaveBeenCalledTimes(2);
+    expect(global.mock.calls[0][0]).toMatchObject({
+      event: "activity_event",
+      chat_id: "chat-a",
+      agent: "weak_password",
+    });
+    expect(global.mock.calls[1][0]).toMatchObject({
+      event: "activity_event",
+      chat_id: "chat-b",
+      category: "tool_result",
+    });
+
+    // Unsubscribe stops delivery for future frames.
+    unsubscribe();
+    lastSocket().fakeMessage({
+      event: "activity_event",
+      chat_id: "chat-c",
+      category: "thought",
+      timestamp: "2026-05-10T12:00:02Z",
+    });
+    expect(global).toHaveBeenCalledTimes(2);
+  });
+
+  it("isolates throwing activity subscribers so peers still receive the frame", () => {
+    const client = new SecbotClient({
+      url: "ws://test",
+      reconnect: false,
+      socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
+    });
+    client.onActivityEvent(() => {
+      throw new Error("subscriber exploded");
+    });
+    const good = vi.fn();
+    client.onActivityEvent(good);
+    client.connect();
+    lastSocket().fakeOpen();
+    lastSocket().fakeMessage({
+      event: "activity_event",
+      chat_id: "chat-a",
+      category: "tool_call",
+      timestamp: "2026-05-10T12:00:00Z",
+    });
+    expect(good).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces 'reconnecting' only on an unexpected drop", async () => {
     const client = new SecbotClient({
       url: "ws://test",

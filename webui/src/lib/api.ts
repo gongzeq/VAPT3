@@ -1,4 +1,11 @@
-import type { ChatSummary, SettingsPayload, SettingsUpdate, SlashCommand } from "./types";
+import type {
+  ActivityEventListResponse,
+  ChatSummary,
+  NotificationListResponse,
+  SettingsPayload,
+  SettingsUpdate,
+  SlashCommand,
+} from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -183,4 +190,82 @@ export async function fetchProviderModels(
     { headers },
   );
   return Array.isArray(body.models) ? body.models : [];
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Notification center (P2) — REST contract from the archived backend PRD
+// ``05-10-p2-notification-activity``. The backend uses ``GET`` (not POST)
+// for the mutating endpoints because the ``websockets`` library's HTTP
+// parser is incompatible with POST on the same port.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface FetchNotificationsOptions {
+  /** Filter to unread only. Backend treats ``unread=1`` as truthy. */
+  unread?: boolean;
+  /** Default 50 server-side; max is ring-buffer capacity (500). */
+  limit?: number;
+  /** Reserved for a future "load more" UI (E2 in PRD). Sent as ``0``
+   * today but the signature keeps it extensible without a breaking
+   * change. */
+  offset?: number;
+}
+
+export async function fetchNotifications(
+  token: string,
+  options: FetchNotificationsOptions = {},
+  base: string = "",
+): Promise<NotificationListResponse> {
+  const query = new URLSearchParams();
+  if (options.unread) query.set("unread", "1");
+  if (options.limit !== undefined) query.set("limit", String(options.limit));
+  if (options.offset !== undefined) query.set("offset", String(options.offset));
+  const qs = query.toString();
+  return request<NotificationListResponse>(
+    `${base}/api/notifications${qs ? `?${qs}` : ""}`,
+    token,
+  );
+}
+
+export async function markNotificationRead(
+  token: string,
+  id: string,
+  base: string = "",
+): Promise<{ id: string; read: boolean }> {
+  return request<{ id: string; read: boolean }>(
+    `${base}/api/notifications/${encodeURIComponent(id)}/read`,
+    token,
+  );
+}
+
+export async function markAllNotificationsRead(
+  token: string,
+  base: string = "",
+): Promise<{ updated: number }> {
+  return request<{ updated: number }>(
+    `${base}/api/notifications/read-all`,
+    token,
+  );
+}
+
+export interface FetchActivityEventsOptions {
+  /** ISO-8601 timestamp. When set, backend returns events strictly
+   * newer than this instant (overrides the default 5-minute window). */
+  since?: string;
+  /** Default 50; backend caps at ring-buffer capacity (500). */
+  limit?: number;
+}
+
+export async function fetchActivityEvents(
+  token: string,
+  options: FetchActivityEventsOptions = {},
+  base: string = "",
+): Promise<ActivityEventListResponse> {
+  const query = new URLSearchParams();
+  if (options.since) query.set("since", options.since);
+  if (options.limit !== undefined) query.set("limit", String(options.limit));
+  const qs = query.toString();
+  return request<ActivityEventListResponse>(
+    `${base}/api/events${qs ? `?${qs}` : ""}`,
+    token,
+  );
 }
