@@ -185,3 +185,91 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 - 本任务 archive + 父任务 `05-10-backend-api-gap-fill` 进度更新为 [2/3 done]
 - 选择：P2 notification center / 前端对接 P1 接口
 
+
+
+## Session 5: P2 notification center + activity event stream delivered
+
+**Date**: 2026-05-10
+**Task**: P2 notification center + activity event stream delivered
+**Branch**: `main`
+
+### Summary
+
+R1/R2/R3 三段交付完成：NotificationQueue singleton + /api/notifications CRUD、EventBuffer + /api/events 5min 滚动窗口、WebSocketChannel.broadcast_activity_event + upsert_vulnerability critical 通知触发。父任务 05-10-backend-api-gap-fill [3/3 done] 同批归档，1221 tests passed.
+
+### Main Changes
+
+# P2 · Notification Center + Activity Event Stream — Delivery Retrospective
+
+Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, now archived `[3/3 done]`).
+
+## Scope Delivered
+
+三块后端能力，按 R1/R2/R3 递进实施：
+
+- **R1 通知中心** — `secbot/channels/notifications.py::NotificationQueue` singleton + `GET /api/notifications`（列表、unread 过滤、分页回显）/ `GET /api/notifications/{id}/read` / `GET /api/notifications/read-all`。环形缓冲容量走 env > 构造参数 > 默认 500 的三层 resolution（对齐 PromptsLoader 范式）。27 个测试覆盖 NotificationQueue unit + singleton + HTTP handler。
+- **R2 活动事件缓冲 + 查询** — `EventBuffer` 与 `NotificationQueue` 同模块托管（复用 `_resolve_maxlen` + 同 singleton 风格），支持 `GET /api/events?since=&limit=` 近 5 分钟滚动窗口（两个 env 变量：`SECBOT_EVENTS_BUFFER_SIZE` / `SECBOT_EVENTS_WINDOW_SECONDS`）。27 个测试覆盖 EventBuffer + singleton + HTTP handler。
+- **R3 WS `activity_event` 广播 + critical_vuln 通知触发** — `WebSocketChannel.broadcast_activity_event`（复用 `_should_throttle_broadcast` 的 1s/chat_id 节流模板）+ 类级 `_active_instance` 单例让 `_LoopHook` 不用改构造签名就能拉到 channel 实例；`upsert_vulnerability` 在首次插入 critical 或 severity 升级为 critical 时触发 `NotificationQueue.publish("critical_vuln", ...)`，rescan 同一 critical 保持静默。
+
+## Key Engineering Decisions
+
+1. **HTTP 方法收敛到 GET**：P2 PRD Phase 1.2 复核阶段识别出 `POST /api/notifications/{id}/read` + `/read-all` 与 `websockets` 库 HTTP parser 不兼容（R2 `/archive` 已踩过同一坑），Phase 1.3 前把 PRD 的动作型端点统一改为 GET。
+2. **EventBuffer 与 NotificationQueue 同模块**：Phase 2 过程中用户明确选择共享 `secbot/channels/notifications.py`，让 `_resolve_maxlen` / singleton 模式 / 测试 reset fixture 全部复用。
+3. **`WebSocketChannel._active_instance` 类级单例**：`_LoopHook.__init__(channel: str = "cli")` 是字符串标识而非 channel 对象，且 `_LoopHook` 只在 `loop.py` L571 一处构造（嵌在 `AgentLoop._run_agent_loop` 内）。为避免改动 loop hook 构造参数/打穿多层调用链，选择在 `WebSocketChannel.__init__` 末尾 `cls._active_instance = self`，loop hook 通过 `WebSocketChannel.get_active_instance()` 延迟拉取。对齐 PRD L98/L128 "与 PromptsLoader 同风格，不引入 observer/signal 抽象"的约束。
+4. **upsert 语义 vs "新增"语义**：PRD 说"高危漏洞新增时自动产生 critical_vuln"，实际代码是 `upsert_vulnerability`（re-discovery 会 refresh 而不新增行）。决策规则：首次 insert + severity=critical，或 severity 从 non-critical 升级到 critical 都触发通知；rescan 同 critical 保持静默避免刷屏。5 个测试精确覆盖四种场景。
+5. **循环依赖处理**：`secbot.channels.notifications` 已 import `secbot.cmdb.repo.new_ulid`，cmdb 这边反向在 `upsert_vulnerability` 函数**体内** late-import `get_notification_queue` 打破循环。
+
+## Gotchas Fixed This Session
+
+- **URL 解码 `+` → 空格**：`/api/events?since=2026-05-10T10:00:00+00:00` 经 URL 解析后 `+` 被当成空格，`datetime.fromisoformat("... 00:00")` 报错。handler 里 `since_raw.replace(" ", "+")` 再 parse 修复，测试 `test_since_filter_accepts_offset_timestamp` 覆盖。
+- **`category="weak_credential"` 不合法**：cmdb 合法枚举是 `weak_password`。第一版通知测试抓住这个错，改正后 17 个 CMDB 测试全绿。
+- **pytest-asyncio 对 sync 测试报 warning**：`pytestmark = pytest.mark.asyncio` 会把同步测试也标注，改成 `async def` 虽然不实际 await 也能消除警告。
+
+## Pre-Existing Issue Acknowledged
+
+`secbot/channels/websocket.py::_save_envelope_media` L2114/L2139 两处 `self.logger` 在 `@staticmethod` 里，ruff F821。base commit `e201ede2` 就存在，本任务不修。
+
+## Regression
+
+- Targeted: `tests/api tests/channels tests/cmdb tests/agent tests/session tests/report` → **1221 passed**.
+- Narrow: `tests/api/test_notifications.py` 27 / `tests/api/test_events.py` 27 / `tests/channels/test_ws_activity_event.py` 12 / `tests/cmdb/test_vulnerability_notification.py` 5 全绿.
+
+## Acceptance Criteria Status
+
+全部 8 条后端 AC 达成；前端 UI 归 webui 后续任务（PRD Out-of-Scope L115 明确声明）。
+
+## Commits (in dependency order)
+
+- `526de882` chore(task): P2 PRD fixes + context curation
+- `443f7817` feat(notifications): P2/R1 NotificationQueue singleton + /api/notifications CRUD endpoints
+- `575dfe1f` feat(events): P2/R2 EventBuffer + /api/events rolling window endpoint
+- `87369720` feat(activity): P2/R3 WS activity_event broadcast + critical_vuln notification trigger
+- `b222b2d2` chore(task): archive 05-10-p2-notification-activity
+- `13e81acf` chore(task): archive 05-10-backend-api-gap-fill
+
+## Follow-ups (Not in Scope)
+
+- 前端 Navbar 铃铛 + 大屏事件流 UI 组件（webui 侧任务）。
+- EventBuffer 的事件源填充点（当前只有 `broadcast_activity_event` WS 侧；`/api/events` buffer 的 publish 入口待业务场景落地时再接）。
+- `secbot/channels/websocket.py::_save_envelope_media` 里两处 `self.logger` 预存在 bug（base commit，不影响运行时）。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `443f7817` | (see git log) |
+| `575dfe1f` | (see git log) |
+| `87369720` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-05-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~116 | Active |
+| `journal-1.md` | ~275 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-05-10 | P2 notification center + activity event stream delivered | `443f7817`, `575dfe1f`, `87369720` | `main` |
 | 4 | 2026-05-10 | P0 Dashboard 聚合功能数据层+接口层完整交付 | `8cc98d02`, `fc88c8da` | `main` |
 | 3 | 2026-05-08 | ocean-tech-frontend PR3-R4 / PR4 / PR5 收官 | `24422eba`, `7e0d7dcd`, `d344326d` | `main` |
 | 2 | 2026-05-07 | WebUI OpenAI-compatible endpoint & /model command | `1332b4c3`, `1212517b`, `6255bb77`, `c5cd6c40` | `main` |
