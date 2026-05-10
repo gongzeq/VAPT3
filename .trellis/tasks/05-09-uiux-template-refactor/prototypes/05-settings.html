@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设置 · 海盾智能体管控台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        fontFamily: { sans:['Inter','Noto Sans SC','system-ui','sans-serif'], mono:['JetBrains Mono','ui-monospace','monospace'] },
+        colors: { primary:'hsl(210 100% 56%)', 'primary-glow':'hsl(210 100% 70%)' },
+        keyframes: { 'fade-in-up':{ '0%':{opacity:'0',transform:'translateY(12px)'}, '100%':{opacity:'1',transform:'translateY(0)'} } },
+        animation:{ 'fade-in-up':'fade-in-up .6s ease-out' },
+      } },
+    };
+  </script>
+  <style>
+    :root {
+      --background:222 47% 6%; --foreground:210 40% 98%;
+      --primary:210 100% 56%; --primary-glow:210 100% 70%;
+      --card:222 47% 9%; --border:210 32% 18%;
+      --muted:222 28% 14%; --muted-foreground:210 16% 65%;
+      --destructive:0 84% 60%; --warning:38 92% 50%; --success:142 71% 45%;
+      --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+      --gradient-card:    linear-gradient(140deg, hsl(222 47% 11% / .95), hsl(210 32% 14% / .85));
+      --transition-smooth: all .35s cubic-bezier(.4,0,.2,1);
+    }
+    html, body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-family:'Inter','Noto Sans SC',system-ui,sans-serif; }
+    .bg-glass    { background: hsl(var(--card) / .55); backdrop-filter: blur(18px); }
+    .border-glow { border: 1px solid hsl(var(--primary) / .35); box-shadow: 0 0 24px hsl(var(--primary-glow) / .25); }
+    .hover-lift  { transition: var(--transition-smooth); }
+    .hover-lift:hover { transform: translateY(-3px); }
+    .text-gradient { background: var(--gradient-primary); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .gradient-card { background: var(--gradient-card); }
+    .gradient-primary { background: var(--gradient-primary); }
+    .switch-on  { background: var(--gradient-primary); }
+    .switch-off { background: hsl(var(--muted)); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <header class="sticky top-0 z-50 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-[1600px] items-center gap-6 px-6">
+      <div class="flex items-center gap-2.5">
+        <img src="../../../../logo.png" class="h-9 w-9 rounded-lg ring-1 ring-primary/30" />
+        <img src="./assets/text-logo-light.png" class="h-7 hidden md:block" />
+      </div>
+      <nav class="hidden md:flex items-center gap-1 ml-4">
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="message-square" class="h-4 w-4"></i> 智能助手</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="layout-dashboard" class="h-4 w-4"></i> 大屏分析</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="list-checks" class="h-4 w-4"></i> 任务详情</a>
+        <a class="rounded-lg gradient-primary px-3 py-1.5 text-sm font-medium text-white shadow-md inline-flex items-center gap-1.5"><i data-lucide="settings" class="h-4 w-4"></i> 设置</a>
+      </nav>
+      <div class="flex-1"></div>
+      <div class="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-1">
+        <div class="h-7 w-7 rounded-md gradient-primary flex items-center justify-center text-xs font-bold">SH</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-[1400px] px-6 py-6 animate-fade-in-up">
+    <div class="grid lg:grid-cols-[260px_1fr] gap-6">
+
+      <!-- 左侧 Tab 导航 -->
+      <aside class="space-y-1">
+        <div class="px-3 py-2 mb-2">
+          <h2 class="text-xl font-bold">设置</h2>
+          <p class="text-xs text-[hsl(var(--muted-foreground))]">个人偏好与平台配置</p>
+        </div>
+        <p class="px-3 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">用户</p>
+        <button class="w-full flex items-center gap-2.5 rounded-lg gradient-primary px-3 py-2 text-sm font-medium shadow-md">
+          <i data-lucide="palette" class="h-4 w-4"></i> 外观主题
+        </button>
+        <button class="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:bg-white/5 hover:text-white transition">
+          <i data-lucide="languages" class="h-4 w-4"></i> 语言与时区
+        </button>
+        <button class="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:bg-white/5 hover:text-white transition">
+          <i data-lucide="bell" class="h-4 w-4"></i> 通知与推送
+        </button>
+
+        <p class="px-3 pt-4 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">平台 (Admin)</p>
+        <button class="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:bg-white/5 hover:text-white transition">
+          <i data-lucide="cpu" class="h-4 w-4"></i> 模型与提供方
+        </button>
+
+        <p class="px-3 pt-4 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">高级</p>
+        <button class="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 transition">
+          <i data-lucide="alert-octagon" class="h-4 w-4"></i> 危险区
+        </button>
+      </aside>
+
+      <!-- 右侧内容 -->
+      <section class="space-y-6">
+
+        <!-- 外观主题 -->
+        <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-6 space-y-5">
+          <div>
+            <h3 class="text-lg font-semibold">外观主题</h3>
+            <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1">选择全局主题与界面密度</p>
+          </div>
+
+          <div>
+            <label class="text-xs font-medium text-[hsl(var(--muted-foreground))]">主题色板</label>
+            <div class="grid grid-cols-3 gap-3 mt-2">
+              <button class="relative rounded-xl border-glow p-4 text-left">
+                <div class="flex gap-1 mb-2">
+                  <div class="h-8 w-8 rounded gradient-primary"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(195_100%_60%)]"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(222_47%_9%)] border border-[hsl(var(--border))]"></div>
+                </div>
+                <div class="text-sm font-medium">海蓝主题</div>
+                <div class="text-[10px] text-[hsl(var(--muted-foreground))]">#1E90FF · 默认</div>
+                <div class="absolute top-2 right-2 h-5 w-5 rounded-full gradient-primary flex items-center justify-center"><i data-lucide="check" class="h-3 w-3"></i></div>
+              </button>
+              <button class="rounded-xl border border-[hsl(var(--border))] p-4 text-left hover:border-white/40 transition">
+                <div class="flex gap-1 mb-2">
+                  <div class="h-8 w-8 rounded bg-[hsl(189_94%_43%)]"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(170_94%_50%)]"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(222_47%_9%)] border border-[hsl(var(--border))]"></div>
+                </div>
+                <div class="text-sm font-medium">青蓝主题</div>
+                <div class="text-[10px] text-[hsl(var(--muted-foreground))]">cyan-500</div>
+              </button>
+              <button class="rounded-xl border border-[hsl(var(--border))] p-4 text-left hover:border-white/40 transition">
+                <div class="flex gap-1 mb-2">
+                  <div class="h-8 w-8 rounded bg-[hsl(142_71%_45%)]"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(170_71%_55%)]"></div>
+                  <div class="h-8 w-8 rounded bg-[hsl(222_47%_9%)] border border-[hsl(var(--border))]"></div>
+                </div>
+                <div class="text-sm font-medium">绿盾主题</div>
+                <div class="text-[10px] text-[hsl(var(--muted-foreground))]">即将上线</div>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4">
+            <div>
+              <div class="text-sm font-medium">深色模式</div>
+              <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">海盾管控台目前仅支持深色模式</div>
+            </div>
+            <button class="relative h-6 w-11 rounded-full switch-on">
+              <span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white shadow-md"></span>
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4">
+            <div>
+              <div class="text-sm font-medium">动效与过渡</div>
+              <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">关闭后将禁用所有 hover-lift / pulse-glow / fade-in 动效</div>
+            </div>
+            <button class="relative h-6 w-11 rounded-full switch-on">
+              <span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white shadow-md"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 通知 -->
+        <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-6 space-y-4">
+          <div>
+            <h3 class="text-lg font-semibold">通知与推送</h3>
+            <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1">控制何种事件触发推送</p>
+          </div>
+          <div class="space-y-3">
+            <label class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4 cursor-pointer">
+              <div>
+                <div class="text-sm font-medium flex items-center gap-2"><i data-lucide="alert-triangle" class="h-4 w-4 text-[hsl(var(--destructive))]"></i> 高危漏洞发现</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">CRITICAL/HIGH 级别立即弹窗提示</div>
+              </div>
+              <button class="relative h-6 w-11 rounded-full switch-on"><span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white"></span></button>
+            </label>
+            <label class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4 cursor-pointer">
+              <div>
+                <div class="text-sm font-medium flex items-center gap-2"><i data-lucide="check-circle" class="h-4 w-4 text-[hsl(var(--success))]"></i> 任务完成</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">扫描任务完成后通知</div>
+              </div>
+              <button class="relative h-6 w-11 rounded-full switch-on"><span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white"></span></button>
+            </label>
+            <label class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4 cursor-pointer">
+              <div>
+                <div class="text-sm font-medium flex items-center gap-2"><i data-lucide="shield-alert" class="h-4 w-4 text-[hsl(var(--warning))]"></i> 高危确认请求</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">智能体触发高危操作确认时通知</div>
+              </div>
+              <button class="relative h-6 w-11 rounded-full switch-on"><span class="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-white"></span></button>
+            </label>
+            <label class="flex items-center justify-between rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-4 cursor-pointer opacity-70">
+              <div>
+                <div class="text-sm font-medium flex items-center gap-2"><i data-lucide="mail" class="h-4 w-4 text-[hsl(var(--muted-foreground))]"></i> 邮件摘要 (差距)</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">每日 09:00 推送昨日态势 — <span class="text-[hsl(var(--warning))]">后端未实现</span></div>
+              </div>
+              <button class="relative h-6 w-11 rounded-full switch-off"><span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white"></span></button>
+            </label>
+          </div>
+        </div>
+
+        <!-- 模型配置 -->
+        <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-semibold flex items-center gap-2">模型与提供方 <span class="rounded-full bg-primary/15 border border-primary/40 px-2 py-0.5 text-[10px] text-primary">admin</span></h3>
+              <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1">orchestrator 与专家智能体使用的 LLM 配置</p>
+            </div>
+            <button class="rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 text-xs hover:border-primary/40 inline-flex items-center gap-1.5">
+              <i data-lucide="plus" class="h-3.5 w-3.5"></i> 新增提供方
+            </button>
+          </div>
+
+          <div class="space-y-2.5">
+            <div class="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
+              <div class="h-10 w-10 rounded-lg bg-orange-500/20 flex items-center justify-center"><i data-lucide="sparkles" class="h-5 w-5 text-orange-400"></i></div>
+              <div class="flex-1">
+                <div class="text-sm font-medium flex items-center gap-2">Anthropic <span class="rounded-full bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary">默认</span></div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">claude-3-5-sonnet · sk-ant-***45f8</div>
+              </div>
+              <span class="text-xs text-[hsl(var(--success))]">● 在线</span>
+              <button class="text-[hsl(var(--muted-foreground))] hover:text-primary"><i data-lucide="settings-2" class="h-4 w-4"></i></button>
+            </div>
+            <div class="flex items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-3">
+              <div class="h-10 w-10 rounded-lg bg-emerald-500/20 flex items-center justify-center"><i data-lucide="cpu" class="h-5 w-5 text-emerald-400"></i></div>
+              <div class="flex-1">
+                <div class="text-sm font-medium">OpenAI</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">gpt-4o · sk-***c2a1</div>
+              </div>
+              <span class="text-xs text-[hsl(var(--success))]">● 在线</span>
+              <button class="text-[hsl(var(--muted-foreground))] hover:text-primary"><i data-lucide="settings-2" class="h-4 w-4"></i></button>
+            </div>
+            <div class="flex items-center gap-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-3 opacity-60">
+              <div class="h-10 w-10 rounded-lg bg-purple-500/20 flex items-center justify-center"><i data-lucide="server" class="h-5 w-5 text-purple-400"></i></div>
+              <div class="flex-1">
+                <div class="text-sm font-medium">本地 Ollama</div>
+                <div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">qwen2.5-coder · localhost:11434</div>
+              </div>
+              <span class="text-xs text-[hsl(var(--destructive))]">● 离线</span>
+              <button class="text-[hsl(var(--muted-foreground))] hover:text-primary"><i data-lucide="settings-2" class="h-4 w-4"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 危险区 -->
+        <div class="rounded-2xl border border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5 p-6 space-y-4">
+          <div class="flex items-center gap-2">
+            <i data-lucide="alert-octagon" class="h-5 w-5 text-[hsl(var(--destructive))]"></i>
+            <h3 class="text-lg font-semibold text-[hsl(var(--destructive))]">危险区</h3>
+          </div>
+
+          <div class="flex items-center justify-between rounded-lg border border-[hsl(var(--destructive))]/30 bg-black/30 p-4">
+            <div>
+              <div class="text-sm font-medium">退出当前登录</div>
+              <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">将清除浏览器本地共享密钥与会话</div>
+            </div>
+            <button class="rounded-lg border border-[hsl(var(--destructive))]/50 bg-[hsl(var(--destructive))]/10 px-4 py-2 text-sm text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/20 transition inline-flex items-center gap-1.5">
+              <i data-lucide="log-out" class="h-4 w-4"></i> 退出
+            </button>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-[hsl(var(--destructive))]/30 bg-black/30 p-4">
+            <div>
+              <div class="text-sm font-medium">清空所有会话历史</div>
+              <div class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">将永久删除所有对话与黑板数据，不可恢复</div>
+            </div>
+            <button class="rounded-lg border border-[hsl(var(--destructive))]/50 bg-[hsl(var(--destructive))]/10 px-4 py-2 text-sm text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/20 transition inline-flex items-center gap-1.5">
+              <i data-lucide="trash-2" class="h-4 w-4"></i> 清空
+            </button>
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <script> lucide.createIcons(); </script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>大屏分析 · 海盾智能体管控台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        fontFamily: { sans:['Inter','Noto Sans SC','system-ui','sans-serif'], mono:['JetBrains Mono','ui-monospace','monospace'] },
+        colors: { primary:'hsl(210 100% 56%)', 'primary-glow':'hsl(210 100% 70%)' },
+        keyframes: {
+          'pulse-glow':{ '0%,100%':{boxShadow:'0 0 18px hsl(210 100% 70% / 0.35)'}, '50%':{boxShadow:'0 0 32px hsl(210 100% 70% / 0.65)'} },
+          'fade-in-up':{ '0%':{opacity:'0',transform:'translateY(12px)'}, '100%':{opacity:'1',transform:'translateY(0)'} },
+        },
+        animation:{ 'pulse-glow':'pulse-glow 2.4s ease-in-out infinite','fade-in-up':'fade-in-up .6s ease-out' },
+      } },
+    };
+  </script>
+  <style>
+    :root {
+      --background: 222 47% 6%; --foreground: 210 40% 98%;
+      --primary: 210 100% 56%; --primary-glow: 210 100% 70%;
+      --card: 222 47% 9%; --border: 210 32% 18%;
+      --muted: 222 28% 14%; --muted-foreground: 210 16% 65%;
+      --destructive: 0 84% 60%; --warning: 38 92% 50%; --success: 142 71% 45%;
+      --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+      --gradient-card:    linear-gradient(140deg, hsl(222 47% 11% / .95), hsl(210 32% 14% / .85));
+      --transition-smooth: all .35s cubic-bezier(.4,0,.2,1);
+    }
+    html, body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-family:'Inter','Noto Sans SC',system-ui,sans-serif; }
+    .bg-glass    { background: hsl(var(--card) / .55); backdrop-filter: blur(18px); }
+    .border-glow { border: 1px solid hsl(var(--primary) / .35); box-shadow: 0 0 24px hsl(var(--primary-glow) / .25); }
+    .hover-lift  { transition: var(--transition-smooth); }
+    .hover-lift:hover { transform: translateY(-3px); box-shadow: 0 16px 36px -12px hsl(var(--primary) / .45); }
+    .text-gradient { background: var(--gradient-primary); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .gradient-card { background: var(--gradient-card); }
+    .gradient-primary { background: var(--gradient-primary); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- Navbar -->
+  <header class="sticky top-0 z-50 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-[1600px] items-center gap-6 px-6">
+      <div class="flex items-center gap-2.5">
+        <img src="../../../../logo.png" class="h-9 w-9 rounded-lg ring-1 ring-primary/30" />
+        <img src="./assets/text-logo-light.png" class="h-7 hidden md:block" />
+      </div>
+      <nav class="hidden md:flex items-center gap-1 ml-4">
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="message-square" class="h-4 w-4"></i> 智能助手</a>
+        <a class="rounded-lg gradient-primary px-3 py-1.5 text-sm font-medium text-white shadow-md inline-flex items-center gap-1.5"><i data-lucide="layout-dashboard" class="h-4 w-4"></i> 大屏分析</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="list-checks" class="h-4 w-4"></i> 任务详情</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="settings" class="h-4 w-4"></i> 设置</a>
+      </nav>
+      <div class="flex-1"></div>
+      <div class="hidden md:flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-1.5 text-xs">
+        <span class="h-2 w-2 rounded-full bg-[hsl(var(--success))] animate-pulse"></span>
+        <span class="font-mono text-[hsl(var(--muted-foreground))]">WS · 已连接</span>
+      </div>
+      <div class="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-1">
+        <div class="h-7 w-7 rounded-md gradient-primary flex items-center justify-center text-xs font-bold">SH</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
+
+    <!-- 顶部操作栏（替代原 Hero Banner） -->
+    <section class="flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fade-in-up">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl font-bold">企业安全 <span class="text-gradient">态势大屏</span></h1>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-primary/20 border border-primary/40 px-3 py-1 text-xs font-medium text-primary-glow">
+          <i data-lucide="activity" class="h-3.5 w-3.5"></i> 实时 · 2026-05-09 12:38
+        </span>
+        <span class="text-xs text-white/55 font-mono hidden md:inline">last sync 2s ago</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2 text-sm border border-white/15 backdrop-blur transition">
+          <i data-lucide="download" class="h-4 w-4"></i> 导出快照
+        </button>
+        <button class="inline-flex items-center gap-2 rounded-lg gradient-primary px-4 py-2 text-sm font-semibold shadow-elegant hover-lift">
+          <i data-lucide="play" class="h-4 w-4"></i> 立即扫描
+        </button>
+      </div>
+    </section>
+
+    <!-- KPI 6 列 -->
+    <section class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">资产总数</span><i data-lucide="server" class="h-4 w-4 text-primary"></i></div>
+        <div class="text-3xl font-bold text-gradient mt-1">2,847</div>
+        <div class="text-[11px] text-[hsl(var(--success))] mt-0.5 flex items-center gap-1"><i data-lucide="trending-up" class="h-3 w-3"></i> +128 (4.7%)</div>
+      </div>
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">高危漏洞</span><i data-lucide="alert-triangle" class="h-4 w-4 text-[hsl(var(--destructive))]"></i></div>
+        <div class="text-3xl font-bold text-[hsl(var(--destructive))] mt-1">14</div>
+        <div class="text-[11px] text-[hsl(var(--destructive))] mt-0.5 flex items-center gap-1"><i data-lucide="trending-up" class="h-3 w-3"></i> +2 ↑ 待处置</div>
+      </div>
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">中危漏洞</span><i data-lucide="alert-circle" class="h-4 w-4 text-[hsl(var(--warning))]"></i></div>
+        <div class="text-3xl font-bold text-[hsl(var(--warning))] mt-1">87</div>
+        <div class="text-[11px] text-[hsl(var(--success))] mt-0.5 flex items-center gap-1"><i data-lucide="trending-down" class="h-3 w-3"></i> -5 ↓</div>
+      </div>
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">运行任务</span><i data-lucide="loader" class="h-4 w-4 text-primary animate-spin"></i></div>
+        <div class="text-3xl font-bold text-primary mt-1">7</div>
+        <div class="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">3 running · 4 queued</div>
+      </div>
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">合规等级</span><i data-lucide="award" class="h-4 w-4 text-[hsl(var(--success))]"></i></div>
+        <div class="text-3xl font-bold text-[hsl(var(--success))] mt-1">A-</div>
+        <div class="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">94.2 / 100</div>
+      </div>
+      <div class="gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover-lift">
+        <div class="flex items-center justify-between"><span class="text-xs text-[hsl(var(--muted-foreground))]">今日报告</span><i data-lucide="file-text" class="h-4 w-4 text-primary"></i></div>
+        <div class="text-3xl font-bold text-white mt-1">9</div>
+        <div class="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">3 待审核</div>
+      </div>
+    </section>
+
+    <!-- 双图表 -->
+    <section class="grid lg:grid-cols-3 gap-6">
+      <!-- 风险趋势 (占 2/3) -->
+      <div class="lg:col-span-2 gradient-card rounded-2xl border border-[hsl(var(--border))] p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-semibold">风险趋势 · 近 30 天</h3>
+            <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">高/中/低 危漏洞每日新增</p>
+          </div>
+          <div class="flex items-center gap-1 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-0.5 text-xs">
+            <button class="rounded-md px-2.5 py-1 text-[hsl(var(--muted-foreground))]">7D</button>
+            <button class="rounded-md gradient-primary px-2.5 py-1 text-white">30D</button>
+            <button class="rounded-md px-2.5 py-1 text-[hsl(var(--muted-foreground))]">90D</button>
+          </div>
+        </div>
+        <div id="trendChart" class="h-[300px] w-full"></div>
+      </div>
+
+      <!-- 漏洞分布 (饼图) -->
+      <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5">
+        <div class="mb-4">
+          <h3 class="text-base font-semibold">漏洞类型分布</h3>
+          <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">按 OWASP Top 10 分类</p>
+        </div>
+        <div id="pieChart" class="h-[300px] w-full"></div>
+      </div>
+    </section>
+
+    <!-- 资产 + 报告列表 -->
+    <section class="grid lg:grid-cols-2 gap-6">
+      <!-- 资产聚类 (柱图) -->
+      <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-semibold">资产聚类</h3>
+            <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">按业务系统 + 风险等级</p>
+          </div>
+          <button class="text-xs text-primary hover:text-primary-glow inline-flex items-center gap-1">查看全部 <i data-lucide="arrow-right" class="h-3 w-3"></i></button>
+        </div>
+        <div id="barChart" class="h-[280px] w-full"></div>
+      </div>
+
+      <!-- 最近报告 -->
+      <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-semibold">最近报告</h3>
+            <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">近 7 天产出</p>
+          </div>
+          <button class="text-xs text-primary hover:text-primary-glow inline-flex items-center gap-1">查看全部 <i data-lucide="arrow-right" class="h-3 w-3"></i></button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-xs uppercase text-[hsl(var(--muted-foreground))] border-b border-[hsl(var(--border))]">
+              <tr><th class="text-left py-2 font-medium">报告</th><th class="text-left py-2 font-medium">类型</th><th class="text-right py-2 font-medium">高危</th><th class="text-right py-2 font-medium">状态</th></tr>
+            </thead>
+            <tbody class="divide-y divide-[hsl(var(--border))]">
+              <tr class="hover:bg-white/5 transition">
+                <td class="py-3"><div class="font-medium">DC-IDC-A 段月报</div><div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">RPT-2026-0509-014</div></td>
+                <td class="py-3 text-xs text-[hsl(var(--muted-foreground))]">合规月报</td>
+                <td class="py-3 text-right"><span class="text-[hsl(var(--destructive))] font-mono">7</span></td>
+                <td class="py-3 text-right"><span class="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/15 border border-[hsl(var(--success))]/40 px-2 py-0.5 text-[10px] text-[hsl(var(--success))]">已发布</span></td>
+              </tr>
+              <tr class="hover:bg-white/5 transition">
+                <td class="py-3"><div class="font-medium">CVE-2024-3094 影响清单</div><div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">RPT-2026-0509-013</div></td>
+                <td class="py-3 text-xs text-[hsl(var(--muted-foreground))]">CVE 排查</td>
+                <td class="py-3 text-right"><span class="text-[hsl(var(--destructive))] font-mono">3</span></td>
+                <td class="py-3 text-right"><span class="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--warning))]/15 border border-[hsl(var(--warning))]/40 px-2 py-0.5 text-[10px] text-[hsl(var(--warning))]">待审核</span></td>
+              </tr>
+              <tr class="hover:bg-white/5 transition">
+                <td class="py-3"><div class="font-medium">弱口令巡检 Q2-W19</div><div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">RPT-2026-0508-028</div></td>
+                <td class="py-3 text-xs text-[hsl(var(--muted-foreground))]">周巡检</td>
+                <td class="py-3 text-right"><span class="text-[hsl(var(--warning))] font-mono">0</span></td>
+                <td class="py-3 text-right"><span class="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/15 border border-[hsl(var(--success))]/40 px-2 py-0.5 text-[10px] text-[hsl(var(--success))]">已发布</span></td>
+              </tr>
+              <tr class="hover:bg-white/5 transition">
+                <td class="py-3"><div class="font-medium">研发内网端口暴露</div><div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">RPT-2026-0508-027</div></td>
+                <td class="py-3 text-xs text-[hsl(var(--muted-foreground))]">资产探测</td>
+                <td class="py-3 text-right"><span class="text-[hsl(var(--destructive))] font-mono">2</span></td>
+                <td class="py-3 text-right"><span class="inline-flex items-center gap-1 rounded-full bg-primary/15 border border-primary/40 px-2 py-0.5 text-[10px] text-primary">编辑中</span></td>
+              </tr>
+              <tr class="hover:bg-white/5 transition">
+                <td class="py-3"><div class="font-medium">公网资产渗透测试</div><div class="text-xs text-[hsl(var(--muted-foreground))] font-mono">RPT-2026-0507-015</div></td>
+                <td class="py-3 text-xs text-[hsl(var(--muted-foreground))]">渗透报告</td>
+                <td class="py-3 text-right"><span class="text-[hsl(var(--destructive))] font-mono">5</span></td>
+                <td class="py-3 text-right"><span class="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/15 border border-[hsl(var(--success))]/40 px-2 py-0.5 text-[10px] text-[hsl(var(--success))]">已发布</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实时事件流 -->
+    <section class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <i data-lucide="radio" class="h-4 w-4 text-[hsl(var(--success))] animate-pulse"></i>
+          <h3 class="text-base font-semibold">实时事件流</h3>
+          <span class="text-xs text-[hsl(var(--muted-foreground))]">last 5 min</span>
+        </div>
+        <button class="text-xs text-primary hover:text-primary-glow">暂停</button>
+      </div>
+      <ul class="space-y-2 font-mono text-xs">
+        <li class="flex items-center gap-3 rounded-lg bg-[hsl(var(--muted))]/40 px-3 py-2">
+          <span class="text-[hsl(var(--muted-foreground))]">12:38:04</span>
+          <span class="rounded px-1.5 py-0.5 bg-[hsl(var(--destructive))]/20 text-[hsl(var(--destructive))]">CRIT</span>
+          <span class="text-white">10.0.4.21:22 命中弱口令字典 — root/admin123</span>
+          <span class="ml-auto text-[hsl(var(--muted-foreground))]">weak_password</span>
+        </li>
+        <li class="flex items-center gap-3 rounded-lg bg-[hsl(var(--muted))]/40 px-3 py-2">
+          <span class="text-[hsl(var(--muted-foreground))]">12:37:51</span>
+          <span class="rounded px-1.5 py-0.5 bg-[hsl(var(--warning))]/20 text-[hsl(var(--warning))]">WARN</span>
+          <span class="text-white/85">10.0.4.55 开放高危端口 3389/RDP，需复核</span>
+          <span class="ml-auto text-[hsl(var(--muted-foreground))]">port_scan</span>
+        </li>
+        <li class="flex items-center gap-3 rounded-lg bg-[hsl(var(--muted))]/40 px-3 py-2">
+          <span class="text-[hsl(var(--muted-foreground))]">12:37:22</span>
+          <span class="rounded px-1.5 py-0.5 bg-primary/20 text-primary">INFO</span>
+          <span class="text-white/85">资产发现完成：47 个新增主机已入库</span>
+          <span class="ml-auto text-[hsl(var(--muted-foreground))]">asset_discovery</span>
+        </li>
+        <li class="flex items-center gap-3 rounded-lg bg-[hsl(var(--muted))]/40 px-3 py-2">
+          <span class="text-[hsl(var(--muted-foreground))]">12:36:48</span>
+          <span class="rounded px-1.5 py-0.5 bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]">OK</span>
+          <span class="text-white/85">报告 RPT-2026-0509-014 已签发</span>
+          <span class="ml-auto text-[hsl(var(--muted-foreground))]">report</span>
+        </li>
+      </ul>
+    </section>
+
+  </main>
+
+  <script>
+    lucide.createIcons();
+
+    const dark = {
+      textStyle: { color: '#cbd5e1', fontFamily: 'Inter,Noto Sans SC,sans-serif' },
+      grid: { left: 40, right: 20, top: 30, bottom: 30 },
+      legend: { textStyle: { color: '#94a3b8' }, top: 0 },
+      tooltip: { trigger:'axis', backgroundColor:'rgba(13,18,30,.95)', borderColor:'rgba(30,144,255,.4)', textStyle:{color:'#e2e8f0'} },
+      xAxis: { type:'category', axisLine:{lineStyle:{color:'#334155'}}, axisLabel:{color:'#94a3b8',fontSize:11}, splitLine:{show:false} },
+      yAxis: { type:'value', axisLine:{show:false}, axisLabel:{color:'#94a3b8',fontSize:11}, splitLine:{lineStyle:{color:'rgba(51,65,85,.4)',type:'dashed'}} },
+    };
+
+    // 风险趋势
+    const trend = echarts.init(document.getElementById('trendChart'));
+    const days = Array.from({length:30},(_,i)=>`5/${i+1}`);
+    trend.setOption({
+      ...dark,
+      legend: { ...dark.legend, data:['高危','中危','低危'] },
+      xAxis:{ ...dark.xAxis, data: days },
+      yAxis: dark.yAxis,
+      series: [
+        { name:'高危', type:'line', smooth:true, symbol:'circle', symbolSize:5, lineStyle:{color:'#ef4444',width:2}, itemStyle:{color:'#ef4444'},
+          areaStyle:{ color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(239,68,68,.45)'},{offset:1,color:'rgba(239,68,68,0)'}]) },
+          data:[5,8,6,9,11,7,10,12,9,8,11,13,10,9,12,14,11,10,13,15,12,11,14,16,13,12,15,17,14,14] },
+        { name:'中危', type:'line', smooth:true, symbol:'circle', symbolSize:5, lineStyle:{color:'#f59e0b',width:2}, itemStyle:{color:'#f59e0b'},
+          areaStyle:{ color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(245,158,11,.4)'},{offset:1,color:'rgba(245,158,11,0)'}]) },
+          data:[35,42,38,45,52,48,55,62,58,54,68,72,65,60,75,82,78,72,85,88,82,78,90,95,88,85,92,98,90,87] },
+        { name:'低危', type:'line', smooth:true, symbol:'circle', symbolSize:5, lineStyle:{color:'#1E90FF',width:2}, itemStyle:{color:'#1E90FF'},
+          areaStyle:{ color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(30,144,255,.45)'},{offset:1,color:'rgba(30,144,255,0)'}]) },
+          data:[120,135,128,142,158,148,165,178,168,160,185,195,180,172,205,220,210,200,225,240,225,215,245,260,240,232,258,272,250,245] },
+      ],
+    });
+
+    // 漏洞分布饼图
+    const pie = echarts.init(document.getElementById('pieChart'));
+    pie.setOption({
+      tooltip:{ trigger:'item', backgroundColor:'rgba(13,18,30,.95)', borderColor:'rgba(30,144,255,.4)', textStyle:{color:'#e2e8f0'} },
+      legend:{ orient:'vertical', right:0, top:'middle', textStyle:{color:'#94a3b8',fontSize:11}, itemWidth:10,itemHeight:10 },
+      series:[{
+        type:'pie', radius:['50%','75%'], center:['38%','50%'], avoidLabelOverlap:true,
+        itemStyle:{ borderRadius:6, borderColor:'rgba(13,18,30,.95)', borderWidth:2 },
+        label:{ show:true, color:'#cbd5e1', fontSize:11, formatter:'{b}\n{d}%' }, labelLine:{ length:8,length2:8,lineStyle:{color:'#475569'} },
+        data:[
+          { value:34, name:'注入', itemStyle:{color:'#ef4444'} },
+          { value:28, name:'认证缺陷', itemStyle:{color:'#f59e0b'} },
+          { value:22, name:'XSS', itemStyle:{color:'#1E90FF'} },
+          { value:14, name:'配置错误', itemStyle:{color:'#06b6d4'} },
+          { value:9,  name:'敏感数据暴露', itemStyle:{color:'#a855f7'} },
+          { value:6,  name:'其他', itemStyle:{color:'#64748b'} },
+        ],
+      }],
+    });
+
+    // 资产聚类柱图
+    const bar = echarts.init(document.getElementById('barChart'));
+    bar.setOption({
+      ...dark,
+      legend:{ ...dark.legend, data:['高危','中危','低危'] },
+      xAxis:{ ...dark.xAxis, data:['CRM','ERP','官网','OA','支付','大数据','BI','内部工具'] },
+      yAxis: dark.yAxis,
+      series:[
+        { name:'高危', type:'bar', stack:'risk', barWidth:'45%', itemStyle:{color:'#ef4444',borderRadius:[0,0,0,0]}, data:[3,2,5,1,4,2,1,2] },
+        { name:'中危', type:'bar', stack:'risk', itemStyle:{color:'#f59e0b'}, data:[12,8,15,10,18,14,9,11] },
+        { name:'低危', type:'bar', stack:'risk', itemStyle:{color:'#1E90FF',borderRadius:[6,6,0,0]}, data:[35,28,42,30,38,32,25,29] },
+      ],
+    });
+
+    window.addEventListener('resize',()=>{ trend.resize(); pie.resize(); bar.resize(); });
+  </script>
+</body>
+</html>
