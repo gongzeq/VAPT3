@@ -14,16 +14,18 @@ Hard rules (per `.trellis/spec/backend/cmdb-schema.md` §3 + §4):
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import case, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from secbot.cmdb.models import (
     DEFAULT_ACTOR,
+    VALID_ASSET_TYPES,
     VALID_SCAN_STATUSES,
     VALID_SEVERITIES,
     VALID_VULN_CATEGORIES,
@@ -32,6 +34,8 @@ from secbot.cmdb.models import (
     Service,
     Vulnerability,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ULID (Crockford base32, 26 chars) — small standalone implementation so we
@@ -147,13 +151,21 @@ async def upsert_asset(
     ip: Optional[str] = None,
     hostname: Optional[str] = None,
     os_guess: Optional[str] = None,
-    tags: Optional[list[str]] = None,
+    tags: Optional[dict[str, Any]] = None,
 ) -> Asset:
     """Insert-or-update an asset keyed on ``(actor_id, scan_id, target)``.
 
     Within a single scan we treat ``target`` as the natural key (a re-scan
     that revises ``ip``/``hostname`` MUST update the existing row, not insert
     a duplicate).
+
+    ``tags`` is a JSON object. Reserved keys per
+    `.trellis/spec/backend/cmdb-schema.md` §2.1.1:
+
+    - ``system`` — business system name (e.g. ``"CRM"``), used by
+      ``/api/dashboard/asset-cluster``.
+    - ``type`` — one of :data:`~secbot.cmdb.models.VALID_ASSET_TYPES`, used by
+      ``/api/dashboard/asset-distribution``.
     """
 
     stmt = select(Asset).where(
@@ -171,7 +183,7 @@ async def upsert_asset(
             ip=ip,
             hostname=hostname,
             os_guess=os_guess,
-            tags=list(tags) if tags else None,
+            tags=dict(tags) if tags else None,
         )
         session.add(asset)
     else:
@@ -182,7 +194,7 @@ async def upsert_asset(
         if os_guess is not None:
             asset.os_guess = os_guess
         if tags is not None:
-            asset.tags = list(tags)
+            asset.tags = dict(tags)
         asset.updated_at = _utcnow()
 
     await session.flush()
@@ -367,3 +379,380 @@ async def list_vulnerabilities(
         stmt = stmt.where(Vulnerability.severity.in_(sevs))
     stmt = stmt.order_by(Vulnerability.created_at.desc()).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Dashboard aggregations
+#
+# Contract: `.trellis/spec/backend/dashboard-aggregation.md`.
+# All functions are **read-only** and **actor_id scoped**. They return plain
+# Python structures (dicts / lists) so the HTTP handler in
+# ``secbot/channels/websocket.py`` can serialise them directly.
+# ---------------------------------------------------------------------------
+
+
+# SQLite stores DATETIME as ISO-8601 text; SQLAlchemy's ``func.date`` maps to
+# the ``date(...)`` SQLite function, which returns ``YYYY-MM-DD`` respecting
+# the second argument (``'localtime'``). The project deploys with UTC+8.
+_SEVERITY_TREND_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low")
+_ASSET_TYPE_ORDER: tuple[str, ...] = (
+    "web_app",
+    "api",
+    "database",
+    "server",
+    "network",
+    "other",
+)
+_VULN_CATEGORY_ORDER: tuple[str, ...] = (
+    "injection",
+    "auth",
+    "xss",
+    "misconfig",
+    "exposure",
+    "weak_password",
+    "cve",
+    "other",
+)
+
+
+async def _count_in_window(
+    session: AsyncSession,
+    stmt_builder,
+    *,
+    start: datetime,
+    end: datetime,
+    created_at_col,
+) -> int:
+    """Execute ``stmt_builder()`` with an extra ``created_at`` window filter."""
+
+    stmt = stmt_builder().where(created_at_col >= start, created_at_col < end)
+    return int((await session.execute(stmt)).scalar() or 0)
+
+
+async def summary_counts(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    now: Optional[datetime] = None,
+) -> dict[str, dict[str, int]]:
+    """Return KPI counts + 24h deltas for the 5 DB-backed cards.
+
+    The 6th card (``agents_online``) comes from the in-memory
+    :class:`~secbot.agent.subagent.SubagentManager` and is composed by the
+    HTTP handler, not this function.
+
+    Delta semantics (per dashboard-aggregation.md §2.1):
+    ``delta = count(created_at in [now-24h, now)) - count(created_at in
+    [now-48h, now-24h))``.
+
+    Returns a mapping with keys ``active_tasks``, ``completed_scans``,
+    ``critical_vuln``, ``asset_total``, ``pending_alerts``. Each value is
+    ``{"value": int, "delta": int}``.
+    """
+
+    now = now or _utcnow()
+    window_start = now - timedelta(hours=24)
+    prior_start = now - timedelta(hours=48)
+
+    # Snapshot counts (no created_at filter).
+    active_statuses = ("queued", "running", "awaiting_user")
+
+    def _scan_active_count():
+        return select(func.count()).select_from(Scan).where(
+            Scan.actor_id == actor_id, Scan.status.in_(active_statuses)
+        )
+
+    def _scan_completed_count():
+        return select(func.count()).select_from(Scan).where(
+            Scan.actor_id == actor_id, Scan.status == "completed"
+        )
+
+    def _vuln_critical_count():
+        return select(func.count()).select_from(Vulnerability).where(
+            Vulnerability.actor_id == actor_id, Vulnerability.severity == "critical"
+        )
+
+    def _asset_total_count():
+        return select(func.count()).select_from(Asset).where(Asset.actor_id == actor_id)
+
+    def _pending_alerts_count():
+        return select(func.count()).select_from(Vulnerability).where(
+            Vulnerability.actor_id == actor_id,
+            Vulnerability.severity.in_(("critical", "high")),
+        )
+
+    active_tasks = int((await session.execute(_scan_active_count())).scalar() or 0)
+    completed_scans = int(
+        (await session.execute(_scan_completed_count())).scalar() or 0
+    )
+    critical_vuln = int((await session.execute(_vuln_critical_count())).scalar() or 0)
+    asset_total = int((await session.execute(_asset_total_count())).scalar() or 0)
+    pending_alerts = int(
+        (await session.execute(_pending_alerts_count())).scalar() or 0
+    )
+
+    async def _delta(builder, created_at_col) -> int:
+        current = await _count_in_window(
+            session, builder, start=window_start, end=now, created_at_col=created_at_col
+        )
+        prior = await _count_in_window(
+            session,
+            builder,
+            start=prior_start,
+            end=window_start,
+            created_at_col=created_at_col,
+        )
+        return current - prior
+
+    return {
+        "active_tasks": {
+            "value": active_tasks,
+            "delta": await _delta(_scan_active_count, Scan.created_at),
+        },
+        "completed_scans": {
+            "value": completed_scans,
+            "delta": await _delta(_scan_completed_count, Scan.created_at),
+        },
+        "critical_vuln": {
+            "value": critical_vuln,
+            "delta": await _delta(_vuln_critical_count, Vulnerability.created_at),
+        },
+        "asset_total": {
+            "value": asset_total,
+            "delta": await _delta(_asset_total_count, Asset.created_at),
+        },
+        "pending_alerts": {
+            "value": pending_alerts,
+            "delta": await _delta(_pending_alerts_count, Vulnerability.created_at),
+        },
+    }
+
+
+def _validate_trend_range(range_: str) -> int:
+    """Map the ``?range=`` query parameter to a number of days. Raises
+    ``ValueError`` on unknown input (the HTTP layer translates this to 400).
+    """
+
+    mapping = {"7d": 7, "30d": 30, "90d": 90}
+    if range_ not in mapping:
+        raise ValueError(
+            f"invalid range {range_!r}; expected one of {sorted(mapping)}"
+        )
+    return mapping[range_]
+
+
+async def vuln_trend(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    range_: str = "30d",
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Return vuln counts per day × severity for the given range.
+
+    Severity ``info`` is excluded. The response is pre-filled so every day in
+    the window is present with ``count=0`` when no vulnerabilities were
+    recorded.
+    """
+
+    days = _validate_trend_range(range_)
+    now = now or _utcnow()
+    window_start = now - timedelta(days=days)
+
+    # ``date(created_at, 'localtime')`` in SQLite returns a YYYY-MM-DD string
+    # using the server's local TZ (UTC+8 per §1). SQLAlchemy renders
+    # ``func.date(col, 'localtime')`` accordingly; on other engines (e.g.
+    # PostgreSQL in tests/prod parity) we'd fall back to a CAST.
+    date_expr = func.date(Vulnerability.created_at, "localtime").label("day")
+
+    stmt = (
+        select(
+            Vulnerability.severity.label("severity"),
+            date_expr,
+            func.count().label("n"),
+        )
+        .where(
+            Vulnerability.actor_id == actor_id,
+            Vulnerability.severity.in_(_SEVERITY_TREND_ORDER),
+            Vulnerability.created_at >= window_start,
+        )
+        .group_by(Vulnerability.severity, date_expr)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    # Index results by (severity, day) for dense pre-fill.
+    by_key: dict[tuple[str, str], int] = {}
+    for row in rows:
+        by_key[(row.severity, row.day)] = int(row.n)
+
+    # Dense date list in the caller's local TZ. Match the SQL by using the
+    # same local-time date string.
+    local_now = now.astimezone()
+    day_list: list[str] = []
+    for offset in range(days):
+        d = (local_now - timedelta(days=days - 1 - offset)).date()
+        day_list.append(d.isoformat())
+
+    series: list[dict[str, Any]] = []
+    for sev in _SEVERITY_TREND_ORDER:
+        series.append(
+            {
+                "name": sev,
+                "data": [
+                    {"date": d, "count": by_key.get((sev, d), 0)} for d in day_list
+                ],
+            }
+        )
+
+    return {"range": range_, "series": series}
+
+
+async def vuln_distribution(
+    session: AsyncSession,
+    actor_id: str,
+) -> dict[str, int]:
+    """Return ``{category: count}`` over all vulnerabilities for *actor_id*.
+
+    Only returns raw counts; bucket ordering / display names / ``cve`` +
+    ``weak_password`` folding are the caller's responsibility (see
+    dashboard-aggregation.md §2.3).
+    """
+
+    stmt = (
+        select(Vulnerability.category, func.count().label("n"))
+        .where(Vulnerability.actor_id == actor_id)
+        .group_by(Vulnerability.category)
+    )
+    rows = (await session.execute(stmt)).all()
+    counts: dict[str, int] = {cat: 0 for cat in _VULN_CATEGORY_ORDER}
+    for row in rows:
+        # Unknown categories collapse into "other" so an out-of-vocabulary
+        # insertion (shouldn't happen because upsert validates) stays
+        # observable without breaking the response shape.
+        key = row.category if row.category in counts else "other"
+        counts[key] = counts.get(key, 0) + int(row.n)
+    return counts
+
+
+async def asset_type_distribution(
+    session: AsyncSession,
+    actor_id: str,
+) -> dict[str, int]:
+    """Return ``{asset_type: count}`` keyed by ``asset.tags.type``.
+
+    NULL / unknown / missing values are folded into ``other``.
+    """
+
+    type_expr = func.json_extract(Asset.tags, "$.type").label("kind")
+    stmt = (
+        select(type_expr, func.count().label("n"))
+        .where(Asset.actor_id == actor_id)
+        .group_by(type_expr)
+    )
+    rows = (await session.execute(stmt)).all()
+    counts: dict[str, int] = {t: 0 for t in _ASSET_TYPE_ORDER}
+    for row in rows:
+        kind = row.kind if row.kind in VALID_ASSET_TYPES else "other"
+        counts[kind] = counts.get(kind, 0) + int(row.n)
+    return counts
+
+
+async def asset_cluster(
+    session: AsyncSession,
+    actor_id: str,
+) -> dict[str, dict[str, int]]:
+    """Return ``{system: {high, medium, low}}`` cluster counts.
+
+    Joins ``asset`` ↔ ``vulnerability`` on ``vulnerability.asset_id`` and
+    groups by ``asset.tags.system``. Assets without ``tags.system`` are
+    excluded and counted in a warning log line so the skipped volume is
+    observable.
+
+    Per spec §2.5, ``critical`` vulnerabilities fold into ``high`` for the
+    cluster widget; ``info`` is excluded entirely.
+    """
+
+    system_expr = func.json_extract(Asset.tags, "$.system").label("system")
+
+    # Count assets whose tags.system is NULL so we can emit a single warning.
+    skipped_stmt = (
+        select(func.count())
+        .select_from(Asset)
+        .where(Asset.actor_id == actor_id, system_expr.is_(None))
+    )
+    skipped = int((await session.execute(skipped_stmt)).scalar() or 0)
+    if skipped:
+        _logger.warning(
+            "asset_cluster: skipping %d asset(s) without tags.system (actor=%s)",
+            skipped,
+            actor_id,
+        )
+
+    # Join asset → vulnerability. Assets with zero vulnerabilities still need
+    # to appear (§2.5 rule: "Systems with zero vulnerabilities are still
+    # emitted"). We fetch the roster first, then overlay counts.
+    roster_stmt = (
+        select(system_expr)
+        .where(Asset.actor_id == actor_id, system_expr.is_not(None))
+        .group_by(system_expr)
+    )
+    roster = [row.system for row in (await session.execute(roster_stmt)).all()]
+
+    # Map severity → bucket ("critical" folds into "high", others direct).
+    bucket_case = case(
+        (Vulnerability.severity.in_(("critical", "high")), literal_column("'high'")),
+        (Vulnerability.severity == "medium", literal_column("'medium'")),
+        (Vulnerability.severity == "low", literal_column("'low'")),
+        else_=literal_column("NULL"),
+    ).label("bucket")
+
+    counts_stmt = (
+        select(
+            system_expr,
+            bucket_case,
+            func.count().label("n"),
+        )
+        .select_from(Vulnerability)
+        .join(Asset, Vulnerability.asset_id == Asset.id)
+        .where(
+            Asset.actor_id == actor_id,
+            Vulnerability.actor_id == actor_id,
+            system_expr.is_not(None),
+            Vulnerability.severity.in_(("critical", "high", "medium", "low")),
+        )
+        .group_by(system_expr, bucket_case)
+    )
+
+    cluster: dict[str, dict[str, int]] = {
+        system: {"high": 0, "medium": 0, "low": 0} for system in roster
+    }
+    for row in (await session.execute(counts_stmt)).all():
+        if row.bucket is None:
+            continue
+        cluster.setdefault(row.system, {"high": 0, "medium": 0, "low": 0})
+        cluster[row.system][row.bucket] = int(row.n)
+    return cluster
+
+
+__all__ = [
+    # Scan
+    "create_scan",
+    "get_scan",
+    "list_scans",
+    "update_scan_status",
+    # Asset / Service / Vulnerability
+    "upsert_asset",
+    "list_assets",
+    "upsert_service",
+    "list_services",
+    "upsert_vulnerability",
+    "list_vulnerabilities",
+    # Dashboard aggregations
+    "summary_counts",
+    "vuln_trend",
+    "vuln_distribution",
+    "asset_type_distribution",
+    "asset_cluster",
+    # Misc
+    "new_ulid",
+]

@@ -70,7 +70,11 @@ class Asset(Base):
     ip: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     hostname: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     os_guess: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # Reserved keys: ``system`` (business system name) and ``type`` (asset
+    # class: web_app|api|database|server|network|other). See
+    # `.trellis/spec/backend/cmdb-schema.md` §2.1.1. Free-form extras are
+    # allowed alongside the reserved keys.
+    tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     actor_id: Mapped[str] = mapped_column(
         String, nullable=False, default=DEFAULT_ACTOR, server_default=DEFAULT_ACTOR
@@ -174,4 +178,23 @@ VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info"})
 VALID_SCAN_STATUSES = frozenset(
     {"queued", "running", "awaiting_user", "completed", "failed", "cancelled"}
 )
-VALID_VULN_CATEGORIES = frozenset({"cve", "weak_password", "misconfig", "exposure"})
+VALID_VULN_CATEGORIES = frozenset(
+    {
+        # Authoritative list per `.trellis/spec/backend/cmdb-schema.md` §2.3.1.
+        # Order here is display-independent; the dashboard contract declares
+        # bucket order separately in `.trellis/spec/backend/dashboard-aggregation.md`.
+        "injection",
+        "auth",
+        "xss",
+        "misconfig",
+        "exposure",
+        "weak_password",
+        "cve",
+        "other",
+    }
+)
+
+# Reserved vocabulary for the `asset.tags.type` JSON key (spec §2.1.1).
+VALID_ASSET_TYPES = frozenset(
+    {"web_app", "api", "database", "server", "network", "other"}
+)
