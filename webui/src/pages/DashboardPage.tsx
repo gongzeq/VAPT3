@@ -13,6 +13,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
+import { ActivityEventStream } from "@/components/ActivityEventStream";
 import { cn } from "@/lib/utils";
 import {
   assetCluster,
@@ -501,6 +502,13 @@ export function DashboardPage() {
               </table>
             </div>
           </div>
+        </section>
+
+        {/* Live Activity Stream (PR3) — sits at the bottom of the dashboard
+            so operators can peek at what agents are doing right now without
+            leaving the overview. */}
+        <section className="mt-6">
+          <ActivityEventStream />
         </section>
       </main>
     </div>
