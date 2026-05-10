@@ -13,9 +13,9 @@
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/notifications` | GET | 列表（`?unread=0\|1&limit=50&offset=0`），响应含 `unread_count` |
-| `/api/notifications/{id}/read` | POST | 标记单条已读 |
-| `/api/notifications/read-all` | POST | 全部已读 |
+| `/api/notifications` | GET | 列表（`?unread=0\|1&limit=50&offset=0`），响应含 `limit / offset / total / unread_count` |
+| `/api/notifications/{id}/read` | GET | 标记单条已读（`websockets` 库 HTTP parser 不接 POST body，与 R2 `/archive` 同构） |
+| `/api/notifications/read-all` | GET | 全部已读（同上，GET 触发动作） |
 | `/api/events?since=&limit=50` | GET | 事件流（近 5 分钟默认，单次最多 50 条） |
 
 ### WebSocket 事件（1 个）
@@ -51,13 +51,15 @@
     }
   ],
   "total": 23,
+  "limit": 50,
+  "offset": 0,
   "unread_count": 3
 }
 ```
 
-### 2. `POST /api/notifications/{id}/read` → `200 {"id":"n-01JS...","read":true}`
+### 2. `GET /api/notifications/{id}/read` → `200 {"id":"n-01JS...","read":true}`
 
-### 3. `POST /api/notifications/read-all` → `200 {"updated": 3}`
+### 3. `GET /api/notifications/read-all` → `200 {"updated": 3}`
 
 ### 4. `GET /api/events?since=2026-05-10T12:33:00+08:00&limit=50`
 
@@ -92,13 +94,15 @@
 
 ## Acceptance Criteria
 
-- [ ] 通知中心内存队列容量可配（默认 500）；溢出时丢弃最旧。
-- [ ] 高危漏洞新增时自动产生 `critical_vuln` 通知 —— 在 `secbot/cmdb/repo.py::insert_vulnerability` 返回前直接调用通知队列 `publish()`（**不**引入 observer/signal 抽象），函数签名保持不变。
+- [ ] 通知中心内存队列容量可配：优先 env `SECBOT_NOTIFICATION_BUFFER_SIZE`，其次 `NotificationQueue(maxlen=...)` 构造参数，默认 500；溢出时丢弃最旧（`collections.deque(maxlen=...)`）。
+- [ ] `notification_queue` 通过 `secbot/channels/notifications.py::get_notification_queue()` 全局 singleton 暴露，`WebSocketChannel.__init__` 从 singleton 取用（保持与 P1 R3 `PromptsLoader` 同风格，**不**引入 observer/signal 抽象）。
+- [ ] 高危漏洞新增时自动产生 `critical_vuln` 通知 —— 在 `secbot/cmdb/repo.py::insert_vulnerability` 返回前直接 `get_notification_queue().publish(...)`，函数签名保持不变。
 - [ ] `GET /api/events` 支持 `since` 时间戳过滤；无参数时返回最近 5 分钟。
 - [ ] WS `activity_event` 由 `secbot/agent/loop.py` 在工具调用前后广播，复用 P0 R2 已落地的 `broadcast_task_update` 节流模板（1s/event/scope），经 `WebSocketChannel` 注入下发。
 - [ ] `activity_event` 的组装点复用 `build_tool_event_start_payload`（见 `secbot/agent/loop.py` L131 附近），不新增插桩点。
+- [ ] `/api/notifications` 响应回显 `limit` / `offset`，与 P1 R2 `/api/sessions` 分页响应格式对齐。
 - [ ] 单元测试：
-  - `tests/api/test_notifications.py` — 列表、已读、全读。
+  - `tests/api/test_notifications.py` — 列表、已读、全读、分页回显、singleton 隔离。
   - `tests/api/test_events.py` — since 过滤、空结果。
   - `tests/channels/test_ws_activity_event.py`。
 - [ ] 前端：Navbar 新增铃铛下拉面板，订阅 `/api/notifications`；大屏底部事件流组件接入 `/api/events` + WS 合流。
@@ -119,7 +123,12 @@
 - 既有切点（避免重复插桩）：
   - `secbot/agent/loop.py::build_tool_event_start_payload`（约 L131）已在工具调用起点组装 event payload —— 从此处 fork 出 `activity_event` 分支广播。
   - `secbot/channels/websocket.py::WebSocketChannel`（P0 R2 已注入 `subagent_manager` / `agent_registry`）：本任务追加 `notification_queue` 构造参数，保持与 P0 依赖注入风格一致。
+- HTTP 方法约束：
+  - `websockets` 库 HTTP parser 仅接受 GET（R2 `/api/sessions/{key}/archive` 已经踩坑并落定 GET + query 方案），本任务所有"动作型"端点统一用 GET。
+- 单例风格约定：
+  - `secbot/channels/notifications.py` 提供 `NotificationQueue` + `get_notification_queue()` + `reset_queue()`（测试用），严格对齐 P1 R3 `secbot/api/prompts.py::PromptsLoader` 的单例 + 测试 reset 范式。
 - 主文件：
-  - `secbot/channels/websocket.py` — 新 HTTP 端点 + 通知队列 + `activity_event` 广播
+  - `secbot/channels/notifications.py` — 新建：NotificationQueue + singleton getter
+  - `secbot/channels/websocket.py` — 新 HTTP 端点 + 队列消费 + `activity_event` 广播
   - `secbot/agent/loop.py` — 工具调用前后发射 activity_event（复用 `build_tool_event_start_payload` 产物）
-  - `secbot/cmdb/repo.py::insert_vulnerability` — 末尾对 `severity=critical` 直接 `notification_queue.publish()`，不新增 hook 层
+  - `secbot/cmdb/repo.py::insert_vulnerability` — 末尾对 `severity=critical` 直接 `get_notification_queue().publish()`，不新增 hook 层

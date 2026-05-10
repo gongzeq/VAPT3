@@ -1,1 +1,9 @@
 {"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 索引，快速定位需要参考的规范文件"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "新 HTTP 端点 /api/notifications*、/api/events 与 WS activity_event 必须遵守 HTTP + 协议规范（含认证、响应格式）"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "R2 已落定 broadcast_task_update 1s/event/scope 节流模板，activity_event 必须复用不重造"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "high_risk_confirm 是通知源之一，需要对齐现有 confirm 流程的事件语义"}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "insert_vulnerability 插桩点所在表结构，确认 severity 字段与读取语义"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "HTTP 端点错误返回格式必须与既有 400/401/404/500 约定一致"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "notification publish/consume 路径日志级别与字段规范"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "channels / agent / cmdb 分层边界，避免 repo.py 反向依赖 channels 导致循环"}
