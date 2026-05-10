@@ -699,6 +699,22 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/prompts":
             return self._handle_prompts(request)
 
+        # Notification center (P2/R1). In-memory ring buffer backed by
+        # :mod:`secbot.channels.notifications`. ``/read-all`` MUST be matched
+        # BEFORE the ``/{id}/read`` regex — else ``read-all`` would be parsed
+        # as an id of ``read-all``. All three endpoints are GET due to the
+        # same ``websockets`` HTTP parser constraint documented on ``/delete``
+        # and ``/archive`` above.
+        if got == "/api/notifications":
+            return self._handle_notifications_list(request)
+
+        if got == "/api/notifications/read-all":
+            return self._handle_notifications_read_all(request)
+
+        m = re.match(r"^/api/notifications/([^/]+)/read$", got)
+        if m:
+            return self._handle_notification_read(request, m.group(1))
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -1382,6 +1398,90 @@ class WebSocketChannel(BaseChannel):
             self.logger.exception("prompts: unexpected load failure; serving empty")
             prompts = []
         return _http_json_response({"prompts": prompts})
+
+    # ------------------------------------------------------------------
+    # Notification center (P2/R1)
+    # ------------------------------------------------------------------
+    def _handle_notifications_list(self, request: WsRequest) -> Response:
+        """List notifications from the in-memory ring buffer.
+
+        Query params:
+          * ``unread=0|1`` — filter by read flag (absent = all)
+          * ``limit`` — 0..500, default 50
+          * ``offset`` — >=0, default 0
+
+        Response shape mirrors P1 R2 ``/api/sessions`` pagination
+        (``items / total / limit / offset``) with an extra ``unread_count``
+        for the Navbar bell badge. ``unread_count`` is computed over the
+        whole queue *before* the ``unread`` filter — the badge must reflect
+        the full tray regardless of which tab the UI is currently showing.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        from secbot.channels.notifications import get_notification_queue
+
+        query = _parse_query(request.path)
+        unread_raw = _query_first(query, "unread")
+        try:
+            limit = int(_query_first(query, "limit") or "50")
+            offset = int(_query_first(query, "offset") or "0")
+        except ValueError:
+            return _http_error(400, "limit/offset must be integers")
+        limit = max(0, min(limit, 500))
+        offset = max(0, offset)
+
+        queue = get_notification_queue()
+        all_items = queue.snapshot()
+        unread_count = sum(1 for entry in all_items if not entry["read"])
+
+        if unread_raw == "1":
+            filtered = [entry for entry in all_items if not entry["read"]]
+        elif unread_raw == "0":
+            filtered = [entry for entry in all_items if entry["read"]]
+        else:
+            filtered = all_items
+        total = len(filtered)
+
+        if offset:
+            filtered = filtered[offset:]
+        if limit:
+            filtered = filtered[:limit]
+
+        return _http_json_response(
+            {
+                "items": filtered,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "unread_count": unread_count,
+            }
+        )
+
+    def _handle_notification_read(self, request: WsRequest, notification_id: str) -> Response:
+        """Mark a single notification as read. 404 when id is unknown."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        from secbot.channels.notifications import get_notification_queue
+
+        queue = get_notification_queue()
+        updated = queue.mark_read(notification_id)
+        if updated is None:
+            return _http_error(404, "notification not found")
+        return _http_json_response({"id": notification_id, "read": True})
+
+    def _handle_notifications_read_all(self, request: WsRequest) -> Response:
+        """Mark every unread notification as read. Idempotent — returns the
+        count of rows actually flipped this call (``0`` when already clean)."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        from secbot.channels.notifications import get_notification_queue
+
+        queue = get_notification_queue()
+        updated = queue.mark_all_read()
+        return _http_json_response({"updated": updated})
 
     # -- WebSocket event broadcasts (task_update / blackboard_update) -------
 
