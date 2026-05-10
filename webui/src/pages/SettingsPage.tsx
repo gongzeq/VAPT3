@@ -13,7 +13,6 @@ import { Navbar } from "@/components/Navbar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { Button } from "@/components/ui/button";
-import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
 export interface SettingsPageProps {
@@ -46,7 +45,6 @@ const TABS: TabDef[] = [
 export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { theme, toggle } = useTheme();
   const [activeTab, setActiveTab] = useState<SettingsTab>("preferences");
 
   return (
@@ -80,29 +78,6 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
         {/* ── Tab Content ── */}
         {activeTab === "preferences" && (
           <section className="space-y-6">
-            {/* Theme */}
-            <div className="rounded-xl border border-border/40 bg-card p-6">
-              <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
-                <Palette className="h-4 w-4 text-muted-foreground" />
-                {t("settings.appearance", { defaultValue: "外观主题" })}
-              </h3>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-foreground">
-                    {t("settings.darkMode", { defaultValue: "深色模式" })}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {t("settings.darkModeHint", {
-                      defaultValue: "当前：深色（平台默认）",
-                    })}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" onClick={toggle}>
-                  {theme === "dark" ? "🌙 深色" : "☀️ 浅色"}
-                </Button>
-              </div>
-            </div>
-
             {/* Language */}
             <div className="rounded-xl border border-border/40 bg-card p-6">
               <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -124,8 +99,6 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
         {activeTab === "platform" && (
           <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
             <SettingsView
-              theme={theme}
-              onToggleTheme={toggle}
               onBackToChat={() => navigate("/")}
               onModelNameChange={onModelNameChange}
               onLogout={onLogout}

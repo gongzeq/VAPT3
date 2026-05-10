@@ -7,7 +7,7 @@ const connectSpy = vi.fn();
 const refreshSpy = vi.fn();
 const createChatSpy = vi.fn().mockResolvedValue("chat-1");
 const deleteChatSpy = vi.fn();
-const toggleThemeSpy = vi.fn();
+
 let mockSessions: ChatSummary[] = [];
 
 vi.mock("@/hooks/useSessions", async (importOriginal) => {
@@ -32,12 +32,7 @@ vi.mock("@/hooks/useSessions", async (importOriginal) => {
   };
 });
 
-vi.mock("@/hooks/useTheme", () => ({
-  useTheme: () => ({
-    theme: "light" as const,
-    toggle: toggleThemeSpy,
-  }),
-}));
+
 
 vi.mock("@/lib/bootstrap", () => ({
   fetchBootstrap: vi.fn().mockResolvedValue({
@@ -78,7 +73,7 @@ describe("App layout", () => {
     refreshSpy.mockReset();
     createChatSpy.mockClear();
     deleteChatSpy.mockReset();
-    toggleThemeSpy.mockReset();
+
     // BrowserRouter shares window.location across tests; reset to "/" so
     // navigation side-effects from earlier tests (e.g. opening /settings)
     // don't leak into subsequent renders that expect the Home shell.
@@ -286,9 +281,6 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole("button", { name: "Toggle theme from header" }));
-    expect(toggleThemeSpy).toHaveBeenCalledTimes(1);
-
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     const desktopAside = container.querySelector("aside.lg\\:block") as HTMLElement;
     await waitFor(() => expect(desktopAside.style.width).toBe("0px"));
@@ -302,7 +294,7 @@ describe("App layout", () => {
     expect(createChatSpy).not.toHaveBeenCalled();
     expect(screen.getByText("What can I do for you?")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start a new chat" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Toggle theme from header" })).toBeInTheDocument();
+
     expect(screen.getByRole("button", { name: "Open settings" })).toBeInTheDocument();
 
     expect(within(sidebar).getByText("Existing chat")).toBeInTheDocument();

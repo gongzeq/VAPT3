@@ -11,8 +11,6 @@ import { useClient } from "@/providers/ClientProvider";
 import type { SettingsPayload, SettingsUpdate } from "@/lib/types";
 
 interface SettingsViewProps {
-  theme: "light" | "dark";
-  onToggleTheme: () => void;
   onBackToChat: () => void;
   onModelNameChange: (modelName: string | null) => void;
   onLogout?: () => void;
