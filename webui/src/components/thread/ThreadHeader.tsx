@@ -1,4 +1,10 @@
-import { LayoutDashboard, Menu, Moon, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings, Sun } from "lucide-react";
+import {
+  Bot,
+  LayoutDashboard,
+  Menu,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -8,8 +14,6 @@ import { cn } from "@/lib/utils";
 interface ThreadHeaderProps {
   title: string;
   onToggleSidebar: () => void;
-  theme: "light" | "dark";
-  onToggleTheme: () => void;
   onOpenSettings: () => void;
   hideSidebarToggleOnDesktop?: boolean;
   minimal?: boolean;
@@ -21,9 +25,6 @@ interface ThreadHeaderProps {
 export function ThreadHeader({
   title,
   onToggleSidebar,
-  theme,
-  onToggleTheme,
-  onOpenSettings,
   hideSidebarToggleOnDesktop = false,
   minimal = false,
   onToggleRightRail,
@@ -33,9 +34,10 @@ export function ThreadHeader({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const handleDashboard = onOpenDashboard ?? (() => navigate("/dashboard"));
+
   if (minimal) {
     return (
-      <div className="relative z-10 flex h-11 items-center justify-between gap-3 px-3 py-2">
+      <div className="relative z-10 flex h-11 items-center justify-between gap-3 border-b border-border px-3 py-2">
         <Button
           variant="ghost"
           size="icon"
@@ -52,33 +54,11 @@ export function ThreadHeader({
           <Button
             variant="ghost"
             size="icon"
-            aria-label={t("thread.header.toggleTheme")}
-            onClick={onToggleTheme}
-            className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
-          >
-            {theme === "dark" ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Moon className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
             aria-label={t("nav.dashboard", { defaultValue: "大屏" })}
             onClick={handleDashboard}
             className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
           >
             <LayoutDashboard className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("thread.header.settings")}
-            onClick={onOpenSettings}
-            className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
-          >
-            <Settings className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -86,57 +66,26 @@ export function ThreadHeader({
   }
 
   return (
-    <div className="relative z-10 flex items-center justify-between gap-3 px-3 py-2">
-      <div className="relative flex min-w-0 items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("thread.header.toggleSidebar")}
-          onClick={onToggleSidebar}
-          className={cn(
-            "h-7 w-7 rounded-md text-muted-foreground hover:bg-accent/35 hover:text-foreground",
-            hideSidebarToggleOnDesktop && "lg:pointer-events-none lg:opacity-0",
-          )}
-        >
-          <PanelLeftOpen className="h-3.5 w-3.5" />
-        </Button>
-        <div className="flex min-w-0 items-center rounded-md px-1.5 py-1 text-[12px] font-medium text-muted-foreground">
-          <span className="max-w-[min(60vw,32rem)] truncate">{title}</span>
+    <div className="relative z-10 flex items-center justify-between gap-3 border-b border-border px-6 py-4">
+      {/* Left: bot avatar + title */}
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl gradient-primary animate-pulse-glow">
+          <Bot className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-xs text-muted-foreground">
+            orchestrator · 4 个专家智能体在线
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-0.5">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("thread.header.toggleTheme")}
-          onClick={onToggleTheme}
-          className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
-        >
-          {theme === "dark" ? (
-            <Sun className="h-4 w-4" />
-          ) : (
-            <Moon className="h-4 w-4" />
-          )}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("nav.dashboard", { defaultValue: "大屏" })}
-          onClick={handleDashboard}
-          className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
-        >
-          <LayoutDashboard className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("thread.header.settings")}
-          onClick={onOpenSettings}
-          className="h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
+      {/* Right: actions */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Streaming
+        </span>
         {onToggleRightRail && (
           <Button
             variant="ghost"
@@ -153,8 +102,6 @@ export function ThreadHeader({
           </Button>
         )}
       </div>
-
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-full h-4" />
     </div>
   );
 }

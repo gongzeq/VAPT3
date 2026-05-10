@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Wrench } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ImageLightbox } from "@/components/ImageLightbox";
@@ -61,24 +61,29 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     return (
       <div
         className={cn(
-          "group ml-auto flex max-w-[min(85%,36rem)] flex-col items-end gap-1.5",
+          "group flex gap-3 justify-end",
           baseAnim,
         )}
       >
-        {hasImages ? <UserImages images={images} align="right" /> : null}
-        {!hasImages && hasMedia ? (
-          <MessageMedia media={media} align="right" />
-        ) : null}
-        {hasText ? (
-          <p
-            className={cn(
-              "ml-auto w-fit rounded-[18px] bg-secondary/70 px-4 py-2",
-              "text-left text-[16px]/[1.75] whitespace-pre-wrap break-words",
-            )}
-          >
-            {message.content}
-          </p>
-        ) : null}
+        <div className="flex max-w-[70%] flex-col items-end gap-1.5">
+          {hasImages ? <UserImages images={images} align="right" /> : null}
+          {!hasImages && hasMedia ? (
+            <MessageMedia media={media} align="right" />
+          ) : null}
+          {hasText ? (
+            <p
+              className={cn(
+                "rounded-2xl rounded-tr-sm gradient-primary px-4 py-2.5 text-sm text-white shadow-md",
+                "text-left whitespace-pre-wrap break-words",
+              )}
+            >
+              {message.content}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold">
+          SH
+        </div>
       </div>
     );
   }
@@ -87,37 +92,44 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const media = message.media ?? [];
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
   return (
-    <div className={cn("w-full text-[16px]", baseAnim)} style={{ lineHeight: "var(--cjk-line-height)" }}>
-      {empty && message.isStreaming ? (
-        <TypingDots />
-      ) : (
-        <>
-          <MarkdownText>{message.content}</MarkdownText>
-          {message.isStreaming && <StreamCursor />}
-          {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
-          {showAssistantActions ? (
-            <div className="mt-2 flex items-center gap-1 text-muted-foreground">
-              <button
-                type="button"
-                onClick={onCopyAssistantReply}
-                aria-label={copied ? t("message.copiedReply") : t("message.copyReply")}
-                title={copied ? t("message.copiedReply") : t("message.copyReply")}
-                className={cn(
-                  "inline-flex h-8 w-8 items-center justify-center rounded-full",
-                  "transition-colors hover:bg-muted/55 hover:text-foreground",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                )}
-              >
-                {copied ? (
-                  <Check className="h-4 w-4" aria-hidden />
-                ) : (
-                  <Copy className="h-4 w-4" aria-hidden />
-                )}
-              </button>
+    <div className={cn("flex gap-3", baseAnim)}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-primary">
+        <Sparkles className="h-4 w-4 text-white" />
+      </div>
+      <div className="max-w-[80%] space-y-3">
+        {empty && message.isStreaming ? (
+          <TypingDots />
+        ) : (
+          <>
+            <div className="rounded-2xl rounded-tl-sm border border-border/40 px-4 py-3 text-sm leading-relaxed">
+              <MarkdownText>{message.content}</MarkdownText>
+              {message.isStreaming && <StreamCursor />}
             </div>
-          ) : null}
-        </>
-      )}
+            {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
+            {showAssistantActions ? (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={onCopyAssistantReply}
+                  aria-label={copied ? t("message.copiedReply") : t("message.copyReply")}
+                  title={copied ? t("message.copiedReply") : t("message.copyReply")}
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-full",
+                    "transition-colors hover:bg-muted/55 hover:text-foreground",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Copy className="h-4 w-4" aria-hidden />
+                  )}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -357,24 +369,15 @@ function TypingDots() {
   return (
     <span
       aria-label={t("message.assistantTyping")}
-      className="inline-flex items-center gap-1 py-1"
+      className="inline-flex items-center gap-2 px-1 text-xs text-muted-foreground"
     >
-      <Dot delay="0ms" />
-      <Dot delay="150ms" />
-      <Dot delay="300ms" />
+      <span className="flex gap-1">
+        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary" />
+        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary" />
+        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary" />
+      </span>
+      <span>{t("message.assistantTyping", { defaultValue: "智能体正在分析端口指纹…" })}</span>
     </span>
-  );
-}
-
-function Dot({ delay }: { delay: string }) {
-  return (
-    <span
-      style={{ animationDelay: delay }}
-      className={cn(
-        "inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/60",
-        "animate-bounce",
-      )}
-    />
   );
 }
 
@@ -404,7 +407,7 @@ function TraceGroup({ message, animClass }: TraceGroupProps) {
         )}
         aria-expanded={open}
       >
-        <Wrench className="h-3.5 w-3.5" aria-hidden />
+        <BrainCircuit className="h-3.5 w-3.5 text-primary" aria-hidden />
         <span className="font-medium">
           {count === 1
             ? t("message.toolSingle")

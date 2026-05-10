@@ -8,14 +8,14 @@ import {
 } from "react";
 import {
   Activity,
-  ArrowUp,
   BookOpen,
   CircleHelp,
   History,
   ImageIcon,
   Loader2,
-  Plus,
+  Paperclip,
   RotateCw,
+  Send,
   Sparkles,
   Square,
   SquarePen,
@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
 import {
   COMPOSER_PREFILL_EVENT,
   type ComposerPrefillDetail,
@@ -86,7 +85,6 @@ export function ThreadComposer({
   disabled,
   placeholder,
   isStreaming = false,
-  modelLabel = null,
   variant = "thread",
   slashCommands = [],
 }: ThreadComposerProps) {
@@ -376,11 +374,8 @@ export function ThreadComposer({
       ) : null}
       <div
         className={cn(
-          "relative mx-auto flex w-full flex-col overflow-hidden transition-all duration-200",
-          isHero
-            ? "max-w-[58rem] rounded-[28px] border border-black/[0.035] bg-card shadow-[0_20px_55px_rgba(15,23,42,0.08)] dark:border-white/[0.06] dark:shadow-[0_24px_55px_rgba(0,0,0,0.34)]"
-            : "max-w-[49.5rem] rounded-[22px] border border-black/[0.035] bg-card shadow-[0_12px_30px_rgba(15,23,42,0.07)] dark:border-white/[0.06] dark:shadow-[0_16px_34px_rgba(0,0,0,0.28)]",
-          "focus-within:ring-1 focus-within:ring-foreground/8",
+          "relative mx-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-muted/40 p-2 transition focus-within:border-primary/60",
+          isHero ? "max-w-[58rem]" : "max-w-[49.5rem]",
           disabled && "opacity-60",
           isDragging && "ring-2 ring-primary/40 motion-reduce:ring-0 motion-reduce:border-primary",
         )}
@@ -448,13 +443,8 @@ export function ThreadComposer({
             {inlineError}
           </div>
         ) : null}
-        <div
-          className={cn(
-            "flex items-center justify-between gap-2",
-            isHero ? "px-4 pb-4" : "px-3 pb-2",
-          )}
-        >
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="flex items-center justify-between px-1 pt-1">
+          <div className="flex items-center gap-1">
             <input
               ref={fileInputRef}
               type="file"
@@ -463,88 +453,54 @@ export function ThreadComposer({
               hidden
               onChange={onFilePick}
             />
-            <Button
+            <button
               type="button"
-              size="icon"
-              variant="ghost"
               disabled={attachButtonDisabled}
               aria-label={t("thread.composer.attachImage")}
               onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                "rounded-full text-muted-foreground hover:text-foreground",
-                isHero
-                  ? "h-9 w-9 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card"
-                  : "h-7.5 w-7.5 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card",
-              )}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-primary"
             >
-              <Plus className={cn(isHero ? "h-5 w-5" : "h-4 w-4")} />
-            </Button>
-            {modelLabel ? (
-              <span
-                title={modelLabel}
-                className={cn(
-                  "inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1",
-                  "border-foreground/10 bg-foreground/[0.035] font-medium text-foreground/80",
-                  isHero
-                    ? "max-w-[13rem] text-[12px] shadow-[0_2px_8px_rgba(15,23,42,0.04)]"
-                    : "max-w-[10rem] text-[10.5px] shadow-[0_2px_8px_rgba(15,23,42,0.035)]",
-                )}
-              >
-                <span
-                  aria-hidden
-                  className="h-1.5 w-1.5 flex-none rounded-full bg-emerald-500/80"
-                />
-                <span className="truncate">{modelLabel}</span>
-              </span>
-            ) : null}
-            {!isHero ? (
-              <span className="hidden select-none text-[10.5px] text-muted-foreground/60 sm:inline">
-                {t("thread.composer.sendHint")}
-              </span>
-            ) : null}
-          </div>
-          <span className={cn(isHero ? "hidden" : "sm:hidden")} aria-hidden />
-          {isStreaming && onStop ? (
-            <Button
+              <Paperclip className="h-4 w-4" />
+            </button>
+            <button
               type="button"
-              size="icon"
+              disabled={attachButtonDisabled}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-primary disabled:opacity-50"
+              aria-label={t("thread.composer.image", { defaultValue: "图片" })}
+            >
+              <ImageIcon className="h-4 w-4" />
+            </button>
+            <span className="ml-2 hidden select-none text-[10px] text-muted-foreground font-mono sm:inline">
+              {t("thread.composer.sendHint")}
+            </span>
+          </div>
+          {isStreaming && onStop ? (
+            <button
+              type="button"
               onClick={onStop}
               aria-label={t("thread.composer.stop")}
               title={t("thread.composer.stop")}
-              className={cn(
-                "group/stop relative grid place-items-center rounded-full transition-transform",
-                "border border-foreground bg-foreground text-background",
-                "hover:bg-foreground/90 hover:scale-[1.04] active:scale-95",
-                isHero
-                  ? "h-9 w-9 shadow-[0_4px_12px_rgba(15,23,42,0.20)]"
-                  : "h-7.5 w-7.5 shadow-[0_3px_10px_rgba(15,23,42,0.18)]",
-              )}
+              className="group/stop relative grid h-7 w-7 place-items-center rounded-full border border-foreground bg-foreground text-background transition-transform hover:bg-foreground/90 hover:scale-[1.04] active:scale-95"
             >
               <span
                 aria-hidden
-                className={cn(
-                  "block rounded-[3px] bg-background",
-                  "transition-transform group-hover/stop:scale-95",
-                  isHero ? "h-[10px] w-[10px]" : "h-2 w-2",
-                )}
+                className="block h-2 w-2 rounded-[3px] bg-background transition-transform group-hover/stop:scale-95"
               />
-            </Button>
+            </button>
           ) : (
-            <Button
+            <button
               type="submit"
-              size="icon"
               disabled={!canSend}
               aria-label={t("thread.composer.send")}
               className={cn(
-                isHero
-                  ? "h-9 w-9 rounded-full border border-foreground bg-foreground text-background shadow-[0_4px_12px_rgba(15,23,42,0.20)] hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80"
-                  : "rounded-full border border-foreground bg-foreground text-background shadow-[0_3px_10px_rgba(15,23,42,0.18)] transition-transform hover:bg-foreground/90 disabled:border-foreground/35 disabled:bg-foreground/35 disabled:text-background/80",
-                isHero ? "" : "h-7.5 w-7.5",
-                canSend && "hover:scale-[1.03] active:scale-95",
+                "hover-lift inline-flex items-center gap-1.5 rounded-lg gradient-primary px-3 py-1.5 text-xs font-semibold text-white shadow-md",
+                !canSend && "opacity-50",
               )}
             >
-              <ArrowUp className={cn(isHero ? "h-4.5 w-4.5" : "h-4 w-4")} />
-            </Button>
+              <Send className="h-3.5 w-3.5" />
+              {t("thread.composer.sendBtn", { defaultValue: "发送" })}
+            </button>
           )}
         </div>
       </div>

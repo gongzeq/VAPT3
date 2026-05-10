@@ -159,7 +159,7 @@ export function ThreadViewport({
               </div>
             </div>
 
-            <div className="sticky bottom-0 z-10 mt-auto bg-background">
+            <div className="sticky bottom-0 z-10 mt-auto bg-gradient-to-b from-transparent via-background/80 to-background/95 backdrop-blur-sm">
               <div className="px-4 pb-3">
                 {composer}
               </div>
@@ -179,7 +179,7 @@ export function ThreadViewport({
 
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-background to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-3 bg-gradient-to-b from-background/60 to-transparent"
       />
 
       {!atBottom && (
