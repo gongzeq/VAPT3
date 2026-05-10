@@ -92,6 +92,12 @@ class _LoopHook(AgentHook):
         self._metadata = metadata or {}
         self._session_key = session_key
         self._stream_buf = ""
+        # Track tool-call start timestamps so ``after_iteration`` can compute a
+        # duration_ms for the ``activity_event`` WS broadcast. Keyed on
+        # ``call_id`` so concurrent tool calls in the same iteration don't
+        # overwrite each other. Only populated when the originating channel
+        # is ``"websocket"`` since that's the sole consumer today.
+        self._tool_call_started_at: dict[str, float] = {}
 
     def wants_streaming(self) -> bool:
         return self._on_stream is not None
@@ -145,6 +151,93 @@ class _LoopHook(AgentHook):
             self._metadata,
             session_key=self._session_key,
         )
+        # Broadcast ``activity_event`` frames so the Dashboard activity stream
+        # (PRD §WS, 05-10-p2-notification-activity) mirrors tool invocations in
+        # near real-time. Fires only for turns originating from the WS channel
+        # — CLI / chat channels never have a subscriber and the broadcast
+        # would be wasted work. Broadcast is best-effort; any failure is
+        # logged and swallowed so tool execution is not blocked.
+        if self._channel == "websocket" and context.tool_calls:
+            await self._broadcast_activity_tool_calls(context.tool_calls)
+
+    async def _broadcast_activity_tool_calls(self, tool_calls: list[Any]) -> None:
+        """Emit one ``tool_call`` activity_event per tool call + stamp start time."""
+        # Late import: ``secbot.channels.websocket`` pulls in ``websockets`` and
+        # can't be imported at module load (circular via agent/loop).
+        from secbot.channels.websocket import WebSocketChannel
+
+        channel = WebSocketChannel.get_active_instance()
+        if channel is None:
+            return
+        now = time.monotonic()
+        for tc in tool_calls:
+            call_id = str(getattr(tc, "id", "") or "")
+            if call_id:
+                self._tool_call_started_at[call_id] = now
+            name = getattr(tc, "name", "") or "tool"
+            args = getattr(tc, "arguments", {}) or {}
+            step = self._format_activity_step(name, args)
+            try:
+                await channel.broadcast_activity_event(
+                    category="tool_call",
+                    agent=name,
+                    step=step,
+                    chat_id=self._chat_id,
+                )
+            except Exception:
+                logger.debug("activity_event (start) broadcast failed", exc_info=True)
+
+    @staticmethod
+    def _format_activity_step(name: str, arguments: dict[str, Any]) -> str:
+        """Render ``→ 调用 tool: name(k=v, ...)`` — matches PRD L89 example."""
+        if not isinstance(arguments, dict) or not arguments:
+            return f"→ 调用 tool: {name}()"
+        parts: list[str] = []
+        for k, v in arguments.items():
+            try:
+                rendered = json.dumps(v, ensure_ascii=False)
+            except Exception:
+                rendered = str(v)
+            if len(rendered) > 80:
+                rendered = rendered[:77] + "..."
+            parts.append(f"{k}={rendered}")
+        return f"→ 调用 tool: {name}({', '.join(parts)})"
+
+    async def _broadcast_activity_tool_results(self, context: AgentHookContext) -> None:
+        """Emit one ``tool_result`` activity_event per finished tool call."""
+        from secbot.channels.websocket import WebSocketChannel
+
+        channel = WebSocketChannel.get_active_instance()
+        if channel is None:
+            return
+        now = time.monotonic()
+        count = min(
+            len(context.tool_calls), len(context.tool_events)
+        )
+        for idx in range(count):
+            tc = context.tool_calls[idx]
+            event = context.tool_events[idx] if isinstance(context.tool_events[idx], dict) else {}
+            status = event.get("status")
+            # Report success + error in the same category; downstream consumers
+            # can inspect ``step`` / ``agent`` if they need to distinguish.
+            call_id = str(getattr(tc, "id", "") or "")
+            started_at = self._tool_call_started_at.pop(call_id, None) if call_id else None
+            duration_ms: int | None = (
+                int((now - started_at) * 1000) if started_at is not None else None
+            )
+            name = getattr(tc, "name", "") or "tool"
+            suffix = "ok" if status == "ok" else (status or "error")
+            step = f"← {name} → {suffix}"
+            try:
+                await channel.broadcast_activity_event(
+                    category="tool_result",
+                    agent=name,
+                    step=step,
+                    chat_id=self._chat_id,
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                logger.debug("activity_event (finish) broadcast failed", exc_info=True)
 
     async def after_iteration(self, context: AgentHookContext) -> None:
         if (
@@ -161,6 +254,13 @@ class _LoopHook(AgentHook):
                     tool_hint=False,
                     tool_events=tool_events,
                 )
+        # Emit ``tool_result`` activity_event frames paired with the start
+        # broadcasts in ``before_execute_tools``. We recompute the finish
+        # payloads here (cheap) so this branch is independent of the
+        # ``on_progress`` observer above and still fires for turns that don't
+        # register a progress callback.
+        if self._channel == "websocket" and context.tool_calls and context.tool_events:
+            await self._broadcast_activity_tool_results(context)
         u = context.usage or {}
         logger.debug(
             "LLM usage: prompt={} completion={} cached={}",

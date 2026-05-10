@@ -338,6 +338,7 @@ async def upsert_vulnerability(
     vuln = (await session.execute(stmt)).scalar_one_or_none()
 
     if vuln is None:
+        was_critical = False
         vuln = Vulnerability(
             actor_id=actor_id or DEFAULT_ACTOR,
             asset_id=asset_id,
@@ -352,6 +353,7 @@ async def upsert_vulnerability(
         )
         session.add(vuln)
     else:
+        was_critical = vuln.severity == "critical"
         vuln.severity = severity
         vuln.category = category
         vuln.discovered_by = discovered_by
@@ -361,6 +363,24 @@ async def upsert_vulnerability(
             vuln.raw_log_path = raw_log_path
 
     await session.flush()
+
+    # Surface newly-discovered or newly-escalated critical findings to the
+    # notification center. Re-scans that re-confirm an already-critical finding
+    # stay silent to avoid notification spam (PRD 05-10-p2 §通知源 — "高危
+    # 漏洞新增"). Late-import keeps cmdb.repo free of a channels dependency at
+    # import time (channels.notifications itself imports cmdb.repo.new_ulid).
+    if severity == "critical" and not was_critical:
+        try:
+            from secbot.channels.notifications import get_notification_queue
+
+            get_notification_queue().publish(
+                type="critical_vuln",
+                title=f"高危漏洞：{title}",
+                body=f"asset_id={asset_id} category={category}",
+            )
+        except Exception:  # pragma: no cover - defensive: notification is non-critical
+            _logger.warning("critical_vuln notification publish failed", exc_info=True)
+
     return vuln
 
 

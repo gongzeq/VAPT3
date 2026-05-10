@@ -477,6 +477,17 @@ class WebSocketChannel(BaseChannel):
     name = "websocket"
     display_name = "WebSocket"
 
+    # Last-constructed channel instance, exposed via ``get_active_instance``.
+    # The agent-loop hook (``secbot/agent/loop.py::_LoopHook``) has no direct
+    # reference to the channel that initiated the turn — its ``channel`` kwarg
+    # is just a string tag ("websocket" / "cli"). Rather than plumb a new
+    # ``channel`` kwarg through ``AgentLoop.run``, we expose the singleton here
+    # (same flavour as ``secbot/api/prompts.py::PromptsLoader`` and
+    # ``secbot/channels/notifications.py::get_notification_queue``) so the
+    # hook can look up the live instance on demand. Tests reset it via
+    # ``reset_active_instance`` to stay isolated.
+    _active_instance: "WebSocketChannel | None" = None
+
     def __init__(
         self,
         config: Any,
@@ -525,6 +536,21 @@ class WebSocketChannel(BaseChannel):
         # file, nothing else. The secret regenerates on restart so links
         # become self-expiring (callers just refresh the session list).
         self._media_secret: bytes = secrets.token_bytes(32)
+        # Register as the last-constructed instance so ``_LoopHook`` can find
+        # us without taking a direct channel reference. Multiple channels in
+        # the same process isn't a supported topology (``ChannelManager``
+        # instantiates one per config) so clobbering is fine.
+        WebSocketChannel._active_instance = self
+
+    @classmethod
+    def get_active_instance(cls) -> "WebSocketChannel | None":
+        """Return the most-recently-constructed channel or ``None`` in tests."""
+        return cls._active_instance
+
+    @classmethod
+    def reset_active_instance(cls) -> None:
+        """Test helper: drop the cached singleton reference."""
+        cls._active_instance = None
 
     # -- Subscription bookkeeping -------------------------------------------
 
@@ -1601,6 +1627,37 @@ class WebSocketChannel(BaseChannel):
             "stats": dict(stats),
             "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def broadcast_activity_event(
+        self,
+        *,
+        category: str,
+        agent: str,
+        step: str,
+        chat_id: str,
+        duration_ms: int | None = None,
+    ) -> bool:
+        """Emit an ``activity_event`` frame scoped to ``chat_id``.
+
+        Contract: see ``.trellis/tasks/05-10-p2-notification-activity/prd.md``
+        §5 (WebSocket event). Throttle scope is per-``chat_id`` — agents can
+        burst several tool-calls per second but the dashboard only needs one
+        point per second per conversation.
+        """
+
+        if self._should_throttle_broadcast("activity_event", chat_id):
+            return False
+        body: dict[str, Any] = {
+            "event": "activity_event",
+            "chat_id": chat_id,
+            "category": category,
+            "agent": agent,
+            "step": step,
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        if duration_ms is not None:
+            body["duration_ms"] = int(duration_ms)
         return await self._broadcast_frame(body, chat_id=chat_id)
 
     async def _broadcast_frame(
