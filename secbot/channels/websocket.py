@@ -715,6 +715,12 @@ class WebSocketChannel(BaseChannel):
         if m:
             return self._handle_notification_read(request, m.group(1))
 
+        # Activity event stream (P2/R2). Rolling 5-minute window by default;
+        # ``?since=<ISO-8601>`` narrows the window, ``?limit=<1..500>``
+        # clamps the response. Shares the singleton style with notifications.
+        if got == "/api/events":
+            return self._handle_events_list(request)
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -1482,6 +1488,50 @@ class WebSocketChannel(BaseChannel):
         queue = get_notification_queue()
         updated = queue.mark_all_read()
         return _http_json_response({"updated": updated})
+
+    # ------------------------------------------------------------------
+    # Activity event stream (P2/R2)
+    # ------------------------------------------------------------------
+    def _handle_events_list(self, request: WsRequest) -> Response:
+        """Return buffered activity events.
+
+        Query params:
+          * ``since`` — ISO-8601 timestamp; only events with
+            ``timestamp >= since`` are returned. Accepts the same shapes
+            Python's ``datetime.fromisoformat`` accepts, including the
+            ``+08:00`` offset the agent loop emits. Invalid input → 400.
+          * ``limit`` — 1..500, default 50.
+
+        When ``since`` is omitted, the buffer's default 5-minute window
+        applies (see :data:`DEFAULT_EVENTS_WINDOW_SECONDS`).
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        from secbot.channels.notifications import get_event_buffer
+
+        query = _parse_query(request.path)
+        since_raw = (_query_first(query, "since") or "").strip()
+        try:
+            limit = int(_query_first(query, "limit") or "50")
+        except ValueError:
+            return _http_error(400, "limit must be an integer")
+        limit = max(1, min(limit, 500))
+
+        since_dt = None
+        if since_raw:
+            # URL decoding drops the '+' in ``+08:00`` offsets unless the
+            # caller pre-encoded it to ``%2B``; ``parse_qs`` then hands us
+            # a space in its place. Normalise before parsing so both forms
+            # are accepted.
+            normalised = since_raw.replace(" ", "+")
+            try:
+                since_dt = datetime.fromisoformat(normalised)
+            except ValueError:
+                return _http_error(400, "since must be an ISO-8601 timestamp")
+
+        items = get_event_buffer().filter(since=since_dt, limit=limit)
+        return _http_json_response({"items": items})
 
     # -- WebSocket event broadcasts (task_update / blackboard_update) -------
 
