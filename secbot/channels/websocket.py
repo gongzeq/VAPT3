@@ -692,6 +692,13 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/agents":
             return self._handle_agents(request)
 
+        # Quick-command prompts (P1/R3). Spec:
+        # `.trellis/spec/backend/prompts-config.md`. YAML-backed, hot-reloaded
+        # on mtime change, never 500 — see secbot/api/prompts.py for the
+        # resolution order and fallback behaviour.
+        if got == "/api/prompts":
+            return self._handle_prompts(request)
+
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
@@ -1355,6 +1362,26 @@ class WebSocketChannel(BaseChannel):
 
             self._agent_registry = AgentRegistry()
         return self._agent_registry
+
+    # -- Quick-command prompts ---------------------------------------------
+
+    def _handle_prompts(self, request: WsRequest) -> Response:
+        """Return the quick-command prompts list.
+
+        Spec: ``.trellis/spec/backend/prompts-config.md``. Never 500 — any
+        YAML failure falls back to the last cached value or an empty list so
+        the frontend chip row stays stable.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        try:
+            from secbot.api.prompts import load_prompts
+
+            prompts = load_prompts()
+        except Exception:
+            self.logger.exception("prompts: unexpected load failure; serving empty")
+            prompts = []
+        return _http_json_response({"prompts": prompts})
 
     # -- WebSocket event broadcasts (task_update / blackboard_update) -------
 
