@@ -273,3 +273,38 @@ Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, no
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: WebUI P2 通知与活动流：三 PR 全量落地
+
+**Date**: 2026-05-10
+**Task**: WebUI P2 通知与活动流：三 PR 全量落地
+**Branch**: `main`
+
+### Summary
+
+完成通知中心（PR1→PR2）+ 大屏活动事件流（PR3）的前端全量交付。PR1：types/api/ws/unread hook 基础设施（28/28 测试通过）；PR2：Navbar 铃铛 + NotificationPanel + i18n（13/13 通过）；PR3：ActivityEventStream 接入 Dashboard（9/9 通过）。三 PR 共 50/50 测试全绿。质量门限定改动域无回归，仓库既有 11 失败未触及。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `11ede383` | (see git log) |
+| `69d837da` | (see git log) |
+| `28a8c9bd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
