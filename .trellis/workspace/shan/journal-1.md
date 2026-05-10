@@ -138,3 +138,50 @@ Finished all 8 PRs: PR1 rename nanobot to secbot, PR2 remove IM channels and bri
 - 选择下一个启动的子任务（P1 或 P2），执行其 1.3 curate + 1.4 start 进入 Phase 2。
 - P1 前置：需要在 brainstorm 或实施起始确认 session 文件 schema 兼容策略（读旧文件不报错）。
 - P2 前置：需核对 `broadcast_task_update` 当前接口是否对 `activity_event` 类事件足够通用，或需要小重构。
+
+---
+
+## 2026-05-10 · P1 Phase 2.1-2.2 交付完成
+
+**Context**: 父任务 `05-10-backend-api-gap-fill` 下的 P1 子任务 `05-10-p1-report-session-prompts`。按 R1/R2/R3 三块拆分落地，每块独立 commit，全量回归 335/335 绿。
+
+### R1 · report_meta + /api/reports + handler 回写 (commit 6b2c715a)
+- ORM `ReportMeta`（显示 id `RPT-YYYY-MMDD-<seq>` 作 PK，seq 按本地日期全局递增）+ 2 索引
+- Alembic `20260510_report_meta`（down_revision=20260507_initial）
+- repo: `insert_report_meta / list_reports / get_report / update_report_status`（状态机对齐 spec §3.3）
+- HTTP: `/api/reports` 列表 + `/api/reports/{id}` 详情
+- 3 个 report skill handler（markdown/docx/pdf）渲染后 best-effort 回写（warning-on-fail）
+- 测试：9 cmdb unit + 7 HTTP e2e
+
+### R2 · session 搜索 + 归档 (commit bd8f1631)
+- `SessionManager.list_sessions` 注入 `archived` 字段（旧文件无字段视为 false，无需 migration）
+- `SessionManager.set_archived(key, bool)`：幂等、不存在返回 False
+- `/api/sessions` 扩展 `q / archived / limit / offset` + 顶层 `total`；不传参数形态向后兼容
+- `/api/sessions/{key}/archive`（GET，websockets HTTP parser 限制；PRD 写 POST）
+- 测试：16 in-process 单元（auth/filter/分页/幂等/404/400）
+
+### R3 · /api/prompts YAML 热加载 (commit d16f92b1)
+- `secbot/config/prompts.yaml` 默认 4 条（从前端 PROMPTS[] 迁移）
+- `secbot/api/prompts.py`：`PromptsLoader` mtime-based hot reload + dedupe（first-wins + warn）+ parse-error fallback（保留上次 cache，绝不清空）+ warn-once for missing
+- 解析优先级：`$SECBOT_PROMPTS_FILE` → `~/.secbot/prompts.yaml` → bundled
+- HTTP: `/api/prompts`（auth-gated，loader 异常降级到空数组，绝不 500）
+- 测试：11 单元（default/override/missing/parse-error/hot-reload/dedupe/top-level-list/HTTP）
+
+### 质量回顾
+- 新增 43 个测试（9+7+16+11）全绿
+- 回归 335/335（api + channels + session + cmdb + report）
+- ruff：R1/R2/R3 新增文件全 clean；仅剩 2 处 websocket.py 预存在 `self` F821（基线 bug `e201ede2`，超本任务范围）
+
+### 关键设计决策
+- R1 `report_meta.id`：spec §3.2 提到 "ULID 存储"，但选择 display-id-as-PK + 全局日期 seq（v1 单 actor 场景语义等价，URL 路由 O(1)，`actor_id` 字段仍保留供未来多租户）
+- R1 `_next_report_seq` 不按 actor_id 分组：PRD 原文 `COUNT(*) WHERE DATE(created_at)=today (+1)`，多 actor 下独立计数会导致 PK 冲突
+- R2 `POST` → `GET`：websockets 库 HTTP parser 只接受 GET，与既有 `/delete` 处理对称；query `?archived=0|1` 替代 body
+- R3 默认 `archived=1`：最短调用表达"归档"动作；`archived=0` 取消归档
+
+### Out of Scope（P1 未做）
+- webui 前端接入：`PROMPTS[]` → `useQuery('/api/prompts')`、`recentReports` mock 下线、侧边栏归档按钮 → `/api/sessions/{key}/archive`。PRD §AC 最后一项属前端工作，按父任务拆分归属后续 webui 子任务
+
+### Next Steps
+- 本任务 archive + 父任务 `05-10-backend-api-gap-fill` 进度更新为 [2/3 done]
+- 选择：P2 notification center / 前端对接 P1 接口
+
