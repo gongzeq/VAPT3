@@ -220,6 +220,122 @@ tools:
 
 **3. 重启**，Orchestrator 会自动把该智能体纳入规划候选池。
 
+---
+
+## 🔧 底层安全工具注册流程
+
+secbot 的扫描能力依赖外部安全二进制（`nmap`、`fscan`、`nuclei`、`hydra`、`masscan` 等）。这些工具**不会**被硬编码进源码，而是通过 **Skill 声明 + 二进制白名单 + PATH 探测** 三层机制动态注册。
+
+### 1. 工具目录结构与 Skill 声明
+
+每个底层工具对应 `secbot/skills/<skill-name>/` 目录，至少包含：
+
+| 文件 | 作用 |
+|------|------|
+| `SKILL.md` | YAML frontmatter（元数据）+ Markdown 使用说明，被注入 LLM system prompt |
+| `handler.py` | 可选。包含 `async def run(args, ctx) -> SkillResult`，用于直接调用场景 |
+
+**示例：** `secbot/skills/nmap-host-discovery/SKILL.md`
+
+```yaml
+---
+name: nmap-host-discovery
+display_name: Nmap Host Discovery
+version: 1.0.0
+risk_level: medium
+category: asset_discovery
+external_binary: nmap
+binary_min_version: "7.80"
+network_egress: required
+expected_runtime_sec: 60
+summary_size_hint: small
+---
+
+# Nmap Host Discovery
+
+Discover live hosts under a CIDR / IP / domain using `nmap -sn` ...
+```
+
+**Frontmatter 关键字段：**
+
+| 字段 | 说明 |
+|------|------|
+| `name` | 必须与目录名一致 |
+| `external_binary` | 外部可执行文件名（如 `nmap`、`fscan`） |
+| `risk_level` | `low` / `medium` / `high` / `critical`，`critical` 会触发高危确认弹窗 |
+| `network_egress` | `required` / `optional` / `none`，控制网络策略 |
+| `category` | 所属功能分类（`asset_discovery`、`port_scan`、`vuln_scan` 等） |
+
+### 2. 二进制白名单与 PATH 探测
+
+`secbot/skills/_shared/sandbox.py` 维护了一个 **BINARY_WHITELIST**：
+
+```python
+BINARY_WHITELIST = frozenset({
+    "nmap", "fscan", "nuclei", "hydra", "masscan",
+    "weasyprint", "python3", "git",
+})
+```
+
+**注册规则：**
+
+1. **PATH 探测**：启动时 `SkillsLoader._check_requirements()` 通过 `shutil.which(binary)` 检查 `external_binary` 是否在系统 PATH 中。
+2. **不可用过滤**：若二进制不在 PATH，该 skill 会被标记为 `unavailable`，LLM 不会看到它。
+3. **白名单拦截**：即使 LLM 尝试调用，`run_command()` 会拒绝白名单之外的二进制，抛出 `BinaryNotAllowed`。
+
+**安装示例（macOS）：**
+
+```bash
+# nmap（常用包管理器）
+brew install nmap
+
+# fscan（项目已自带，链接到 PATH 即可）
+sudo ln -sf $(pwd)/fscan_2.1.2_mac_arm64 /usr/local/bin/fscan
+
+# nuclei
+brew install nuclei
+
+# hydra
+brew install hydra
+```
+
+### 3. Agent 引用 Skill
+
+专家智能体通过 `scoped_skills` 字段声明自己可用的 skill 集合：
+
+```yaml
+# secbot/agents/port_scan.yaml
+name: port_scan
+scoped_skills:
+  - nmap-port-scan
+  - nmap-service-fingerprint
+  - fscan-port-scan
+```
+
+**约束：**
+- 一个 skill **只能**被一个专家智能体独占声明（registry 会校验冲突）。
+- `scoped_skills` 中的每个 skill 必须已在 `secbot/skills/` 下存在且通过校验。
+
+### 4. 运行时调用链路
+
+```
+用户请求
+  → Orchestrator 规划 → 调用 port_scan Agent
+    → Agent system prompt 注入 scoped_skills 的 SKILL.md
+      → LLM 阅读 skill 说明 → 生成 exec / 其他 tool call
+        → run_command() 检查 BINARY_WHITELIST + PATH
+          → 执行外部二进制 → 返回结构化结果
+```
+
+### 5. 注册新工具（四步 checklist）
+
+1. **确保二进制在 PATH**：`which <binary>` 必须返回路径。
+2. **加入白名单**（如不在 `BINARY_WHITELIST` 中）：编辑 `secbot/skills/_shared/sandbox.py`。
+3. **创建 Skill 目录**：`secbot/skills/<skill-name>/SKILL.md` + 可选 `handler.py`。
+4. **Agent 声明引用**：在对应 `secbot/agents/<agent>.yaml` 的 `scoped_skills` 中加入该 skill。
+
+重启后端后生效。
+
 ## 🗄️ CMDB 资产库
 
 ```bash
