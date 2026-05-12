@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["url", "wordlist"],
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "type": "string",
+      "pattern": "^https?://[A-Za-z0-9._\\-:/]+FUZZ[A-Za-z0-9._\\-/]*$",
+      "maxLength": 512
+    },
+    "wordlist": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 128},
+      "minItems": 1,
+      "maxItems": 5000
+    },
+    "extensions": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^\\.[A-Za-z0-9]{1,10}$"},
+      "maxItems": 10
+    },
+    "threads": {"type": "integer", "minimum": 1, "maximum": 100, "default": 40},
+    "match_codes": {"type": "string", "pattern": "^[0-9,\\-]{1,64}$", "default": "200,204,301,302,307,401,403"}
+  }
+}

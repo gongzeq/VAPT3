@@ -14,12 +14,14 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from secbot.agent.autocompact import AutoCompact
+from secbot.agent.blackboard import Blackboard
 from secbot.agent.context import ContextBuilder
 from secbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
 from secbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.subagent import SubagentManager
+from secbot.agents.high_risk import HighRiskGate
 from secbot.agent.tools.ask import (
     AskUserTool,
     ask_user_options_from_messages,
@@ -27,6 +29,7 @@ from secbot.agent.tools.ask import (
     ask_user_tool_result_messages,
     pending_ask_user_id,
 )
+from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.cron import CronTool
 from secbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -36,6 +39,7 @@ from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.self import MyTool
 from secbot.agent.tools.shell import ExecTool
+from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
 from secbot.bus.events import InboundMessage, OutboundMessage
@@ -125,14 +129,75 @@ class _LoopHook(AgentHook):
             self._session_key,
         )
 
+    @staticmethod
+    def _extract_thought(response: Any) -> str | None:
+        """Derive the thought-card text from an LLM response.
+
+        仅返回**不会出现在 assistant 气泡里**的内容，避免思维链与
+        正文重复。参见 ``before_execute_tools`` 的注释。
+        """
+        if response is None:
+            return None
+        reasoning = getattr(response, "reasoning_content", None)
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning.strip()
+        content = getattr(response, "content", None)
+        if isinstance(content, str):
+            import re as _re
+
+            # Capture the FIRST complete <think>...</think> block (or
+            # <thought>...</thought>); trailing/unclosed blocks are
+            # ignored — helpers.strip_think already filters them from the
+            # bubble, so we avoid leaking partial fragments here.
+            m = _re.search(r"<think>([\s\S]*?)</think>", content)
+            if m is None:
+                m = _re.search(r"<thought>([\s\S]*?)</thought>", content)
+            if m is not None:
+                inner = m.group(1).strip()
+                if inner:
+                    return inner
+        return None
+
+    async def _broadcast_agent_thought(self, thought: str) -> None:
+        """Emit a ``thought`` agent_event frame for the chat surface."""
+        if self._channel != "websocket":
+            return
+        from secbot.channels.websocket import WebSocketChannel
+
+        channel = WebSocketChannel.get_active_instance()
+        if channel is None:
+            return
+        try:
+            await channel.broadcast_agent_event(
+                chat_id=self._chat_id,
+                type="thought",
+                payload={"agent": "orchestrator", "content": thought},
+            )
+        except Exception:
+            logger.debug("agent_event (thought) broadcast failed", exc_info=True)
+
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         if self._on_progress:
-            if not self._on_stream and not context.streamed_content:
-                thought = self._loop._strip_think(
-                    context.response.content if context.response else None
-                )
-                if thought:
+            # Thought 来源优先级（避免与 assistant 气泡重复）：
+            #   1. ``response.reasoning_content`` — 推理模型（o1 / DeepSeek-R1 /
+            #      Claude thinking）提供的独立推理字段，永远不会进入
+            #      assistant bubble，可安全作为思维链卡片内容。
+            #   2. ``response.content`` 中 ``<think>...</think>`` 块的内部 —
+            #      部分开源模型把思考嵌入 content；此时真正的 assistant
+            #      文本是 strip_think 后的剩余部分（已作为 bubble 显示），
+            #      而 think 内部才是思维链。
+            # 不再把 ``strip_think(content)`` 作为 thought 广播——那就是
+            # assistant bubble 自身的文本，streaming/非 streaming 两种模式
+            # 下都会通过 delta 或终态 ``message`` 事件展示，再广播一遍会
+            # 导致思维链卡片与 assistant 气泡内容完全相同（用户报告的
+            # “思维链和输出的内容一样”的根因）。
+            thought = self._extract_thought(context.response)
+            if thought:
+                if not self._on_stream and not context.streamed_content:
+                    # Non-streaming path: also push as a progress trace so
+                    # legacy CLI / non-ws channels still render the hint.
                     await self._on_progress(thought)
+                await self._broadcast_agent_thought(thought)
             tool_hint = self._loop._strip_think(self._loop._tool_hint(context.tool_calls))
             tool_events = [build_tool_event_start_payload(tc) for tc in context.tool_calls]
             await invoke_on_progress(
@@ -363,6 +428,26 @@ class AgentLoop:
         # shared by this loop, so tools resolve the active state via contextvars.
         self._file_state_store = FileStateStore()
         self.runner = AgentRunner(provider)
+        # PR3: lazy-load the expert-agent registry so SpawnTool can validate
+        # ``agent=`` and SubagentManager can filter scoped skills. A broken
+        # YAML MUST NOT crash the loop — we log and fall through to ``None``,
+        # in which case ``spawn(agent=...)`` returns a user-readable error.
+        try:
+            from secbot.agents.registry import load_agent_registry
+
+            agents_dir = Path(__file__).resolve().parents[1] / "agents"
+            self._agent_registry = (
+                load_agent_registry(
+                    agents_dir,
+                    skill_names=None,
+                    skills_root=BUILTIN_SKILLS_DIR if BUILTIN_SKILLS_DIR.is_dir() else None,
+                )
+                if agents_dir.is_dir()
+                else None
+            )
+        except Exception:
+            logger.exception("failed to load expert-agent registry; spawn(agent=...) will error")
+            self._agent_registry = None
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -374,6 +459,7 @@ class AgentLoop:
             restrict_to_workspace=restrict_to_workspace,
             disabled_skills=disabled_skills,
             max_iterations=self.max_iterations,
+            agent_registry=self._agent_registry,
         )
         self._unified_session = unified_session
         self._max_messages = max_messages if max_messages > 0 else 120
@@ -385,6 +471,12 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._session_locks: dict[str, asyncio.Lock] = {}
+        # Shared blackboard for inter-agent communication within a task.
+        # on_write is bound per-turn in _run_agent_loop when channel == "websocket".
+        self.blackboard = Blackboard()
+        # Shared high-risk gate for all SkillTool instances — ensures the audit
+        # trail is centralised per loop (and therefore per scan).
+        self._high_risk_gate = HighRiskGate()
         # Per-session pending queues for mid-turn message injection.
         # When a session has an active task, new messages for that session
         # are routed here instead of creating a new task.
@@ -506,6 +598,19 @@ class AgentLoop:
             )
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound, workspace=self.workspace))
         self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(BlackboardWriteTool(blackboard=self.blackboard, agent_name="orchestrator"))
+        self.tools.register(BlackboardReadTool(blackboard=self.blackboard))
+        # Register every valid secbot skill as a first-class tool so the LLM
+        # can invoke nmap / fscan / hydra / nuclei etc. with typed parameters
+        # instead of synthesising shell commands via ``exec``. Skills whose
+        # front-matter does not comply with the secbot SKILL.md schema are
+        # silently skipped (scan_skills strict=False).
+        for skill_tool in discover_skill_tools(
+            BUILTIN_SKILLS_DIR,
+            workspace=self.workspace,
+            high_risk_gate=self._high_risk_gate,
+        ):
+            self.tools.register(skill_tool)
         if self.cron_service:
             self.tools.register(
                 CronTool(self.cron_service, default_timezone=self.context.timezone or "UTC")
@@ -750,6 +855,41 @@ class AgentLoop:
 
         active_session_key = session.key if session else session_key
         file_state_token = bind_file_states(self._file_state_store.for_session(active_session_key))
+
+        # Bind SkillContext for this turn so every SkillTool.execute sees a
+        # stable scan_id + scan_dir. Raw logs land under ``<workspace>/.secbot
+        # /scans/<session>/raw`` (directory is created lazily by SkillContext).
+        scan_id = (active_session_key or "adhoc").replace(":", "_") or "adhoc"
+        scan_dir = self.workspace / ".secbot" / "scans" / scan_id
+        scan_dir.mkdir(parents=True, exist_ok=True)
+        bind_skill_context(scan_id=scan_id, scan_dir=scan_dir)
+
+        # Bind blackboard write callback for websocket channels so entries
+        # are broadcast to the chat surface in real-time.
+        if channel == "websocket":
+            from secbot.channels.websocket import WebSocketChannel
+
+            ws_channel = WebSocketChannel.get_active_instance()
+            if ws_channel is not None:
+                def _on_bb_write(entry) -> None:
+                    asyncio.create_task(
+                        ws_channel.broadcast_agent_event(
+                            chat_id=chat_id,
+                            type="blackboard_entry",
+                            payload={
+                                "id": entry.id,
+                                "agent_name": entry.agent_name,
+                                "text": entry.text,
+                                "timestamp": entry.timestamp,
+                            },
+                        )
+                    )
+                self.blackboard.set_on_write(_on_bb_write)
+            else:
+                self.blackboard.set_on_write(None)
+        else:
+            self.blackboard.set_on_write(None)
+
         try:
             result = await self.runner.run(AgentRunSpec(
                 initial_messages=initial_messages,
@@ -773,6 +913,7 @@ class AgentLoop:
             ))
         finally:
             reset_file_states(file_state_token)
+            self.blackboard.set_on_write(None)
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)

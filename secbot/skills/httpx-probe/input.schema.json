@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["targets"],
+  "additionalProperties": false,
+  "properties": {
+    "targets": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 256},
+      "minItems": 1,
+      "maxItems": 256
+    },
+    "ports": {"type": "string", "maxLength": 128},
+    "threads": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+    "follow_redirects": {"type": "boolean", "default": false}
+  }
+}

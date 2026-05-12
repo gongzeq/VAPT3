@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "services": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["host", "port", "protocol"],
+        "properties": {
+          "host": {"type": "string"},
+          "port": {"type": "integer"},
+          "protocol": {"type": "string"},
+          "service": {"type": "string"},
+          "product": {"type": "string"},
+          "version": {"type": "string"}
+        }
+      }
+    },
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"}
+  }
+}

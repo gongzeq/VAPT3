@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "vhosts": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["host", "status", "length"],
+        "properties": {
+          "host": {"type": "string"},
+          "status": {"type": "integer"},
+          "length": {"type": "integer"},
+          "words": {"type": "integer"}
+        }
+      }
+    },
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"}
+  }
+}

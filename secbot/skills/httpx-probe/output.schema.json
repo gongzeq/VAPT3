@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "services": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "required": ["url", "status_code"],
+        "properties": {
+          "url": {"type": "string"},
+          "host": {"type": "string"},
+          "port": {"type": "integer"},
+          "status_code": {"type": "integer"},
+          "title": {"type": "string"},
+          "tech": {"type": "array", "items": {"type": "string"}},
+          "server": {"type": "string"},
+          "content_length": {"type": "integer"}
+        }
+      }
+    },
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"}
+  }
+}

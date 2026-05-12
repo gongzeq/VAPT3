@@ -9,6 +9,7 @@ with :class:`AgentRegistryError`. There is no partial registration.
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
@@ -49,6 +50,20 @@ class ExpertAgentSpec:
     max_iterations: int = 10
     emit_plan_steps: bool = True
     source_path: Optional[Path] = None
+    # Availability (PR3): populated when the registry is loaded with a
+    # ``skills_root``; both default to empty tuples in unit tests that skip
+    # binary resolution.
+    required_binaries: tuple[str, ...] = ()
+    missing_binaries: tuple[str, ...] = ()
+
+    @property
+    def available(self) -> bool:
+        """True when every declared external binary is on PATH.
+
+        Agents whose scoped skills declare no external binary are always
+        considered available (e.g. the ``report`` agent only renders HTML).
+        """
+        return not self.missing_binaries
 
     def to_tool_surface(self) -> dict[str, Any]:
         """Return the dict the Orchestrator hands to the LLM as a tool definition."""
@@ -60,6 +75,7 @@ class ExpertAgentSpec:
                 "parameters": dict(self.input_schema),
             },
         }
+
 
 
 @dataclass
@@ -100,6 +116,7 @@ def load_agent_registry(
     agents_dir: Path | str,
     *,
     skill_names: Iterable[str] | None = None,
+    skills_root: Path | str | None = None,
 ) -> AgentRegistry:
     """Load and validate every ``*.yaml`` file under *agents_dir*.
 
@@ -112,12 +129,26 @@ def load_agent_registry(
         ``scoped_skills`` MUST appear in this set or loading aborts.
         When ``None``, scoped-skill resolution is skipped (useful for unit
         tests that don't load the full skill registry).
+    skills_root:
+        Root directory of installed skills. When provided, the registry
+        computes ``required_binaries`` / ``missing_binaries`` per agent
+        (PR3 availability contract). When ``None``, those fields stay
+        empty and :attr:`ExpertAgentSpec.available` is ``True`` by default.
     """
     base = Path(agents_dir)
     if not base.is_dir():
         raise AgentRegistryError(f"agents_dir not found: {base}")
 
     known_skills = set(skill_names) if skill_names is not None else None
+
+    # Build ``skill_name -> external_binary`` once so we don't re-parse every
+    # SKILL.md per agent. Only consulted when skills_root is provided.
+    skill_binaries: dict[str, Optional[str]] = {}
+    if skills_root is not None:
+        from secbot.skills.metadata import scan_skills
+
+        for name, meta in scan_skills(Path(skills_root)).items():
+            skill_binaries[name] = meta.external_binary
 
     registry = AgentRegistry()
     seen_skills: dict[str, str] = {}  # skill -> first agent claiming it
@@ -139,6 +170,29 @@ def load_agent_registry(
             raise AgentRegistryError(
                 f"duplicate agent name '{spec.name}' from {yaml_path}"
             )
+
+        if skills_root is not None:
+            required = sorted({
+                b for skill in spec.scoped_skills
+                if (b := skill_binaries.get(skill))
+            })
+            missing = [b for b in required if shutil.which(b) is None]
+            spec = ExpertAgentSpec(
+                name=spec.name,
+                display_name=spec.display_name,
+                description=spec.description,
+                system_prompt=spec.system_prompt,
+                scoped_skills=spec.scoped_skills,
+                input_schema=spec.input_schema,
+                output_schema=spec.output_schema,
+                model=spec.model,
+                max_iterations=spec.max_iterations,
+                emit_plan_steps=spec.emit_plan_steps,
+                source_path=spec.source_path,
+                required_binaries=tuple(required),
+                missing_binaries=tuple(missing),
+            )
+
         registry.agents[spec.name] = spec
 
     return registry

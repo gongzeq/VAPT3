@@ -24,6 +24,10 @@ _HARD_RULES = (
     "- You MUST respect the natural ordering: asset_discovery \u2192 port_scan \u2192 "
     "vuln_scan \u2192 (weak_password | pentest) \u2192 report. Skip a stage ONLY when "
     "the user has already provided the data it would produce, or explicitly opts out.",
+    "- After the final scan stage succeeds (or the user opts out of remaining stages), "
+    "you MUST call the `report` expert to materialise an HTML deliverable via the "
+    "`report-html` skill. Do NOT end the task without a report unless the user "
+    "explicitly says they do not want one.",
     "- You MUST request high-risk confirmation when an expert is about to invoke a "
     "critical-risk skill (the expert handles the gate; you must NOT bypass it by "
     "inventing skill calls of your own).",
@@ -36,6 +40,9 @@ _WORKING_STYLE = (
     "- After each tool result, decide: continue / replan / ask user.",
     "- Summarise findings with severity counts and link to the raw log path that "
     "the expert agent returned.",
+    "- When the scan pipeline is done, finish by spawning the `report` expert with "
+    "`{\"scan_id\": <current scan id>}` and surface the returned `report_path` "
+    "to the user.",
     "- Use the user's language (default: \u4e2d\u6587).",
 )
 

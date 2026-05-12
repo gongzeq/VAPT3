@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "action": {"type": "string"},
+    "databases": {"type": "array", "items": {"type": "string"}, "maxItems": 200},
+    "tables": {"type": "array", "items": {"type": "string"}, "maxItems": 500},
+    "columns": {"type": "array", "items": {"type": "string"}, "maxItems": 500},
+    "dump_path": {"type": "string"},
+    "row_count": {"type": "integer"},
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"}
+  }
+}

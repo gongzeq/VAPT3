@@ -10,6 +10,10 @@ system_prompt_file: ./prompts/vuln_scan.md
 scoped_skills:
   - nuclei-template-scan
   - fscan-vuln-scan
+  - ffuf-dir-fuzz
+  - ffuf-vhost-fuzz
+  - sqlmap-detect
+  - sqlmap-dump
 
 max_iterations: 6
 emit_plan_steps: true

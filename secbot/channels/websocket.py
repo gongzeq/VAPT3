@@ -1361,6 +1361,12 @@ class WebSocketChannel(BaseChannel):
                     "display_name": spec.display_name,
                     "description": spec.description,
                     "scoped_skills": list(spec.scoped_skills),
+                    # PR3 availability contract: required/missing binaries
+                    # default to empty tuples when the registry is loaded
+                    # without ``skills_root``; ``available`` then stays True.
+                    "available": spec.available,
+                    "required_binaries": list(spec.required_binaries),
+                    "missing_binaries": list(spec.missing_binaries),
                 }
             )
 
@@ -1395,12 +1401,19 @@ class WebSocketChannel(BaseChannel):
 
             # Repo layout: ``secbot/agents/*.yaml``. Resolve from this module.
             agents_dir = Path(__file__).resolve().parents[1] / "agents"
+            skills_dir = Path(__file__).resolve().parents[1] / "skills"
             if not agents_dir.is_dir():
                 self._agent_registry = AgentRegistry()
             else:
                 # ``skill_names=None`` skips scoped-skill cross-checking; we
                 # only need display metadata here, not tool-surface generation.
-                self._agent_registry = load_agent_registry(agents_dir, skill_names=None)
+                # ``skills_root`` is passed so the payload can advertise
+                # per-agent binary availability (PR3 §/api/agents contract).
+                self._agent_registry = load_agent_registry(
+                    agents_dir,
+                    skill_names=None,
+                    skills_root=skills_dir if skills_dir.is_dir() else None,
+                )
         except Exception:
             # Any registry error MUST NOT bring down the dashboard — the UI
             # surfaces an empty agents list if the YAMLs are missing or
@@ -1658,6 +1671,33 @@ class WebSocketChannel(BaseChannel):
         }
         if duration_ms is not None:
             body["duration_ms"] = int(duration_ms)
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def broadcast_agent_event(
+        self,
+        *,
+        chat_id: str,
+        type: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Emit a unified ``agent_event`` frame scoped to ``chat_id``.
+
+        This is the single wire format for thought, subagent lifecycle,
+        and blackboard entry events.  Consumers on the chat surface
+        receive it via the per-chat dispatch path, so it scrolls inline
+        with the conversation.
+
+        Throttle policy is left to the caller; this method does NOT
+        throttle so that high-signal events (first thought, subagent
+        spawn/done) are never dropped.
+        """
+        body: dict[str, Any] = {
+            "event": "agent_event",
+            "chat_id": chat_id,
+            "type": type,
+            "payload": dict(payload),
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
         return await self._broadcast_frame(body, chat_id=chat_id)
 
     async def _broadcast_frame(

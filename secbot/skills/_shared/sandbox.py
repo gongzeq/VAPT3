@@ -25,8 +25,9 @@ BINARY_WHITELIST = frozenset({
     "fscan",
     "nuclei",
     "hydra",
-    "masscan",
-    "weasyprint",
+    "httpx",
+    "ffuf",
+    "sqlmap",
     "python3",
     "git",
 })

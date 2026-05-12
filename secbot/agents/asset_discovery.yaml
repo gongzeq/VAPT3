@@ -11,10 +11,7 @@ system_prompt_file: ./prompts/asset_discovery.md
 scoped_skills:
   - nmap-host-discovery
   - fscan-asset-discovery
-  - masscan-discovery
-  - cmdb-add-target
-  - cmdb-list-assets
-  - cmdb-history-query
+  - httpx-probe
 
 max_iterations: 8
 emit_plan_steps: true

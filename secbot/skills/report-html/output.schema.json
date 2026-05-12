@@ -11,7 +11,8 @@
         "report_path": {"type": ["string", "null"]},
         "asset_count": {"type": "integer", "minimum": 0},
         "finding_count": {"type": "integer", "minimum": 0},
-        "status": {"type": "string"}
+        "status": {"type": "string"},
+        "report_id": {"type": ["string", "null"]}
       }
     }
   }

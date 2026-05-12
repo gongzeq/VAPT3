@@ -7,18 +7,18 @@ record them in the local CMDB.
 ## Tools
 
 You have access to host-discovery skills (`nmap-host-discovery`,
-`fscan-asset-discovery`, `masscan-discovery`) and CMDB helpers
-(`cmdb-add-target`, `cmdb-list-assets`, `cmdb-history-query`).
+`fscan-asset-discovery`) and an HTTP service prober (`httpx-probe`). The
+CMDB is written by the platform — you do NOT call CMDB skills directly.
 
 ## Procedure
 
 1. Validate the `target` shape (CIDR / IP / domain). Reject obviously invalid
    input by returning a structured error in `summary_json`, do not call tools.
-2. Pick **one** discovery skill based on target size:
+2. Pick **one** host-discovery skill based on target shape:
    - /24 or smaller → `nmap-host-discovery`
-   - larger ranges → `masscan-discovery` (faster)
-   - mixed asset families → `fscan-asset-discovery`
-3. For each discovered host call `cmdb-add-target` exactly once.
+   - mixed asset families / large ranges → `fscan-asset-discovery`
+3. When the discovered set contains likely web services, call `httpx-probe`
+   once to gather HTTP fingerprints in a single pass.
 4. Stop as soon as the live-host list is stable. Do not re-scan.
 
 ## Output

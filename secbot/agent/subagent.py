@@ -6,7 +6,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -17,12 +17,16 @@ from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileToo
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
+from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
 from secbot.providers.base import LLMProvider
 from secbot.utils.prompt_templates import render_template
+
+if TYPE_CHECKING:
+    from secbot.agents.registry import AgentRegistry, ExpertAgentSpec
 
 
 @dataclass(slots=True)
@@ -82,6 +86,7 @@ class SubagentManager:
         restrict_to_workspace: bool = False,
         disabled_skills: list[str] | None = None,
         max_iterations: int | None = None,
+        agent_registry: "AgentRegistry | None" = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -100,6 +105,10 @@ class SubagentManager:
         )
         self.max_concurrent_subagents = defaults.max_concurrent_subagents
         self.runner = AgentRunner(provider)
+        # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
+        # resolves the named spec and ``_run_subagent`` filters the skill tool
+        # set down to ``spec.scoped_skills``.
+        self.agent_registry: "AgentRegistry | None" = agent_registry
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
@@ -109,6 +118,30 @@ class SubagentManager:
         self.model = model
         self.runner.provider = provider
 
+    async def _broadcast_agent_event(
+        self,
+        origin: dict[str, str],
+        type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Best-effort broadcast of an agent_event frame to the WebSocket channel."""
+        if origin.get("channel") != "websocket":
+            return
+        from secbot.channels.websocket import WebSocketChannel
+
+        channel = WebSocketChannel.get_active_instance()
+        if channel is None:
+            return
+        chat_id = origin.get("chat_id", "direct")
+        try:
+            await channel.broadcast_agent_event(
+                chat_id=chat_id,
+                type=type,
+                payload=payload,
+            )
+        except Exception:
+            logger.debug("agent_event ({}) broadcast failed", type, exc_info=True)
+
     async def spawn(
         self,
         task: str,
@@ -117,11 +150,24 @@ class SubagentManager:
         origin_chat_id: str = "direct",
         session_key: str | None = None,
         origin_message_id: str | None = None,
+        agent: str | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background."""
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id, "session_key": session_key}
+
+        # Resolve expert-agent spec up-front so _run_subagent can pre-filter
+        # tools. Validation already happened in SpawnTool; we still guard here
+        # so programmatic callers (tests) can't mis-route.
+        spec: "ExpertAgentSpec | None" = None
+        if agent:
+            if self.agent_registry is None or agent not in self.agent_registry:
+                return (
+                    f"Unknown expert agent '{agent}'. "
+                    "SubagentManager has no registry attached."
+                )
+            spec = self.agent_registry.get(agent)
 
         status = SubagentStatus(
             task_id=task_id,
@@ -132,7 +178,7 @@ class SubagentManager:
         self._task_statuses[task_id] = status
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin, status, origin_message_id)
+            self._run_subagent(task_id, task, display_label, origin, status, origin_message_id, spec)
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -149,6 +195,15 @@ class SubagentManager:
         bg_task.add_done_callback(_cleanup)
 
         logger.info("Spawned subagent [{}]: {}", task_id, display_label)
+        await self._broadcast_agent_event(
+            origin={"channel": origin_channel, "chat_id": origin_chat_id},
+            type="subagent_spawned",
+            payload={
+                "task_id": task_id,
+                "label": display_label,
+                "task_description": task,
+            },
+        )
         return f"Subagent [{display_label}] started (id: {task_id}). I'll notify you when it completes."
 
     async def _run_subagent(
@@ -159,6 +214,7 @@ class SubagentManager:
         origin: dict[str, str],
         status: SubagentStatus,
         origin_message_id: str | None = None,
+        spec: "ExpertAgentSpec | None" = None,
     ) -> None:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
@@ -166,6 +222,16 @@ class SubagentManager:
         async def _on_checkpoint(payload: dict) -> None:
             status.phase = payload.get("phase", status.phase)
             status.iteration = payload.get("iteration", status.iteration)
+            await self._broadcast_agent_event(
+                origin=origin,
+                type="subagent_status",
+                payload={
+                    "task_id": task_id,
+                    "phase": status.phase,
+                    "iteration": status.iteration,
+                    "tool_events": status.tool_events,
+                },
+            )
 
         try:
             # Build subagent tools (no message tool, no spawn tool)
@@ -208,7 +274,28 @@ class SubagentManager:
                         user_agent=self.web_config.user_agent,
                     )
                 )
-            system_prompt = self._build_subagent_prompt()
+            # Subagents also get SkillTool instances so they can run nmap /
+            # fscan / etc. without shelling out. When an expert-agent spec is
+            # provided (``spawn(agent=...)``), restrict the SkillTool set to
+            # that spec's ``scoped_skills`` so the subagent only sees tools
+            # relevant to its role.
+            scoped: set[str] | None = (
+                set(spec.scoped_skills) if spec is not None else None
+            )
+            for skill_tool in discover_skill_tools(
+                BUILTIN_SKILLS_DIR,
+                workspace=self.workspace,
+            ):
+                if scoped is not None and skill_tool.name not in scoped:
+                    continue
+                tools.register(skill_tool)
+            # Inherit the parent loop's per-turn SkillContext binding so raw
+            # logs and scan_id stay consistent across parent + children.
+            bind_skill_context(
+                scan_id=task_id,
+                scan_dir=self.workspace / ".secbot" / "scans" / task_id,
+            )
+            system_prompt = self._build_subagent_prompt(spec=spec)
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task},
@@ -296,6 +383,16 @@ class SubagentManager:
         )
 
         await self.bus.publish_inbound(msg)
+        await self._broadcast_agent_event(
+            origin=origin,
+            type="subagent_done",
+            payload={
+                "task_id": task_id,
+                "label": label,
+                "status": status,
+                "result": result,
+            },
+        )
         logger.debug("Subagent [{}] announced result to {}:{}", task_id, origin['channel'], origin['chat_id'])
 
     @staticmethod
@@ -319,8 +416,17 @@ class SubagentManager:
             lines.append(f"- {result.error}")
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
 
-    def _build_subagent_prompt(self) -> str:
-        """Build a focused system prompt for the subagent."""
+    def _build_subagent_prompt(
+        self,
+        *,
+        spec: "ExpertAgentSpec | None" = None,
+    ) -> str:
+        """Build a focused system prompt for the subagent.
+
+        When ``spec`` is provided, the expert-agent's ``system_prompt`` is
+        prepended so the subagent adopts that role before the generic secbot
+        subagent instructions.
+        """
         from secbot.agent.context import ContextBuilder
         from secbot.agent.skills import SkillsLoader
 
@@ -329,12 +435,15 @@ class SubagentManager:
             self.workspace,
             disabled_skills=self.disabled_skills,
         ).build_skills_summary()
-        return render_template(
+        base = render_template(
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(self.workspace),
             skills_summary=skills_summary or "",
         )
+        if spec is None:
+            return base
+        return f"{spec.system_prompt.rstrip()}\n\n{base}"
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

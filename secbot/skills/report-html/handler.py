@@ -1,6 +1,8 @@
-"""report-markdown handler.
+"""report-html handler.
 
-Builds the canonical Markdown report into ``<scan_dir>/report/report.md``.
+Renders the canonical HTML report into ``<scan_dir>/report/report.html``.
+The HTML format is the single supported export (markdown / pdf / docx were
+retired in favour of one canonical deliverable).
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ from typing import Any
 from secbot.cmdb.db import get_session
 from secbot.cmdb.models import DEFAULT_ACTOR
 from secbot.report.builder import build_report_model, record_report_meta
-from secbot.report.render import render_markdown
+from secbot.report.render import render_html
 from secbot.skills.types import SkillContext, SkillResult
 
 
@@ -33,11 +35,11 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
             }
         )
 
-    md = render_markdown(model)
+    html = render_html(model)
     report_dir = ctx.scan_dir / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
-    out_path = report_dir / "report.md"
-    out_path.write_text(md, encoding="utf-8")
+    out_path = report_dir / "report.html"
+    out_path.write_text(html, encoding="utf-8")
 
     # Persistence is best-effort per report-meta.md §3.1: a failure here
     # MUST NOT invalidate the freshly rendered file.

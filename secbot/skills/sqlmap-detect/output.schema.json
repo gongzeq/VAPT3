@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "vulnerable": {"type": "boolean"},
+    "parameters": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "place": {"type": "string"},
+          "type": {"type": "string"},
+          "title": {"type": "string"},
+          "payload": {"type": "string"}
+        }
+      }
+    },
+    "dbms": {"type": "string"},
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"}
+  }
+}

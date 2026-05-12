@@ -17,9 +17,9 @@ for weak / default credentials.
 ## Procedure
 
 1. Group input `services` by service kind.
-2. For each group, prefer `fscan-weak-password` (built-in dictionaries,
-   safer defaults). Fall back to `hydra-bruteforce` only when the user
-   provided custom `user_list` / `pass_list`.
+2. For each group call `hydra-bruteforce` with the user-supplied
+   `user_list` / `pass_list` (or the skill's built-in defaults when
+   omitted). Never invent credentials.
 
 ## Output
 

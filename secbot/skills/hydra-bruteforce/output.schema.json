@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "credentials": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "required": ["host", "service", "username", "password"],
+        "properties": {
+          "host": {"type": "string"},
+          "port": {"type": "integer"},
+          "service": {"type": "string"},
+          "username": {"type": "string"},
+          "password": {"type": "string"}
+        }
+      }
+    },
+    "attempts": {"type": "integer"},
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"}
+  }
+}

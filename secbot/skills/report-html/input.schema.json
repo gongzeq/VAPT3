@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scan_id"],
+  "properties": {
+    "scan_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "actor_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "type": {"type": "string", "enum": ["custom", "asset", "port", "vuln", "weak_password", "pentest"]}
+  }
+}

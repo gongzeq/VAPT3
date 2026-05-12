@@ -14,6 +14,12 @@ if TYPE_CHECKING:
     tool_parameters_schema(
         task=StringSchema("The task for the subagent to complete"),
         label=StringSchema("Optional short label for the task (for display)"),
+        agent=StringSchema(
+            "Optional expert agent name. When set, the subagent loads "
+            "only that agent's scoped_skills and system prompt (see "
+            "/api/agents for the list of registered expert agents).",
+            nullable=True,
+        ),
         required=["task"],
     )
 )
@@ -54,7 +60,13 @@ class SpawnTool(Tool):
             "and use a dedicated subdirectory when helpful."
         )
 
-    async def execute(self, task: str, label: str | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self,
+        task: str,
+        label: str | None = None,
+        agent: str | None = None,
+        **kwargs: Any,
+    ) -> str:
         """Spawn a subagent to execute the given task."""
         running = self._manager.get_running_count()
         limit = self._manager.max_concurrent_subagents
@@ -64,9 +76,27 @@ class SpawnTool(Tool):
                 f"({running}/{limit} running). Wait for a running subagent "
                 f"to complete before spawning a new one."
             )
+        # PR3: when the caller names a specific expert agent, resolve + validate
+        # it here so the LLM gets a concise error (instead of burning a subagent
+        # slot on an unknown / offline agent).
+        if agent:
+            registry = getattr(self._manager, "agent_registry", None)
+            if registry is None or agent not in registry:
+                return (
+                    f"Unknown expert agent '{agent}'. "
+                    f"Use the orchestrator prompt's agent list or /api/agents."
+                )
+            spec = registry.get(agent)
+            if not spec.available:
+                missing = ", ".join(spec.missing_binaries) or "<unknown>"
+                return (
+                    f"Agent '{agent}' is offline: missing binaries {missing}. "
+                    "Install them and retry."
+                )
         return await self._manager.spawn(
             task=task,
             label=label,
+            agent=agent,
             origin_channel=self._origin_channel.get(),
             origin_chat_id=self._origin_chat_id.get(),
             session_key=self._session_key.get(),
