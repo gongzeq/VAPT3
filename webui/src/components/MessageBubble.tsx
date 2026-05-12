@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
 import { cn } from "@/lib/utils";
-import type { UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
+import type { AgentEventPayload, UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: UIMessage;
@@ -50,6 +50,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   if (message.kind === "trace") {
     return <TraceGroup message={message} animClass={baseAnim} />;
+  }
+
+  if (message.kind === "agent_event" && message.agentEvent) {
+    return <AgentEventCard payload={message.agentEvent} animClass={baseAnim} />;
   }
 
   if (message.role === "user") {
@@ -440,4 +444,113 @@ function TraceGroup({ message, animClass }: TraceGroupProps) {
       )}
     </div>
   );
+}
+
+interface AgentEventCardProps {
+  payload: AgentEventPayload;
+  animClass: string;
+}
+
+function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
+  const [open, setOpen] = useState(false);
+
+  switch (payload.type) {
+    case "thought": {
+      const lines = payload.content?.split("\n") ?? [];
+      return (
+        <div className={cn("w-full", animClass)}>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className={cn(
+              "group flex w-full items-center gap-2 rounded-md px-2 py-1.5",
+              "text-xs text-muted-foreground transition-colors hover:bg-muted/45",
+            )}
+            aria-expanded={open}
+          >
+            <Lightbulb className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+            <span className="font-medium">{lines[0] ?? "思考中..."}</span>
+            <ChevronRight
+              aria-hidden
+              className={cn(
+                "ml-auto h-3.5 w-3.5 transition-transform duration-200",
+                open && "rotate-90",
+              )}
+            />
+          </button>
+          {open && (
+            <ul
+              className={cn(
+                "mt-1 space-y-0.5 border-l border-amber-500/30 pl-3",
+                "animate-in fade-in-0 slide-in-from-top-1 duration-200",
+              )}
+            >
+              {lines.map((line, i) => (
+                <li
+                  key={i}
+                  className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-muted-foreground/90"
+                >
+                  {line}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+    case "subagent_spawned":
+      return (
+        <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>
+          <Bot className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{payload.label}</span>
+            <span className="ml-1">已启动</span>
+            {payload.task_description ? (
+              <p className="mt-0.5 line-clamp-2 text-[11px]">{payload.task_description}</p>
+            ) : null}
+          </div>
+        </div>
+      );
+    case "subagent_status":
+      return (
+        <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>
+          <Bot className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{payload.task_id}</span>
+            <span className="ml-1">
+              {payload.phase} (迭代 {payload.iteration})
+            </span>
+          </div>
+        </div>
+      );
+    case "subagent_done":
+      return (
+        <div className={cn("flex gap-2 rounded-lg border px-3 py-2", animClass,
+          payload.status === "ok" ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5",
+        )}>
+          <Bot className={cn("h-4 w-4 shrink-0", payload.status === "ok" ? "text-green-500" : "text-red-500")} aria-hidden />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{payload.label ?? payload.task_id}</span>
+            <span className={cn("ml-1", payload.status === "ok" ? "text-green-600" : "text-red-600")}>
+              {payload.status === "ok" ? "已完成" : "失败"}
+            </span>
+            {payload.result ? (
+              <p className="mt-0.5 line-clamp-3 text-[11px]">{payload.result}</p>
+            ) : null}
+          </div>
+        </div>
+      );
+    case "blackboard_entry":
+      return (
+        <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>
+          <ClipboardList className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">[{payload.agent_name}]</span>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-[11px]">{payload.text}</p>
+          </div>
+        </div>
+      );
+    default:
+      return null;
+  }
 }

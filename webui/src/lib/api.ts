@@ -269,3 +269,163 @@ export async function fetchActivityEvents(
     token,
   );
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Expert agents & skills CRUD (PR3 — security tools as first-class tools).
+// The backend enforces ``scoped_skills`` per agent and probes the real
+// binaries referenced by each skill's ``external_binary`` header. The
+// ``available`` / ``missing_binaries`` pair lets the UI surface offline
+// status without a second round-trip.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface AgentInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  scoped_skills: string[];
+  max_iterations?: number;
+  source_path?: string | null;
+  /** True when every binary referenced by the agent's scoped skills is on
+   * ``$PATH``. Defaults to ``true`` when the backend loaded the registry
+   * without a skills root (i.e. could not probe). */
+  available: boolean;
+  required_binaries: string[];
+  missing_binaries: string[];
+}
+
+export interface AgentDetail extends AgentInfo {
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  system_prompt: string;
+  max_iterations: number;
+  emit_plan_steps?: boolean;
+  yaml_content: string;
+  source_path: string | null;
+}
+
+export async function listAgents(
+  token: string,
+  base: string = "",
+): Promise<AgentInfo[]> {
+  const body = await request<{ agents: AgentInfo[] }>(
+    `${base}/api/agents`,
+    token,
+  );
+  return Array.isArray(body.agents) ? body.agents : [];
+}
+
+export async function getAgent(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<AgentDetail> {
+  return request<AgentDetail>(
+    `${base}/api/agents/${encodeURIComponent(name)}`,
+    token,
+  );
+}
+
+export async function createAgent(
+  token: string,
+  data: Partial<AgentDetail>,
+  base: string = "",
+): Promise<{ name: string; restart_required: boolean }> {
+  return request(`${base}/api/agents`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAgent(
+  token: string,
+  name: string,
+  data: Partial<AgentDetail>,
+  base: string = "",
+): Promise<{ name: string; restart_required: boolean }> {
+  return request(`${base}/api/agents/${encodeURIComponent(name)}`, token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAgent(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<{ deleted: string; restart_required: boolean }> {
+  return request(`${base}/api/agents/${encodeURIComponent(name)}`, token, {
+    method: "DELETE",
+  });
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  path: string;
+  source_dir: string;
+}
+
+export interface SkillDetail {
+  name: string;
+  content: string;
+  path: string;
+}
+
+export async function listSkills(
+  token: string,
+  base: string = "",
+): Promise<SkillInfo[]> {
+  const body = await request<{ skills: SkillInfo[] }>(
+    `${base}/api/skills`,
+    token,
+  );
+  return Array.isArray(body.skills) ? body.skills : [];
+}
+
+export async function getSkill(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<SkillDetail> {
+  return request<SkillDetail>(
+    `${base}/api/skills/${encodeURIComponent(name)}`,
+    token,
+  );
+}
+
+export async function createSkill(
+  token: string,
+  data: { name: string; content: string },
+  base: string = "",
+): Promise<{ name: string; path: string; restart_required: boolean }> {
+  return request(`${base}/api/skills`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateSkill(
+  token: string,
+  name: string,
+  data: { content: string },
+  base: string = "",
+): Promise<{ name: string; restart_required: boolean }> {
+  return request(`${base}/api/skills/${encodeURIComponent(name)}`, token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteSkill(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<{ deleted: string; restart_required: boolean }> {
+  return request(`${base}/api/skills/${encodeURIComponent(name)}`, token, {
+    method: "DELETE",
+  });
+}

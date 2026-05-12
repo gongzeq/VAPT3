@@ -264,6 +264,44 @@ export function useNanobotStream(
         });
         return;
       }
+
+      if (ev.event === "agent_event") {
+        // Wire format places ``type`` at the frame top-level (alongside
+        // ``event`` / ``chat_id``) while the rest of the shape lives under
+        // ``payload``. Merge them back into a single ``AgentEventPayload``
+        // so downstream switches have a single source of truth.
+        const payload = { ...ev.payload, type: ev.type };
+        const content = (() => {
+          switch (payload.type) {
+            case "thought":
+              return payload.content ?? "";
+            case "subagent_spawned":
+              return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
+            case "subagent_status":
+              return `⏳ 子智能体「${payload.task_id}」状态: ${payload.phase ?? "unknown"} (迭代 ${payload.iteration ?? 0})`;
+            case "subagent_done":
+              return payload.status === "ok"
+                ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`
+                : `❌ 子智能体「${payload.label ?? payload.task_id}」失败`;
+            case "blackboard_entry":
+              return `📝 黑板条目 [${payload.agent_name}]: ${payload.text ?? ""}`;
+            default:
+              return "";
+          }
+        })();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: randomId(),
+            role: "assistant",
+            kind: "agent_event",
+            content,
+            agentEvent: payload,
+            createdAt: Date.now(),
+          },
+        ]);
+        return;
+      }
       // ``attached`` / ``error`` frames aren't actionable here; the client
       // shell handles them separately.
     };

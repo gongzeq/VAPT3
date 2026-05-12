@@ -279,6 +279,12 @@ export class SecbotClient {
       // global set).
     }
 
+    if (eventName === "agent_event") {
+      const chatId = (parsed as { chat_id?: string }).chat_id;
+      if (chatId) this.dispatch(chatId, parsed as InboundEvent);
+      return;
+    }
+
     const chatId = (parsed as { chat_id?: string }).chat_id;
     if (chatId) this.dispatch(chatId, parsed);
   }

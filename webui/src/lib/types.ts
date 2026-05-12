@@ -2,7 +2,38 @@ export type Role = "user" | "assistant" | "tool" | "system";
 
 /** "trace" rows are intermediate agent breadcrumbs (tool-call hints,
  * progress pings) that should not be rendered as conversational replies. */
-export type MessageKind = "message" | "trace";
+export type MessageKind = "message" | "trace" | "agent_event";
+
+export type AgentEventType =
+  | "thought"
+  | "subagent_spawned"
+  | "subagent_status"
+  | "subagent_done"
+  | "blackboard_entry";
+
+export interface AgentEventPayload {
+  type: AgentEventType;
+  agent?: string;
+  content?: string;
+  task_id?: string;
+  label?: string;
+  task_description?: string;
+  phase?: string;
+  iteration?: number;
+  tool_events?: unknown[];
+  status?: "ok" | "error";
+  result?: string;
+  id?: string;
+  agent_name?: string;
+  text?: string;
+  timestamp?: number;
+}
+
+/** Legacy alias for blackboard entry shape (used by BlackboardCard). */
+export type BlackboardEntry = Pick<
+  AgentEventPayload,
+  "id" | "agent_name" | "text" | "timestamp"
+>;
 
 /** One image attached to a UIMessage.
  *
@@ -46,6 +77,8 @@ export interface UIMessage {
   media?: UIMediaAttachment[];
   /** Optional answer choices for a pending ask_user question. */
   buttons?: string[][];
+  /** Agent event payload when kind is ``agent_event``. */
+  agentEvent?: AgentEventPayload;
 }
 
 export interface ChatSummary {
@@ -178,6 +211,13 @@ export type InboundEvent =
     }
   | { event: "turn_end"; chat_id: string }
   | { event: "session_updated"; chat_id: string }
+  | {
+      event: "agent_event";
+      chat_id: string;
+      type: AgentEventType;
+      payload: AgentEventPayload;
+      timestamp: string;
+    }
   | { event: "error"; chat_id?: string; detail?: string };
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.

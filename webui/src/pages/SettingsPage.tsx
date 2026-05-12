@@ -39,7 +39,7 @@ const TABS: TabDef[] = [
  *
  * Three tabs:
  * 1. 用户偏好: theme toggle + language switcher (+ future notification prefs)
- * 2. 平台 Admin: existing SettingsView (model/provider/api_base)
+ * 2. 平台管理: existing SettingsView (model/provider/api_base)
  * 3. 危险区: logout + clear all sessions
  */
 export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps) {
