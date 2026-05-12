@@ -6,15 +6,22 @@ export type MessageKind = "message" | "trace" | "agent_event";
 
 export type AgentEventType =
   | "thought"
+  | "orchestrator_plan"
   | "subagent_spawned"
   | "subagent_status"
   | "subagent_done"
   | "blackboard_entry";
 
+export interface OrchestratorPlanStep {
+  title: string;
+  detail?: string;
+}
+
 export interface AgentEventPayload {
   type: AgentEventType;
   agent?: string;
   content?: string;
+  steps?: OrchestratorPlanStep[];
   task_id?: string;
   label?: string;
   task_description?: string;
@@ -77,6 +84,9 @@ export interface UIMessage {
   media?: UIMediaAttachment[];
   /** Optional answer choices for a pending ask_user question. */
   buttons?: string[][];
+  /** Source tool for a blocking prompt, e.g. ask_user or request_approval. */
+  toolName?: "ask_user" | "request_approval" | string;
+  promptKind?: "question" | "approval";
   /** Agent event payload when kind is ``agent_event``. */
   agentEvent?: AgentEventPayload;
 }
@@ -194,6 +204,9 @@ export type InboundEvent =
       buttons?: string[][];
       /** Original prompt before the websocket text fallback appends buttons. */
       button_prompt?: string;
+      /** Source tool for structured prompts. */
+      tool_name?: "ask_user" | "request_approval" | string;
+      prompt_kind?: "question" | "approval";
       /** Present when the frame is an agent breadcrumb (e.g. tool hint,
        * generic progress line) rather than a conversational reply. */
       kind?: "tool_hint" | "progress";

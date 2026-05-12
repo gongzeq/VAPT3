@@ -258,6 +258,8 @@ export function useNanobotStream(
               content,
               createdAt: Date.now(),
               ...(ev.buttons && ev.buttons.length > 0 ? { buttons: ev.buttons } : {}),
+              ...(ev.tool_name ? { toolName: ev.tool_name } : {}),
+              ...(ev.prompt_kind ? { promptKind: ev.prompt_kind } : {}),
               ...(media && media.length > 0 ? { media } : {}),
             },
           ];
@@ -275,6 +277,8 @@ export function useNanobotStream(
           switch (payload.type) {
             case "thought":
               return payload.content ?? "";
+            case "orchestrator_plan":
+              return `编排计划：${payload.steps?.length ?? 0} 步`;
             case "subagent_spawned":
               return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
             case "subagent_status":

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb, ListChecks } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ImageLightbox } from "@/components/ImageLightbox";
@@ -508,6 +508,28 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
             {payload.task_description ? (
               <p className="mt-0.5 line-clamp-2 text-[11px]">{payload.task_description}</p>
             ) : null}
+          </div>
+        </div>
+      );
+    case "orchestrator_plan":
+      return (
+        <div className={cn("flex gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2", animClass)}>
+          <ListChecks className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">编排计划</span>
+            <ol className="mt-1 space-y-1">
+              {(payload.steps ?? []).map((step, index) => (
+                <li key={`${step.title}-${index}`} className="grid grid-cols-[1.25rem_1fr] gap-1">
+                  <span className="font-medium text-primary">{index + 1}.</span>
+                  <span className="min-w-0">
+                    <span className="block break-words font-medium text-foreground">{step.title}</span>
+                    {step.detail ? (
+                      <span className="mt-0.5 block break-words text-[11px] leading-5">{step.detail}</span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
         </div>
       );

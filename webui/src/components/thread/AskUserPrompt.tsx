@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageSquareText } from "lucide-react";
+import { MessageSquareText, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -7,18 +7,22 @@ import { cn } from "@/lib/utils";
 interface AskUserPromptProps {
   question: string;
   buttons: string[][];
+  variant?: "question" | "approval";
   onAnswer: (answer: string) => void;
 }
 
 export function AskUserPrompt({
   question,
   buttons,
+  variant = "question",
   onAnswer,
 }: AskUserPromptProps) {
   const [customOpen, setCustomOpen] = useState(false);
   const [custom, setCustom] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const options = buttons.flat().filter(Boolean);
+  const isApproval = variant === "approval";
+  const Icon = isApproval ? ShieldAlert : MessageSquareText;
 
   useEffect(() => {
     if (customOpen) {
@@ -41,13 +45,17 @@ export function AskUserPrompt({
       className={cn(
         "mx-auto mb-2 w-full max-w-[49.5rem] rounded-[16px] border border-primary/30",
         "bg-card/95 p-3 shadow-sm backdrop-blur",
+        isApproval && "border-destructive/40 bg-destructive/5",
       )}
       role="group"
-      aria-label="Question"
+      aria-label={isApproval ? "Approval request" : "Question"}
     >
       <div className="mb-2 flex items-start gap-2">
-        <div className="mt-0.5 rounded-full bg-primary/10 p-1.5 text-primary">
-          <MessageSquareText className="h-3.5 w-3.5" aria-hidden />
+        <div className={cn(
+          "mt-0.5 rounded-full p-1.5",
+          isApproval ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary",
+        )}>
+          <Icon className="h-3.5 w-3.5" aria-hidden />
         </div>
         <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">
           {question}
@@ -62,7 +70,10 @@ export function AskUserPrompt({
             variant="outline"
             size="sm"
             onClick={() => onAnswer(option)}
-            className="justify-start rounded-[10px] px-3 text-left"
+            className={cn(
+              "justify-start rounded-[10px] px-3 text-left",
+              isApproval && option.toLowerCase().includes("approve") && "border-destructive/40 text-destructive hover:bg-destructive/10",
+            )}
           >
             <span className="truncate">{option}</span>
           </Button>

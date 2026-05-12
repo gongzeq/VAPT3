@@ -79,6 +79,31 @@ describe("MessageBubble", () => {
     expect(screen.queryByText('weather("get")')).not.toBeInTheDocument();
   });
 
+  it("renders orchestrator plan agent events", () => {
+    const message: UIMessage = {
+      id: "plan-1",
+      role: "assistant",
+      kind: "agent_event",
+      content: "编排计划：2 步",
+      createdAt: Date.now(),
+      agentEvent: {
+        type: "orchestrator_plan",
+        agent: "orchestrator",
+        steps: [
+          { title: "Asset discovery", detail: "Find live hosts." },
+          { title: "Report" },
+        ],
+      },
+    };
+
+    render(<MessageBubble message={message} />);
+
+    expect(screen.getByText("编排计划")).toBeInTheDocument();
+    expect(screen.getByText("Asset discovery")).toBeInTheDocument();
+    expect(screen.getByText("Find live hosts.")).toBeInTheDocument();
+    expect(screen.getByText("Report")).toBeInTheDocument();
+  });
+
   it("renders video media as an inline player", () => {
     const message: UIMessage = {
       id: "a1",

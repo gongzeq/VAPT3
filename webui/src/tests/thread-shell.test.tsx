@@ -768,4 +768,42 @@ describe("ThreadShell", () => {
       expect(screen.queryByRole("group", { name: "Question" })).not.toBeInTheDocument();
     });
   });
+
+  it("renders request_approval prompts with approval styling", async () => {
+    const client = makeClient();
+    const onNewChat = vi.fn().mockResolvedValue("chat-a");
+
+    render(
+      wrap(
+        client,
+        <ThreadShell
+          session={session("chat-a")}
+          title="Chat chat-a"
+          onToggleSidebar={() => {}}
+          onGoHome={() => {}}
+          onNewChat={onNewChat}
+        />,
+      ),
+    );
+
+    await act(async () => {
+      client._emitChat("chat-a", {
+        event: "message",
+        chat_id: "chat-a",
+        text: "Run nmap?\n\n1. Approve\n2. Deny",
+        button_prompt: "Run nmap?",
+        buttons: [["Approve", "Deny"]],
+        tool_name: "request_approval",
+        prompt_kind: "approval",
+      });
+    });
+
+    expect(screen.getByRole("group", { name: "Approval request" })).toHaveTextContent(
+      "Run nmap?",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(client.sendMessage).toHaveBeenCalledWith("chat-a", "Approve", undefined);
+  });
 });

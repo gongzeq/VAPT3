@@ -1,13 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  BarChart3,
-  BookOpen,
-  ChevronRight,
-  Code2,
-  LayoutGrid,
-  Lightbulb,
-  MoreHorizontal,
-} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
@@ -42,25 +33,10 @@ function toModelBadgeLabel(modelName: string | null): string | null {
   return leaf || trimmed;
 }
 
-const QUICK_ACTION_KEYS = [
-  { key: "plan", icon: LayoutGrid, tone: "text-[#f25b8f]" },
-  { key: "analyze", icon: BarChart3, tone: "text-[#4f9de8]" },
-  { key: "brainstorm", icon: Lightbulb, tone: "text-[#53c59d]" },
-  { key: "code", icon: Code2, tone: "text-[#eba45d]" },
-  { key: "summarize", icon: BookOpen, tone: "text-[#a877e7]" },
-  { key: "more", icon: MoreHorizontal, tone: "text-muted-foreground/65" },
-] as const;
-
 export function ThreadShell({
   session,
-  title,
-  onToggleSidebar,
   onCreateChat,
   onTurnEnd,
-  onOpenSettings = () => {},
-  hideSidebarToggleOnDesktop = false,
-  onToggleRightRail,
-  rightRailOpen,
 }: ThreadShellProps) {
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
@@ -95,6 +71,9 @@ export function ThreadShell({
         return {
           question: message.content,
           buttons: message.buttons,
+          variant: message.promptKind === "approval" || message.toolName === "request_approval"
+            ? ("approval" as const)
+            : ("question" as const),
         };
       }
       if (message.role === "assistant") return null;
@@ -179,17 +158,6 @@ export function ThreadShell({
     [booting, onCreateChat],
   );
 
-  const handleQuickAction = useCallback(
-    (prompt: string) => {
-      if (session) {
-        send(prompt);
-        return;
-      }
-      void handleWelcomeSend(prompt);
-    },
-    [handleWelcomeSend, send, session],
-  );
-
   const composer = (
     <>
       {streamError ? (
@@ -202,6 +170,7 @@ export function ThreadShell({
         <AskUserPrompt
           question={pendingAsk.question}
           buttons={pendingAsk.buttons}
+          variant={pendingAsk.variant}
           onAnswer={send}
         />
       ) : null}

@@ -176,6 +176,66 @@ describe("useNanobotStream", () => {
     ]);
   });
 
+  it("keeps request_approval metadata on button prompts", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-approval", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-approval", {
+        event: "message",
+        chat_id: "chat-approval",
+        text: "Run nmap?\n\n1. Approve\n2. Deny",
+        button_prompt: "Run nmap?",
+        buttons: [["Approve", "Deny"]],
+        tool_name: "request_approval",
+        prompt_kind: "approval",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      content: "Run nmap?",
+      toolName: "request_approval",
+      promptKind: "approval",
+    });
+  });
+
+  it("converts orchestrator_plan events to agent event messages", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-plan", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-plan", {
+        event: "agent_event",
+        chat_id: "chat-plan",
+        type: "orchestrator_plan",
+        payload: {
+          type: "orchestrator_plan",
+          agent: "orchestrator",
+          steps: [
+            { title: "Asset discovery", detail: "Find live hosts." },
+            { title: "Report" },
+          ],
+        },
+        timestamp: "2026-05-12T00:00:00.000Z",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      kind: "agent_event",
+      content: "编排计划：2 步",
+    });
+    expect(result.current.messages[0].agentEvent?.steps).toEqual([
+      { title: "Asset discovery", detail: "Find live hosts." },
+      { title: "Report" },
+    ]);
+  });
+
   it("keeps streaming alive across stream_end and completes on turn_end", () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();
