@@ -13,7 +13,7 @@ from typing import Any
 from loguru import logger
 
 from secbot.agent.hook import AgentHook, AgentHookContext
-from secbot.agent.tools.ask import AskUserInterrupt
+from secbot.agent.tools.ask import BLOCKING_USER_TOOL_NAMES, AskUserInterrupt
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from secbot.utils.helpers import (
@@ -284,7 +284,10 @@ class AgentRunner:
 
             if response.should_execute_tools:
                 tool_calls = list(response.tool_calls)
-                ask_index = next((i for i, tc in enumerate(tool_calls) if tc.name == "ask_user"), None)
+                ask_index = next(
+                    (i for i, tc in enumerate(tool_calls) if tc.name in BLOCKING_USER_TOOL_NAMES),
+                    None,
+                )
                 if ask_index is not None:
                     tool_calls = tool_calls[: ask_index + 1]
                 context.tool_calls = list(tool_calls)
@@ -324,7 +327,10 @@ class AgentRunner:
                 context.tool_events = list(new_events)
                 completed_tool_results: list[dict[str, Any]] = []
                 for tool_call, result in zip(tool_calls, results):
-                    if isinstance(fatal_error, AskUserInterrupt) and tool_call.name == "ask_user":
+                    if (
+                        isinstance(fatal_error, AskUserInterrupt)
+                        and tool_call.name in BLOCKING_USER_TOOL_NAMES
+                    ):
                         continue
                     tool_message = {
                         "role": "tool",

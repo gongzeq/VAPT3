@@ -7,6 +7,7 @@ from secbot.agent.tools.base import Tool, tool_parameters
 from secbot.agent.tools.schema import ArraySchema, StringSchema, tool_parameters_schema
 
 STRUCTURED_BUTTON_CHANNELS = frozenset({"telegram", "websocket"})
+BLOCKING_USER_TOOL_NAMES = frozenset({"ask_user", "request_approval"})
 
 
 class AskUserInterrupt(BaseException):
@@ -75,7 +76,7 @@ def _tool_call_arguments(tool_call: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def pending_ask_user_id(history: list[dict[str, Any]]) -> str | None:
+def pending_ask_user_call(history: list[dict[str, Any]]) -> tuple[str, str] | None:
     pending: dict[str, str] = {}
     for message in history:
         if message.get("role") == "assistant":
@@ -87,9 +88,14 @@ def pending_ask_user_id(history: list[dict[str, Any]]) -> str | None:
             if isinstance(tool_call_id, str):
                 pending.pop(tool_call_id, None)
     for tool_call_id, name in reversed(pending.items()):
-        if name == "ask_user":
-            return tool_call_id
+        if name in BLOCKING_USER_TOOL_NAMES:
+            return tool_call_id, name
     return None
+
+
+def pending_ask_user_id(history: list[dict[str, Any]]) -> str | None:
+    pending = pending_ask_user_call(history)
+    return pending[0] if pending else None
 
 
 def ask_user_tool_result_messages(
@@ -97,6 +103,7 @@ def ask_user_tool_result_messages(
     history: list[dict[str, Any]],
     tool_call_id: str,
     content: str,
+    tool_name: str = "ask_user",
 ) -> list[dict[str, Any]]:
     return [
         {"role": "system", "content": system_prompt},
@@ -104,7 +111,7 @@ def ask_user_tool_result_messages(
         {
             "role": "tool",
             "tool_call_id": tool_call_id,
-            "name": "ask_user",
+            "name": tool_name,
             "content": content,
         },
     ]
@@ -115,11 +122,16 @@ def ask_user_options_from_messages(messages: list[dict[str, Any]]) -> list[str]:
         if message.get("role") != "assistant":
             continue
         for tool_call in reversed(message.get("tool_calls") or []):
-            if not isinstance(tool_call, dict) or _tool_call_name(tool_call) != "ask_user":
+            if not isinstance(tool_call, dict):
+                continue
+            tool_name = _tool_call_name(tool_call)
+            if tool_name not in BLOCKING_USER_TOOL_NAMES:
                 continue
             options = _tool_call_arguments(tool_call).get("options")
             if isinstance(options, list):
                 return [str(option) for option in options if isinstance(option, str)]
+            if tool_name == "request_approval":
+                return ["Approve", "Deny"]
     return []
 
 

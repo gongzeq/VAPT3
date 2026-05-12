@@ -10,9 +10,12 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from secbot.agent.blackboard import Blackboard
 from secbot.agent.hook import AgentHook, AgentHookContext
 from secbot.agent.runner import AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
+from secbot.agent.tools.ask import AskUserTool
+from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
@@ -87,6 +90,7 @@ class SubagentManager:
         disabled_skills: list[str] | None = None,
         max_iterations: int | None = None,
         agent_registry: "AgentRegistry | None" = None,
+        blackboard: Blackboard | None = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -105,6 +109,7 @@ class SubagentManager:
         )
         self.max_concurrent_subagents = defaults.max_concurrent_subagents
         self.runner = AgentRunner(provider)
+        self.blackboard = blackboard or Blackboard()
         # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
         # resolves the named spec and ``_run_subagent`` filters the skill tool
         # set down to ``spec.scoped_skills``.
@@ -248,6 +253,9 @@ class SubagentManager:
             tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
             tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
             tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+            tools.register(AskUserTool())
+            tools.register(BlackboardWriteTool(blackboard=self.blackboard, agent_name=label))
+            tools.register(BlackboardReadTool(blackboard=self.blackboard))
             if self.exec_config.enable:
                 tools.register(ExecTool(
                     working_dir=str(self.workspace),

@@ -56,7 +56,7 @@ class BlackboardReadTool(Tool):
 
     @property
     def name(self) -> str:
-        return "blackboard_read"
+        return "read_blackboard"
 
     @property
     def description(self) -> str:

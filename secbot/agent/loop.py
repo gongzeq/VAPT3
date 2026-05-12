@@ -21,13 +21,13 @@ from secbot.agent.memory import Consolidator, Dream
 from secbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.subagent import SubagentManager
-from secbot.agents.high_risk import HighRiskGate
+from secbot.agent.tools.approval import RequestApprovalTool
 from secbot.agent.tools.ask import (
     AskUserTool,
     ask_user_options_from_messages,
     ask_user_outbound,
     ask_user_tool_result_messages,
-    pending_ask_user_id,
+    pending_ask_user_call,
 )
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.cron import CronTool
@@ -35,6 +35,7 @@ from secbot.agent.tools.file_state import FileStateStore, bind_file_states, rese
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.message import MessageTool
 from secbot.agent.tools.notebook import NotebookEditTool
+from secbot.agent.tools.plan import WritePlanTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.self import MyTool
@@ -42,6 +43,7 @@ from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
+from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.command import CommandContext, CommandRouter, register_builtin_commands
@@ -178,25 +180,30 @@ class _LoopHook(AgentHook):
 
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         if self._on_progress:
-            # Thought 来源优先级（避免与 assistant 气泡重复）：
-            #   1. ``response.reasoning_content`` — 推理模型（o1 / DeepSeek-R1 /
-            #      Claude thinking）提供的独立推理字段，永远不会进入
-            #      assistant bubble，可安全作为思维链卡片内容。
+            # Legacy progress trace：非流式渠道需要在调用工具前把 assistant
+            # 文本（已 strip <think>）作为 progress 推一次，这样 CLI / 非
+            # WS 渠道才能在气泡里看到上下文。streaming 渠道已通过 delta
+            # 投递，跳过避免重复。
+            if not self._on_stream and not context.streamed_content:
+                visible = self._loop._strip_think(
+                    context.response.content if context.response else None
+                )
+                if visible:
+                    await self._on_progress(visible)
+            # Thought 来源（仅走 agent_event，不污染 progress 流）：
+            #   1. ``response.reasoning_content`` — 推理模型（o1 /
+            #      DeepSeek-R1 / Claude thinking）的独立推理字段，永远不
+            #      会进入 assistant bubble，可安全作为思维链卡片内容。
             #   2. ``response.content`` 中 ``<think>...</think>`` 块的内部 —
             #      部分开源模型把思考嵌入 content；此时真正的 assistant
             #      文本是 strip_think 后的剩余部分（已作为 bubble 显示），
             #      而 think 内部才是思维链。
             # 不再把 ``strip_think(content)`` 作为 thought 广播——那就是
-            # assistant bubble 自身的文本，streaming/非 streaming 两种模式
-            # 下都会通过 delta 或终态 ``message`` 事件展示，再广播一遍会
-            # 导致思维链卡片与 assistant 气泡内容完全相同（用户报告的
-            # “思维链和输出的内容一样”的根因）。
+            # assistant bubble 自身的文本，会导致思维链卡片与 assistant
+            # 气泡内容完全相同（用户报告的“思维链和输出的内容一样”
+            # 的根因）。
             thought = self._extract_thought(context.response)
             if thought:
-                if not self._on_stream and not context.streamed_content:
-                    # Non-streaming path: also push as a progress trace so
-                    # legacy CLI / non-ws channels still render the hint.
-                    await self._on_progress(thought)
                 await self._broadcast_agent_thought(thought)
             tool_hint = self._loop._strip_think(self._loop._tool_hint(context.tool_calls))
             tool_events = [build_tool_event_start_payload(tc) for tc in context.tool_calls]
@@ -382,6 +389,7 @@ class AgentLoop:
         tools_config: ToolsConfig | None = None,
         provider_snapshot_loader: Callable[[], ProviderSnapshot] | None = None,
         provider_signature: tuple[object, ...] | None = None,
+        is_orchestrator: bool = True,
     ):
         from secbot.config.schema import ExecToolConfig, ToolsConfig, WebToolsConfig
 
@@ -420,6 +428,8 @@ class AgentLoop:
         self._start_time = time.time()
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
+        self.is_orchestrator = is_orchestrator
+        self._current_chat_id: str | None = None
 
         self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
         self.sessions = session_manager or SessionManager(workspace)
@@ -428,6 +438,9 @@ class AgentLoop:
         # shared by this loop, so tools resolve the active state via contextvars.
         self._file_state_store = FileStateStore()
         self.runner = AgentRunner(provider)
+        # Shared blackboard for inter-agent communication within a task.
+        # on_write is bound per-turn in _run_agent_loop when channel == "websocket".
+        self.blackboard = Blackboard()
         # PR3: lazy-load the expert-agent registry so SpawnTool can validate
         # ``agent=`` and SubagentManager can filter scoped skills. A broken
         # YAML MUST NOT crash the loop — we log and fall through to ``None``,
@@ -460,6 +473,7 @@ class AgentLoop:
             disabled_skills=disabled_skills,
             max_iterations=self.max_iterations,
             agent_registry=self._agent_registry,
+            blackboard=self.blackboard,
         )
         self._unified_session = unified_session
         self._max_messages = max_messages if max_messages > 0 else 120
@@ -471,9 +485,6 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._background_tasks: list[asyncio.Task] = []
         self._session_locks: dict[str, asyncio.Lock] = {}
-        # Shared blackboard for inter-agent communication within a task.
-        # on_write is bound per-turn in _run_agent_loop when channel == "websocket".
-        self.blackboard = Blackboard()
         # Shared high-risk gate for all SkillTool instances — ensures the audit
         # trail is centralised per loop (and therefore per scan).
         self._high_risk_gate = HighRiskGate()
@@ -508,7 +519,7 @@ class AgentLoop:
             model=self.model,
         )
         self._register_default_tools()
-        if _tc.my.enable:
+        if not self.is_orchestrator and _tc.my.enable:
             self.tools.register(MyTool(loop=self, modify_allowed=_tc.my.allow_set))
         self._runtime_vars: dict[str, Any] = {}
         self._current_iteration: int = 0
@@ -551,6 +562,21 @@ class AgentLoop:
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools."""
+        if self.is_orchestrator:
+            self._register_orchestrator_tools()
+            return
+
+        self._register_operational_tools()
+
+    def _register_orchestrator_tools(self) -> None:
+        """Register the orchestrator's strict coordination-only tool surface."""
+        self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(BlackboardReadTool(blackboard=self.blackboard))
+        self.tools.register(RequestApprovalTool())
+        self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))
+
+    def _register_operational_tools(self) -> None:
+        """Register the full operational tool surface for non-orchestrator loops."""
         allowed_dir = (
             self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
         )
@@ -618,6 +644,8 @@ class AgentLoop:
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
+        if self.is_orchestrator:
+            return
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
             return
         self._mcp_connecting = True
@@ -654,10 +682,11 @@ class AgentLoop:
             effective_key = UNIFIED_SESSION_KEY
         else:
             effective_key = f"{channel}:{chat_id}"
-        for name in ("message", "spawn", "cron", "my"):
+        self._current_chat_id = chat_id
+        for name in ("message", "delegate_task", "cron", "my"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    if name == "spawn":
+                    if name == "delegate_task":
                         tool.set_context(channel, chat_id, effective_key=effective_key)
                         if hasattr(tool, "set_origin_message_id"):
                             tool.set_origin_message_id(message_id)
@@ -1253,6 +1282,9 @@ class AgentLoop:
             # injected_event metadata; we recover thread_ts from the session
             # key, which slack writes as "slack:<chat_id>:<thread_ts>".
             outbound_metadata: dict[str, Any] = {}
+            if stop_reason == "ask_user":
+                if pending_prompt := pending_ask_user_call(all_msgs):
+                    outbound_metadata["_prompt_tool_name"] = pending_prompt[1]
             if channel == "slack" and key.startswith("slack:") and key.count(":") >= 2:
                 outbound_metadata["slack"] = {"thread_ts": key.split(":", 2)[2]}
             if origin_message_id := msg.metadata.get("origin_message_id"):
@@ -1310,13 +1342,16 @@ class AgentLoop:
         }
         history = session.get_history(**_hist_kwargs)
 
-        pending_ask_id = pending_ask_user_id(history)
-        if pending_ask_id:
+        pending_ask = pending_ask_user_call(history)
+        pending_ask_id = pending_ask[0] if pending_ask else None
+        if pending_ask:
+            pending_ask_id, pending_ask_tool = pending_ask
             initial_messages = ask_user_tool_result_messages(
                 self.context.build_system_prompt(channel=msg.channel),
                 history,
                 pending_ask_id,
                 msg.content,
+                tool_name=pending_ask_tool,
             )
         else:
             initial_messages = self.context.build_messages(
@@ -1417,6 +1452,9 @@ class AgentLoop:
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         meta = dict(msg.metadata or {})
+        if stop_reason == "ask_user":
+            if pending_prompt := pending_ask_user_call(all_msgs):
+                meta["_prompt_tool_name"] = pending_prompt[1]
         final_content, buttons = ask_user_outbound(
             final_content,
             ask_user_options_from_messages(all_msgs) if stop_reason == "ask_user" else [],

@@ -2344,6 +2344,11 @@ class WebSocketChannel(BaseChannel):
         if msg.buttons:
             payload["buttons"] = msg.buttons
             payload["button_prompt"] = msg.content
+            if prompt_tool_name := msg.metadata.get("_prompt_tool_name"):
+                payload["tool_name"] = str(prompt_tool_name)
+                payload["prompt_kind"] = (
+                    "approval" if prompt_tool_name == "request_approval" else "question"
+                )
         if msg.media:
             payload["media"] = msg.media
             urls: list[dict[str, str]] = []

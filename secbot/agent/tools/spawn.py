@@ -1,4 +1,4 @@
-"""Spawn tool for creating background subagents."""
+"""Delegate-task tool for creating background subagents."""
 
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     )
 )
 class SpawnTool(Tool):
-    """Tool to spawn a subagent for background task execution."""
+    """Tool to delegate work to a background subagent."""
 
     def __init__(self, manager: "SubagentManager"):
         self._manager = manager
@@ -48,16 +48,14 @@ class SpawnTool(Tool):
 
     @property
     def name(self) -> str:
-        return "spawn"
+        return "delegate_task"
 
     @property
     def description(self) -> str:
         return (
-            "Spawn a subagent to handle a task in the background. "
-            "Use this for complex or time-consuming tasks that can run independently. "
-            "The subagent will complete the task and report back when done. "
-            "For deliverables or existing projects, inspect the workspace first "
-            "and use a dedicated subdirectory when helpful."
+            "Delegate a concrete task to a subagent. Use this for any work that "
+            "needs file, shell, web, skill, blackboard write, or other operational "
+            "tool access. The subagent completes the task and reports back."
         )
 
     async def execute(
