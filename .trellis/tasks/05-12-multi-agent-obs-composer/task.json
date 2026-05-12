@@ -1,0 +1,29 @@
+{
+  "id": "multi-agent-obs-composer",
+  "name": "multi-agent-obs-composer",
+  "title": "P2: Composer 工具白名单提示行",
+  "description": "落地 gap 文档 Task 4 —— Composer 添加 '可用工具：delegate_task / read_blackboard / write_plan / request_approval' meta 行，呼应 orchestrator 4 工具白名单策略。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "shan",
+  "assignee": "shan",
+  "createdAt": "2026-05-12",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "webui/src/gap/assistant-multi-agent.md",
+    "webui/src/components/thread/ThreadComposer.tsx"
+  ],
+  "notes": "源自 webui/src/gap/assistant-multi-agent.md Task 4，纯前端 0.25d",
+  "meta": {}
+}

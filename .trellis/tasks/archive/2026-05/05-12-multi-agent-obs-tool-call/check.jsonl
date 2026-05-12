@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "confirmation payload §2.1 是合约；audit 动作枚举 §4 已固化；ctx.confirm 阻塞语义 §3；测试文件名 §6 指定 test_high_risk_gating/deny/confirm_timeout"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "§2.1 critical → ctx.confirm before run() 规则；§3.1 SkillContext.confirm 契约成员；SkillMetadata.is_critical() 判定源头"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "§4 client→server scan.user_reply {ask_id, decision, reason?} 已定义，B6 回传通道复用此帧；§6 版本化策略（现状 agent_event/tool_call 属 spec 漂移，本 PR 不切换）"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "本 PR 不改 sandbox / 白名单 / network policy，但所有 subprocess 必须经 sandbox 的约束继续适用；作为回归验证基线"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Hard Rule #3 tool-call 走 toolUI registry；Hard Rule #4 破坏性确认走 AlertDialog（本任务 F4 inline variant 属显式豁免，spec 更新延后）"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "§1 MessageBubble 三件套（ToolCallCard/ScanResultTable/PlanTimeline），F3 必须复用 ToolCallCard 不得新起名；§2 status 颜色映射 denied→--sev-info；§3.2 deny 必须合成 {status:user_denied, reason} tool_result 注入 LLM context；§3 AlertDialog 要求本任务豁免（prototype inline approval 卡）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "PRD Technical Notes C 节已画出 boundary 数据流基线；decision 枚举验证发生在 scan.user_reply handler；payload 验证发生在 build_confirmation_payload"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "B6 实现前必须 grep ctx.confirm / register_confirm / confirm_handler，复用 CLI Surface 已有 confirm helper 的模式，避免双实现漂移"}
+{"file": "UI/prototype-assistant-multi-agent.html", "reason": "视觉基线（L1080-L1107 .approval 卡）；Q1 决策指定 F4/F5 形态对齐此原型"}
+{"file": ".trellis/tasks/05-12-multi-agent-obs-tool-call/prd.md", "reason": "Spec Alignment & Pre-Development Notes 节包含 A 必守 / B 豁免 / C thinking / D 开编顺序 / E 黑名单 grep；实现每步自查"}
