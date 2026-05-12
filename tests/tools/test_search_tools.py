@@ -185,7 +185,7 @@ async def test_grep_files_with_matches_supports_head_limit_and_offset(tmp_path: 
     # 2. The pagination info is correct
     assert "pagination: limit=1, offset=1" in result
     # Count non-empty lines that start with src/ (file paths)
-    file_lines = [l for l in result.splitlines() if l.startswith("src/")]
+    file_lines = [line for line in result.splitlines() if line.startswith("src/")]
     assert len(file_lines) == 1
 
 
@@ -288,15 +288,21 @@ async def test_search_tools_reject_paths_outside_workspace(tmp_path: Path) -> No
     assert glob_result.startswith("Error:")
 
 
-def test_agent_loop_registers_grep_and_glob(tmp_path: Path) -> None:
+def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
 
     loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
 
-    assert "grep" in loop.tools.tool_names
-    assert "glob" in loop.tools.tool_names
+    assert set(loop.tools.tool_names) == {
+        "delegate_task",
+        "read_blackboard",
+        "request_approval",
+        "write_plan",
+    }
+    assert "grep" not in loop.tools.tool_names
+    assert "glob" not in loop.tools.tool_names
 
 
 @pytest.mark.asyncio
@@ -329,6 +335,9 @@ async def test_subagent_registers_grep_and_glob(tmp_path: Path) -> None:
 
     assert "grep" in captured["tool_names"]
     assert "glob" in captured["tool_names"]
+    assert "blackboard_write" in captured["tool_names"]
+    assert "read_blackboard" in captured["tool_names"]
+    assert "delegate_task" not in captured["tool_names"]
 
 
 def test_subagent_prompt_respects_disabled_skills(tmp_path: Path) -> None:

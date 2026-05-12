@@ -442,7 +442,7 @@ async def test_process_message_uses_context_chat_id_for_runtime_prompt(tmp_path:
 
 def test_set_tool_context_uses_effective_key_for_spawn_tool(tmp_path: Path) -> None:
     loop = _make_full_loop(tmp_path)
-    spawn_tool = loop.tools.get("spawn")
+    spawn_tool = loop.tools.get("delegate_task")
     assert spawn_tool is not None
 
     loop._set_tool_context(
@@ -785,7 +785,7 @@ def test_set_tool_context_passes_thread_session_key_to_spawn(tmp_path: Path) -> 
         session_key="slack:C123:1700.42",
     )
 
-    spawn_tool = loop.tools.get("spawn")
+    spawn_tool = loop.tools.get("delegate_task")
     assert spawn_tool is not None
     assert spawn_tool._session_key.get() == "slack:C123:1700.42"
     assert spawn_tool._origin_message_id.get() == "msg-123"

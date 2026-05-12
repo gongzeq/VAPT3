@@ -120,6 +120,7 @@ async def test_read_tool_empty():
     """BlackboardReadTool on empty blackboard."""
     bb = Blackboard()
     tool = BlackboardReadTool(bb)
+    assert tool.name == "read_blackboard"
     result = await tool.execute()
     assert "empty" in result.lower()
 

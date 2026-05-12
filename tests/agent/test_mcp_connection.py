@@ -21,6 +21,7 @@ def _make_loop(tmp_path, *, mcp_servers: dict | None = None) -> AgentLoop:
         workspace=tmp_path,
         model="test-model",
         mcp_servers=mcp_servers or {"test": object()},
+        is_orchestrator=False,
     )
 
 

@@ -5,6 +5,7 @@ import pytest
 
 from secbot.agent.loop import AgentLoop
 from secbot.agent.runner import AgentRunner, AgentRunSpec
+from secbot.agent.tools.approval import RequestApprovalTool
 from secbot.agent.tools.ask import AskUserInterrupt, AskUserTool
 from secbot.agent.tools.base import Tool, tool_parameters
 from secbot.agent.tools.registry import ToolRegistry
@@ -40,6 +41,21 @@ def test_ask_user_tool_schema_and_interrupt():
 
     assert exc.value.question == "Continue?"
     assert exc.value.options == ["Yes", "No"]
+
+
+def test_request_approval_tool_schema_and_interrupt():
+    tool = RequestApprovalTool()
+    schema = tool.to_schema()["function"]
+
+    assert schema["name"] == "request_approval"
+    assert "title" in schema["parameters"]["required"]
+    assert schema["parameters"]["properties"]["options"]["type"] == "array"
+
+    with pytest.raises(AskUserInterrupt) as exc:
+        asyncio.run(tool.execute("Run nmap", detail="Target: 10.0.0.5"))
+
+    assert exc.value.question == "Run nmap\n\nTarget: 10.0.0.5"
+    assert exc.value.options == ["Approve", "Deny"]
 
 
 @pytest.mark.asyncio
@@ -99,6 +115,61 @@ async def test_runner_pauses_on_ask_user_without_executing_later_tools():
 
 
 @pytest.mark.asyncio
+async def test_runner_pauses_on_request_approval_without_executing_later_tools():
+    @tool_parameters(tool_parameters_schema(required=[]))
+    class LaterTool(Tool):
+        called = False
+
+        @property
+        def name(self) -> str:
+            return "later"
+
+        @property
+        def description(self) -> str:
+            return "Should not run after request_approval pauses the turn."
+
+        async def execute(self, **kwargs):
+            self.called = True
+            return "later result"
+
+    async def chat_with_retry(**kwargs):
+        return LLMResponse(
+            content="",
+            finish_reason="tool_calls",
+            tool_calls=[
+                ToolCallRequest(
+                    id="call_approval",
+                    name="request_approval",
+                    arguments={"title": "Run nmap", "options": ["Approve", "Deny"]},
+                ),
+                ToolCallRequest(id="call_later", name="later", arguments={}),
+            ],
+        )
+
+    later = LaterTool()
+    tools = ToolRegistry()
+    tools.register(RequestApprovalTool())
+    tools.register(later)
+
+    result = await AgentRunner(_make_provider(chat_with_retry)).run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "scan"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=3,
+        max_tool_result_chars=16_000,
+        concurrent_tools=True,
+    ))
+
+    assert result.stop_reason == "ask_user"
+    assert result.final_content == "Run nmap"
+    assert "request_approval" in result.tools_used
+    assert later.called is False
+    tool_calls = result.messages[-1]["tool_calls"]
+    assert [tool_call["function"]["name"] for tool_call in tool_calls] == ["request_approval"]
+    assert not any(message.get("name") == "request_approval" for message in result.messages)
+
+
+@pytest.mark.asyncio
 async def test_ask_user_text_fallback_resumes_with_next_message(tmp_path):
     seen_messages: list[list[dict]] = []
 
@@ -126,6 +197,7 @@ async def test_ask_user_text_fallback_resumes_with_next_message(tmp_path):
         provider=_make_provider(chat_with_retry),
         workspace=tmp_path,
         model="test-model",
+        is_orchestrator=False,
     )
 
     async def on_stream(delta: str) -> None:
@@ -196,6 +268,7 @@ async def test_ask_user_keeps_buttons_for_telegram(tmp_path):
         provider=_make_provider(chat_with_retry),
         workspace=tmp_path,
         model="test-model",
+        is_orchestrator=False,
     )
 
     response = await loop._process_message(
@@ -230,6 +303,7 @@ async def test_ask_user_keeps_buttons_for_websocket(tmp_path):
         provider=_make_provider(chat_with_retry),
         workspace=tmp_path,
         model="test-model",
+        is_orchestrator=False,
     )
 
     response = await loop._process_message(
