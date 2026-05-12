@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-05-10
+- **Total Sessions**: 7
+- **Last Active**: 2026-05-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~310 | Active |
+| `journal-1.md` | ~482 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-12 | multi-agent-obs-tool-call B5+B6+F1-F5 实现 | - | `main` |
 | 6 | 2026-05-10 | WebUI P2 通知与活动流：三 PR 全量落地 | `11ede383`, `69d837da`, `28a8c9bd` | `main` |
 | 5 | 2026-05-10 | P2 notification center + activity event stream delivered | `443f7817`, `575dfe1f`, `87369720` | `main` |
 | 4 | 2026-05-10 | P0 Dashboard 聚合功能数据层+接口层完整交付 | `8cc98d02`, `fc88c8da` | `main` |

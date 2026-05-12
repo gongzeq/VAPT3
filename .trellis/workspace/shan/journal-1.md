@@ -449,3 +449,34 @@ Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, no
 - 端到端手测：对活后端发起扫描，核对主 agent 只生成 4 种工具调用（delegate/read/plan/approval），子 agent 接管 operational
 - 归档 05-12 任务，继续其他 active tasks
 
+
+
+## Session 7: multi-agent-obs-tool-call B5+B6+F1-F5 实现
+
+**Date**: 2026-05-12
+**Task**: multi-agent-obs-tool-call B5+B6+F1-F5 实现
+**Branch**: `main`
+
+### Summary
+
+B5 subagent tool_call 广播 + B6 WebUI surface_confirm / scan.user_reply + F1~F5 前端类型/合并/ToolCallCard/approval 强化/high_risk_confirm 路由。后端 146 tests + 前端 22 tests 全绿，trellis-check 通过。代码未 commit（用户决定）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
