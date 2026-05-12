@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端 spec 总入口：pre-development checklist + quality check，所有 backend 改动必读"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "PR1 要按主/子 loop 区分工具注册，需严格遵守 AgentRegistry / ExpertAgentSpec 契约"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "PR1 需改写 orchestrator prompt 的 Hard rules 与 Working style，强制 4 工具白名单口径需与 prompt 规范对齐"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "工具注册白名单、破坏性改名（delegate_task/read_blackboard）、WritePlanTool/RequestApprovalTool 新增都属于工具调用安全层"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "RequestApprovalTool 复用 AskUserInterrupt 语义，需遵循高危确认事件（confirm_request/approve/deny/timeout）约定"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "新增 agent_event 类型 orchestrator_plan 必须遵循 WS 协议约定（字段命名、broadcast_agent_event 路径）"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "主 agent 工具白名单不能影响技能调用路径；需确认 Skill 注册逻辑不会往主 loop 注入额外工具"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Tool.execute 抛错/参数校验统一遵循 error-handling 规范"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "broadcast_agent_event / interrupt 触发处的日志需符合项目 logging 规范"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "PR3 涉及前端 MessageBubble 新卡片（plan/approval），前端总入口必读"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "新增的 plan 卡片 / approval 卡片需遵循项目组件模式与类型扩展规范"}

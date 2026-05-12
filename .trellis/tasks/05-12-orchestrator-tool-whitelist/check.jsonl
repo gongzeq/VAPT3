@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "check 阶段必须回到 backend 入口核对 Pre-Development Checklist + Quality Check 的达成情况"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "check 阶段跨改动统一质量基线：命名、错误处理、测试覆盖"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "验证主/子 loop 工具清单拆分没有破坏 AgentRegistry 契约、ExpertAgentSpec 可用性标记"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "核对 orchestrator prompt 对 4 工具白名单的描述与实现一致（tool name 与 hard rules）"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "主 agent 工具白名单、破坏性改名、两个新 Tool 的参数校验必须通过工具调用安全规范审计"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "RequestApprovalTool 抛 AskUserInterrupt 的行为需与高危确认流程对齐（事件类型、前端 confirm_request 处理）"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "新增 orchestrator_plan 事件必须遵循现有 agent_event 协议字段契约"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校对新工具 execute() 的异常分支与错误返回格式"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "check 前端卡片变动是否遵守前端入口 checklist"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "plan / approval 卡片组件结构、类型导出、状态处理是否符合组件模式规范"}

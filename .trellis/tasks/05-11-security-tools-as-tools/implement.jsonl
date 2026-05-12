@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "SkillMetadata 新增 risk 字段、SKILL.md front-matter、handler.run 签名——是 SkillTool 的数据契约源"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "单一 sandbox 入口 / BINARY_WHITELIST / 禁用直 shell——exec 默关与 SkillTool 的安全基线"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "专家 agent YAML schema、scoped_skills、注册与发现——新增 availability/missing_binaries 和 /api/agents"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "risk_level 语义与 ctx.confirm 阻塞合同——critical skill 门控的执行规范"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "render_orchestrator_prompt 注入位置与多轮路由策略——离线 agent 需从可选列表剔除"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "agent_event 协议与版本——agent_offline 扩展以及 tool_call 卡片载荷"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Orchestrator + Expert 两层拓扑与层边界——spawn(agent=...) 路径与子 loop tool 白名单"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "BinaryNotAllowed / SkillBinaryMissing / InvalidArgvCharacter 转 tool error 文本的错误处理约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 skill 目录（hydra/httpx/ffuf/sqlmap 等 7 个）布局与模块组织"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁用模式与代码标准——新增 SkillTool、spawn 扩展必须遵循"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "agent 选择器/列表显示 offline 徽章与 tooltip 的组件模式"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端层概览——新增 /api/agents 消费点与状态显示规范的索引"}

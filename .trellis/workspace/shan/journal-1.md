@@ -308,3 +308,88 @@ Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, no
 ### Next Steps
 
 - None - task complete
+
+---
+
+## 2026-05-11 — 前端智能体展示缺口修复（agent_event 协议）
+
+**Task**: `.trellis/tasks/05-11-frontend-agent-display-gap/`
+**Branch**: `main`
+
+### Summary
+
+诊断并修复前端「思维链/子智能体/黑板」三大展示缺口（共 13 个 gap）。采用统一 `agent_event` 协议打通后端 → WebSocket → 前端消息流全链路，支持 thought / subagent_spawned / subagent_status / subagent_done / blackboard_entry 五种事件。
+
+### Main Changes
+
+**后端（4 个文件）**
+- `secbot/channels/websocket.py` — 新增 `broadcast_agent_event()` 统一广播方法
+- `secbot/agent/loop.py` — thought 广播 + `Blackboard` 实例化 + 工具注册 + turn 级 on_write 绑定
+- `secbot/agent/subagent.py` — spawn / checkpoint / done 生命周期广播
+- `secbot/agent/blackboard.py` — `set_on_write()` 动态绑定方法
+
+**前端（5 个文件）**
+- `webui/src/lib/types.ts` — `AgentEventType` / `AgentEventPayload` + `InboundEvent` 扩展 + `BlackboardEntry` 别名
+- `webui/src/lib/secbot-client.ts` — `agent_event` per-chat dispatch
+- `webui/src/hooks/useNanobotStream.ts` — `agent_event` → `UIMessage(kind:"agent_event")`
+- `webui/src/components/MessageBubble.tsx` — `AgentEventCard`（thought / subagent / blackboard 分支渲染）
+- `webui/src/components/BlackboardCard.tsx` — `timestamp` undefined 容错
+
+### Testing
+
+- Python: `113 passed` (websocket + loop_progress + subagent_tools + blackboard)
+- TypeScript: 修改域内无编译错误
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户验证前端 UI 表现后手动 `git commit`
+- 任务归档：`python3 ./.trellis/scripts/task.py archive 05-11-frontend-agent-display-gap`
+
+---
+
+## 2026-05-11 22:xx — PR3 专家 agent 裁剪 + spawn 扩展 + 健康检查
+
+### Task
+`.trellis/tasks/05-11-security-tools-as-tools/` 的 PR3：SubagentManager 接 spec、SpawnTool 新增 `agent=` 参数、AgentRegistry 健康检查、`/api/agents` 增加 availability 字段、前端 “离线” 徽章。
+
+### Backend
+- `secbot/agents/registry.py` — `ExpertAgentSpec` 新增 `required_binaries` / `missing_binaries`、`available` property；`load_agent_registry` 可选 `skills_root` 探测 binary
+- `secbot/agent/tools/spawn.py` — tool_parameters 新增 `agent`；execute 验证 registry/offline
+- `secbot/agent/subagent.py` — `SubagentManager(agent_registry=...)`、`spawn(..., agent=None)`、`_run_subagent(..., spec)`、scoped skill 过滤、system_prompt 拼接
+- `secbot/agent/loop.py` — SubagentManager 构造前 lazy-load agent_registry（try/except，失败回落 None）
+- `secbot/channels/websocket.py::_handle_agents` — availability 字段；`_load_agent_registry_cached` 传入 `skills_root`
+- `secbot/api/agents.py` — `handle_list_agents` / `handle_get_agent` 同步输出 availability 三字段
+
+### Frontend
+- `webui/src/lib/api.ts` — 补齐 `AgentInfo` / `AgentDetail` / `SkillInfo` / `SkillDetail` 类型 + `listAgents/getAgent/createAgent/updateAgent/deleteAgent` + skill 同名 CRUD。修复 AgentList.tsx / SkillList.tsx 等 pre-existing 断链。
+- `webui/src/components/agents/AgentList.tsx` — `agent.available === false` 时 Name 列增加浅橙色 “离线” 徽章，`title` 展示 `missing_binaries`
+
+### Tests
+- `tests/agent/test_agent_registry.py` — 3 个 availability 单测
+- `tests/channels/test_websocket_dashboard_routes.py` — 扩大 key set + `test_agents_availability_surfaced_when_binaries_missing`
+- `tests/agent/tools/test_subagent_tools.py` — 3 个 PR3 测试（unknown agent / offline agent / scoped 注册）
+- `tests/test_tool_contextvars.py` — 3 处 `_Manager.spawn` stub 补 `agent=None` kwarg
+
+### Verification
+- `pytest tests/agent tests/channels tests/api tests/skills tests/security tests/test_tool_contextvars.py` → **1226 passed, 2 failed**（两个失败追溯到 commit `a7ad9a4f` “enable tool-call hints by default”，与 PR3 无关：
+  - `tests/agent/test_onboard_logic.py::test_run_onboard_channel_common_edit`
+  - `tests/channels/test_channel_plugins.py::test_channels_config_builtin_fields_removed`
+- PR3 相关子集（registry / orchestrator_prompt / subagent_tools / websocket / api / skills / contextvars）→ **151 passed**
+- TypeScript: `tsc --noEmit` 对 PR3 触及文件无错（仓库其他 pre-existing 错不涉）
+
+### Out of CI
+- PRD AC L66 端到端手测（对 `http://111.228.2.47:8080/` 发起扫描 + 前端四种卡同时出现）需要活的后端 + 实际 binary，留给人工 smoke 验证
+
+### Status
+
+[OK] PR3 completed pending manual E2E
+
+### Next Steps
+
+- 用户端到端验证后，`git commit` PR3 改动
+- 进入 PR4：`ExecToolConfig.enable=False` + report-* 注册 + `docs/my-tool.md` 文档
+
