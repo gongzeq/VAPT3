@@ -393,3 +393,59 @@ Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, no
 - 用户端到端验证后，`git commit` PR3 改动
 - 进入 PR4：`ExecToolConfig.enable=False` + report-* 注册 + `docs/my-tool.md` 文档
 
+---
+
+## Session: Orchestrator Tool Whitelist (05-12)
+
+**Date**: 2026-05-12
+**Task**: `.trellis/tasks/05-12-orchestrator-tool-whitelist/`
+**Branch**: `main`
+
+### Summary
+
+主 Agent 严格收敛到 4 个编排类工具：`delegate_task` / `read_blackboard` / `write_plan` / `request_approval`。所有 operational（文件、shell、web、skill、message、ask_user、cron、MCP、my）下放到子 agent；子 agent 不再拥有 `delegate_task`，避免递归 spawn。
+
+### Backend
+- `secbot/agent/tools/spawn.py` — `SpawnTool.name` → `delegate_task`（破坏性改名）
+- `secbot/agent/tools/blackboard.py` — `BlackboardReadTool.name` → `read_blackboard`
+- `secbot/agent/tools/plan.py`（新）— `WritePlanTool` 广播 `agent_event:{type:"orchestrator_plan"}`，仅展示不驱动
+- `secbot/agent/tools/approval.py`（新）— `RequestApprovalTool` 抛 `AskUserInterrupt`，默认选项 `Approve`/`Deny`
+- `secbot/agent/loop.py` — 新增 `is_orchestrator` 参数（默认 True），`_register_default_tools` 分流为 `_register_orchestrator_tools`（严格 4 工具）和 `_register_operational_tools`；主 loop 跳过 `_connect_mcp`；`MyTool` 仅对非 orchestrator 注册；`ask_user` pending 调度扩展为携带 `tool_name`（区分 `ask_user`/`request_approval`）
+- `secbot/agent/subagent.py` — `SubagentManager._run_subagent` 不注册 `delegate_task`
+- `secbot/agent/tools/ask.py` — 新 `pending_ask_user_call` 返回 `(id, tool_name)`，outbound metadata 带 `_prompt_tool_name`
+- `secbot/agents/orchestrator.py` — prompt Hard rules / Working style 明确 4 工具白名单口径
+- `secbot/channels/websocket.py` — `agent_event` 携带 `tool_name`/`prompt_kind`，透传到前端
+
+### Frontend
+- `webui/src/lib/types.ts` — `AgentEventType` 加 `orchestrator_plan`；`OrchestratorPlanStep`、`OrchestratorPlanEvent`；Message 新增 `toolName`/`promptKind`；stream frame 新增 `tool_name`/`prompt_kind`
+- `webui/src/components/MessageBubble.tsx` — 新增 `orchestrator_plan` 卡片（ListChecks 图标 + 步骤编号 + title/detail）
+- `webui/src/components/thread/AskUserPrompt.tsx` — `variant` 支持 `approval`，ShieldAlert 图标 + 红色强调
+- `webui/src/components/thread/ThreadShell.tsx` — 根据 `promptKind`/`toolName` 切换 variant
+- `webui/src/hooks/useNanobotStream.ts` — 合并 `tool_name`/`prompt_kind` 到 message
+
+### Tests
+- `tests/agent/test_plan_tool.py`（新）— `WritePlanTool` schema / broadcast / default args 覆盖
+- `tests/agent/test_blackboard.py` — 断言断点改为 `read_blackboard`
+- `tests/agent/test_ask_user.py` / `test_loop_save_turn.py` — `pending_ask_user_call` tuple 协议
+- `tests/agent/tools/test_subagent_tools.py` — 验证子 loop 不注册 `delegate_task`
+- `tests/agent/test_loop_cron_timezone.py` / `test_mcp_connection.py` / `tests/tools/test_message_tool_suppress.py` — loop fixture 补 `is_orchestrator=False`
+- `tests/tools/test_search_tools.py` — 同上适配
+- `webui/src/tests/message-bubble.test.tsx` / `thread-shell.test.tsx` / `useNanobotStream.test.tsx` — 覆盖 `orchestrator_plan` 卡片、`approval` variant、`tool_name`/`prompt_kind` 合并
+
+### Spec
+- `.trellis/spec/backend/orchestrator-tool-whitelist.md`（新）— 主 loop 4 工具白名单契约、子 agent 表面、`request_approval` 语义、`orchestrator_plan` 事件
+
+### Verification
+- 后端 `pytest tests/` → **2527 passed, 2 failed**（两个失败追溯到 commit `a7ad9a4f`，pre-existing，与本任务无关）
+- 前端 `npm run test -- --run` → **93 passed, 11 failed**；干净 main 同测 89 passed/11 failed — 11 个失败全部 pre-existing，本任务新增 4 个通过（orchestrator_plan / approval variant / tool_name 合并）
+- 顺带修复 pre-existing 的 `test_loop_progress::test_start_and_finish_events_emitted`：`before_execute_tools` 还原把 `strip_think(content)` 作为 progress 推送，`_extract_thought` 仅走 `agent_event` thought，不再污染 progress 流
+
+### Status
+
+[OK] 05-12 orchestrator-tool-whitelist 完成：4 个 PR（后端 + 测试迁移 + 前端 + spec）全部落地。
+
+### Next Steps
+
+- 端到端手测：对活后端发起扫描，核对主 agent 只生成 4 种工具调用（delegate/read/plan/approval），子 agent 接管 operational
+- 归档 05-12 任务，继续其他 active tasks
+

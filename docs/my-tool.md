@@ -28,6 +28,10 @@ To allow the agent to set its configuration (e.g. switch models, adjust paramete
 Legacy `tools.myEnabled` / `tools.mySet` keys are auto-migrated on load, and
 rewritten in-place the next time `nanobot onboard` refreshes the config.
 
+The top-level orchestrator does not receive `my`. Its tool surface is limited to
+`delegate_task`, `read_blackboard`, `write_plan`, and `request_approval`; runtime
+inspection remains available only on operational, non-orchestrator loops.
+
 All modifications are held in memory only — restart restores defaults.
 
 ---

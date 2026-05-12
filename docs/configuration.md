@@ -1019,10 +1019,11 @@ MCP tools are automatically discovered and registered on startup. The LLM can us
 
 ## Subagent Concurrency
 
-By default, nanobot only allows one spawned subagent at a time. When the limit is
-reached, the `spawn` tool returns an error so the agent can decide to wait or
-rearrange its work. This protects local LLM servers from loading multiple KV caches
-at once. If your provider can handle more parallel work, raise the limit:
+By default, nanobot only allows one delegated subagent at a time. When the limit is
+reached, the orchestrator's `delegate_task` tool returns an error so the agent can
+decide to wait or rearrange its work. This protects local LLM servers from loading
+multiple KV caches at once. If your provider can handle more parallel work, raise
+the limit:
 
 ```json
 {
@@ -1036,7 +1037,7 @@ at once. If your provider can handle more parallel work, raise the limit:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `agents.defaults.maxConcurrentSubagents` | `1` | Maximum number of spawned subagents that may run at the same time. Attempts to spawn beyond this limit return an error. |
+| `agents.defaults.maxConcurrentSubagents` | `1` | Maximum number of delegated subagents that may run at the same time. Attempts to delegate beyond this limit return an error. |
 
 
 ## Auto Compact
