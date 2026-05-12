@@ -420,7 +420,15 @@ async def test_agents_default_shape_no_runtime_fields(
             "display_name",
             "description",
             "scoped_skills",
+            # PR3: availability fields (always present, even when skills_root
+            # is not configured, in which case they default to empty).
+            "available",
+            "required_binaries",
+            "missing_binaries",
         }
+        assert isinstance(entry["available"], bool)
+        assert isinstance(entry["required_binaries"], list)
+        assert isinstance(entry["missing_binaries"], list)
 
 
 async def test_agents_include_status_appends_runtime_fields(
@@ -446,6 +454,38 @@ async def test_agents_handler_with_injected_empty_registry_returns_empty_list(
     resp = channel._handle_agents(_Req("/api/agents"))
     body = _body(resp)
     assert body == {"agents": []}
+
+
+async def test_agents_availability_surfaced_when_binaries_missing(
+    channel: WebSocketChannel,
+    monkeypatch,
+) -> None:
+    """PR3: /api/agents must expose per-agent binary availability so the UI
+    can render an “offline” badge when required tools are not installed.
+    """
+    # Build a registry that knows about real skills_root + every binary missing.
+    from secbot.agents.registry import load_agent_registry
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", lambda _n: None)
+    agents_dir = Path(__file__).resolve().parents[2] / "secbot" / "agents"
+    skills_dir = Path(__file__).resolve().parents[2] / "secbot" / "skills"
+    channel._agent_registry = load_agent_registry(
+        agents_dir, skill_names=None, skills_root=skills_dir
+    )
+
+    resp = channel._handle_agents(_Req("/api/agents"))
+    body = _body(resp)
+    by_name = {entry["name"]: entry for entry in body["agents"]}
+
+    # asset_discovery needs nmap/fscan/httpx — all missing.
+    asset = by_name["asset_discovery"]
+    assert asset["available"] is False
+    assert set(asset["missing_binaries"]) == {"nmap", "fscan", "httpx"}
+
+    # report agent has no external binary requirement, so it stays available.
+    report = by_name["report"]
+    assert report["available"] is True
+    assert report["required_binaries"] == []
+    assert report["missing_binaries"] == []
 
 
 # ---------------------------------------------------------------------------

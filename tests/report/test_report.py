@@ -142,53 +142,28 @@ def _ctx(tmp_path: Path) -> SkillContext:
     return SkillContext(scan_id="scan-001", scan_dir=sd)
 
 
-async def test_report_markdown_skill_writes_file(cmdb_engine, tmp_path: Path):
+async def test_report_html_skill_writes_file(cmdb_engine, tmp_path: Path):
     scan_id = await _seed()
-    mod = _load("report-markdown")
+    mod = _load("report-html")
     res = await mod.run({"scan_id": scan_id}, _ctx(tmp_path))
     assert res.summary["status"] == "ok"
     out = Path(res.summary["report_path"])
     assert out.exists()
-    assert "Log4Shell" in out.read_text(encoding="utf-8")
+    assert out.name == "report.html"
+    text = out.read_text(encoding="utf-8")
+    assert "<!DOCTYPE html>" in text
+    assert "Log4Shell" in text
+    assert res.summary["asset_count"] == 1
+    assert res.summary["finding_count"] == 2
 
 
-async def test_report_markdown_skill_empty_scan(cmdb_engine, tmp_path: Path):
+async def test_report_html_skill_empty_scan(cmdb_engine, tmp_path: Path):
     # Create an empty scan with no assets.
     async with cmdb_db.get_session() as session:
         scan = await create_scan(session, "local", target="10.10.10.10")
-    mod = _load("report-markdown")
+    mod = _load("report-html")
     res = await mod.run({"scan_id": scan.id}, _ctx(tmp_path))
     assert res.summary["status"] == "empty"
     assert res.summary["report_path"] is None
-
-
-async def test_report_docx_skill_writes_file(cmdb_engine, tmp_path: Path):
-    scan_id = await _seed()
-    mod = _load("report-docx")
-    res = await mod.run({"scan_id": scan_id}, _ctx(tmp_path))
-    assert res.summary["status"] == "ok"
-    out = Path(res.summary["report_path"])
-    assert out.exists()
-    assert out.stat().st_size > 1000  # non-trivial DOCX
-
-
-async def test_report_pdf_skill_handles_missing_dep(
-    cmdb_engine, tmp_path: Path, monkeypatch
-):
-    """If WeasyPrint is missing the skill MUST fail-fast with status=error."""
-    import secbot.report.render as render_mod
-
-    def _boom(*_a, **_k):
-        from secbot.report.builder import ReportRenderError
-
-        raise ReportRenderError("weasyprint not installed")
-
-    monkeypatch.setattr(render_mod, "render_pdf", _boom)
-    # Reload the handler so it picks up the patched render_pdf.
-    sys.modules.pop("_secbot_skill_report_pdf_handler", None)
-    mod = _load("report-pdf")
-
-    scan_id = await _seed()
-    res = await mod.run({"scan_id": scan_id}, _ctx(tmp_path))
-    assert res.summary["status"] == "error"
-    assert "weasyprint" in res.summary["error"]
+    assert res.summary["asset_count"] == 0
+    assert res.summary["finding_count"] == 0

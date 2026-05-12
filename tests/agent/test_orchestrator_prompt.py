@@ -51,6 +51,18 @@ def test_hard_rules_mention_confirmation_and_ordering():
     assert "port_scan" in rendered
 
 
+def test_prompt_requires_auto_report_after_scan():
+    """PR2 contract: the orchestrator MUST auto-spawn report after the
+    final scan stage via the ``report-html`` skill. This behaviour is
+    baked into both Hard rules and Working style sections and we assert
+    it explicitly so future edits don't silently drop the guarantee.
+    """
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    assert "report-html" in rendered
+    assert "`report` expert" in rendered
+
+
 def test_hand_rolled_registry_orders_table_alphabetically(tmp_path: Path):
     # Build a minimal registry with two agents (name order should be sorted).
     prompts = tmp_path / "prompts"

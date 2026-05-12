@@ -19,8 +19,20 @@ from secbot.skills.types import SkillBinaryMissing, SkillCancelled, SkillTimeout
 
 
 def test_binary_whitelist_contains_required_tools():
-    for required in ("nmap", "fscan", "nuclei", "weasyprint", "python3"):
+    # PR2: report pipeline no longer uses weasyprint (HTML-only export);
+    # hydra / httpx / ffuf / sqlmap are now first-class scan binaries.
+    for required in (
+        "nmap",
+        "fscan",
+        "nuclei",
+        "hydra",
+        "httpx",
+        "ffuf",
+        "sqlmap",
+        "python3",
+    ):
         assert required in BINARY_WHITELIST
+    assert "weasyprint" not in BINARY_WHITELIST
 
 
 @pytest.mark.asyncio

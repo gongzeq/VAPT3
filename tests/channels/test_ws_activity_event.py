@@ -297,3 +297,85 @@ async def test_loop_hook_format_step_truncates_long_args(channel: WebSocketChann
     # Step must be truncated with an ellipsis so dashboard frames stay light.
     assert "..." in frame["step"]
     assert len(frame["step"]) < 200
+
+
+# ---------------------------------------------------------------------------
+# _extract_thought — 思维链来源过滤（修复“思维链和输出内容一样”回归）
+# ---------------------------------------------------------------------------
+
+
+async def test_extract_thought_prefers_reasoning_content():
+    """reasoning_content 非空时，直接作为思维链内容。"""
+    response = SimpleNamespace(
+        reasoning_content="  plan: scan ports first  ",
+        content="好的，我来扫描端口。",
+    )
+    assert _LoopHook._extract_thought(response) == "plan: scan ports first"
+
+
+async def test_extract_thought_extracts_think_block_from_content():
+    """无 reasoning_content 时，从 <think> 块提取内部；正文不参与。"""
+    response = SimpleNamespace(
+        reasoning_content=None,
+        content="<think>step 1: probe http</think>好的，我来扫描。",
+    )
+    assert _LoopHook._extract_thought(response) == "step 1: probe http"
+
+
+async def test_extract_thought_returns_none_for_plain_assistant_text():
+    """纯 assistant 文本（无 think 标签、无 reasoning_content）不应作为思维链，
+    否则会与 assistant 气泡重复（用户报告的‘思维链和输出内容一样’的根因）。
+    """
+    response = SimpleNamespace(
+        reasoning_content=None,
+        content="好的，我来对这个目标进行初步探测。先看看 HTTP 服务的情况。",
+    )
+    assert _LoopHook._extract_thought(response) is None
+
+
+async def test_extract_thought_handles_none_response():
+    assert _LoopHook._extract_thought(None) is None
+
+
+async def test_before_execute_tools_does_not_broadcast_plain_content_as_thought(
+    channel: WebSocketChannel,
+) -> None:
+    """End-to-end：普通 assistant 文本不应产生 thought agent_event 帧。"""
+    conn = _attach_subscriber(channel, "chat-a")
+    progress_calls: list = []
+
+    async def _on_progress(*args, **kwargs):
+        progress_calls.append((args, kwargs))
+
+    loop_stub = SimpleNamespace(
+        _current_iteration=0,
+        _strip_think=lambda x: x,
+        _tool_hint=lambda tc: "",
+        _set_tool_context=lambda *a, **kw: None,
+    )
+    hook = _LoopHook(
+        loop_stub,  # type: ignore[arg-type]
+        on_progress=_on_progress,
+        on_stream=None,
+        on_stream_end=None,
+        channel="websocket",
+        chat_id="chat-a",
+    )
+
+    ctx = _make_ctx([_make_tool_call("call-1", "port_scan", {"target": "1.2.3.4"})])
+    ctx.response = SimpleNamespace(
+        reasoning_content=None,
+        content="好的，我来对这个目标进行初步探测。",
+    )
+    ctx.streamed_content = True  # streaming 模式：正文已通过 delta 推给前端
+
+    await hook.before_execute_tools(ctx)
+
+    frames = [json.loads(c.args[0]) for c in conn.send.await_args_list]
+    thought_frames = [
+        f for f in frames if f.get("event") == "agent_event" and f.get("type") == "thought"
+    ]
+    assert thought_frames == [], (
+        "普通 assistant 文本不应作为 thought 广播；这会导致思维链卡片与 assistant "
+        "气泡内容完全一致（已知回归）。"
+    )

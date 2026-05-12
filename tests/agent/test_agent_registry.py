@@ -12,24 +12,28 @@ from secbot.agents.registry import (
 )
 
 REPO_AGENTS_DIR = Path(__file__).resolve().parents[2] / "secbot" / "agents"
+REPO_SKILLS_DIR = Path(__file__).resolve().parents[2] / "secbot" / "skills"
 
 REAL_SKILL_NAMES = {
+    # asset_discovery
     "nmap-host-discovery",
     "fscan-asset-discovery",
-    "masscan-discovery",
-    "cmdb-add-target",
-    "cmdb-list-assets",
-    "cmdb-history-query",
+    "httpx-probe",
+    # port_scan
     "nmap-port-scan",
     "nmap-service-fingerprint",
     "fscan-port-scan",
+    # vuln_scan
     "nuclei-template-scan",
     "fscan-vuln-scan",
+    "ffuf-dir-fuzz",
+    "ffuf-vhost-fuzz",
+    "sqlmap-detect",
+    "sqlmap-dump",
+    # weak_password
     "hydra-bruteforce",
-    "fscan-weak-password",
-    "report-markdown",
-    "report-pdf",
-    "report-docx",
+    # report
+    "report-html",
 }
 
 
@@ -76,6 +80,66 @@ def test_real_registry_unknown_skill_aborts():
 def test_real_registry_skill_check_skipped_when_none():
     reg = load_agent_registry(REPO_AGENTS_DIR, skill_names=None)
     assert "asset_discovery" in reg
+
+
+# ---------------------------------------------------------------------------
+# Availability (PR3): required_binaries / missing_binaries / available
+# ---------------------------------------------------------------------------
+
+
+def test_availability_defaults_empty_when_skills_root_not_given():
+    reg = load_agent_registry(REPO_AGENTS_DIR, skill_names=REAL_SKILL_NAMES)
+    spec = reg.get("asset_discovery")
+    assert spec.required_binaries == ()
+    assert spec.missing_binaries == ()
+    assert spec.available is True
+
+
+def test_availability_all_present(monkeypatch):
+    # Pretend every binary is on PATH.
+    monkeypatch.setattr(
+        "secbot.agents.registry.shutil.which", lambda name: f"/usr/bin/{name}"
+    )
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+    )
+    asset = reg.get("asset_discovery")
+    # asset_discovery uses nmap + fscan + httpx
+    assert set(asset.required_binaries) == {"nmap", "fscan", "httpx"}
+    assert asset.missing_binaries == ()
+    assert asset.available is True
+
+    # report-html declares no external_binary -> required stays empty.
+    report = reg.get("report")
+    assert report.required_binaries == ()
+    assert report.missing_binaries == ()
+    assert report.available is True
+
+
+def test_availability_some_missing(monkeypatch):
+    # Only nmap exists; everything else is missing.
+    def which(name: str):
+        return "/usr/bin/nmap" if name == "nmap" else None
+
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", which)
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+    )
+    asset = reg.get("asset_discovery")
+    assert "fscan" in asset.missing_binaries
+    assert "httpx" in asset.missing_binaries
+    assert "nmap" not in asset.missing_binaries
+    assert asset.available is False
+
+    # weak_password only needs hydra which is missing.
+    weak = reg.get("weak_password")
+    assert weak.required_binaries == ("hydra",)
+    assert weak.missing_binaries == ("hydra",)
+    assert weak.available is False
 
 
 # ---------------------------------------------------------------------------

@@ -443,3 +443,133 @@ async def test_drain_pending_timeout(tmp_path):
         await hang_task
     except asyncio.CancelledError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# PR3: SpawnTool(agent=) + scoped-skill filtering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_rejects_unknown_agent(tmp_path):
+    """SpawnTool(agent=\"missing\") must error before hitting the manager."""
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        agent_registry=None,  # no registry attached
+    )
+    mgr.spawn = AsyncMock(return_value="should-not-be-called")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(task="hello", agent="ghost")
+    assert "Unknown expert agent 'ghost'" in out
+    mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_rejects_offline_agent(tmp_path, monkeypatch):
+    """SpawnTool must refuse offline agents with a user-readable error."""
+    from pathlib import Path as _Path
+
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.agents.registry import load_agent_registry
+    from secbot.bus.queue import MessageBus
+
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", lambda _n: None)
+    agents_dir = _Path(__file__).resolve().parents[3] / "secbot" / "agents"
+    skills_dir = _Path(__file__).resolve().parents[3] / "secbot" / "skills"
+    registry = load_agent_registry(
+        agents_dir, skill_names=None, skills_root=skills_dir
+    )
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        agent_registry=registry,
+    )
+    mgr.spawn = AsyncMock(return_value="should-not-be-called")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(task="scan", agent="asset_discovery")
+    assert "offline" in out
+    assert "missing binaries" in out
+    mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_subagent_registers_only_scoped_skills(tmp_path):
+    """_run_subagent must filter skill tools to spec.scoped_skills."""
+    from pathlib import Path as _Path
+
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agents.registry import load_agent_registry
+    from secbot.bus.queue import MessageBus
+
+    agents_dir = _Path(__file__).resolve().parents[3] / "secbot" / "agents"
+    registry = load_agent_registry(agents_dir, skill_names=None)
+    spec = registry.get("port_scan")
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        agent_registry=registry,
+    )
+    mgr._announce_result = AsyncMock()
+
+    captured: dict = {}
+
+    async def fake_run(run_spec):
+        captured["tool_names"] = set(run_spec.tools.tool_names)
+        captured["system_prompt"] = run_spec.initial_messages[0]["content"]
+        return SimpleNamespace(
+            stop_reason="done", final_content="done", error=None, tool_events=[]
+        )
+
+    mgr.runner.run = AsyncMock(side_effect=fake_run)
+
+    status = SubagentStatus(
+        task_id="sub-x",
+        label="label",
+        task_description="scan",
+        started_at=time.monotonic(),
+    )
+    await mgr._run_subagent(
+        "sub-x",
+        "scan targets",
+        "label",
+        {"channel": "test", "chat_id": "c1"},
+        status,
+        None,
+        spec,
+    )
+
+    # Only port_scan's 3 scoped skills must appear; others are excluded.
+    for skill in spec.scoped_skills:
+        assert skill in captured["tool_names"], f"missing {skill}"
+    for skill in ("nmap-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
+        assert skill not in captured["tool_names"], f"{skill} must be scoped out"
+
+    # Spec system_prompt must be prepended to the subagent system message.
+    assert spec.system_prompt.strip().split("\n", 1)[0] in captured["system_prompt"]
