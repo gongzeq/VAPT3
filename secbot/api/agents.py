@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 from aiohttp import web
@@ -25,11 +27,58 @@ def _validate_name(name: str) -> web.Response | None:
     return None
 
 
+def _format_iso(ts: float | None) -> str | None:
+    """Format an epoch-second timestamp as ISO-8601 UTC, or None when 0/missing."""
+    if not ts:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
+
+
+def _collect_runtime_status(
+    subagent_manager: Any | None,
+) -> dict[str, dict[str, Any]]:
+    """Aggregate ``SubagentManager._task_statuses`` into ``agent_name → snapshot``.
+
+    Used by ``/api/agents?include_status=true`` to enrich the static registry
+    payload with runtime fields. Last write wins on heartbeat to keep
+    multi-task races deterministic. Spec: dashboard-aggregation.md §2.6.
+    """
+    if subagent_manager is None:
+        return {}
+    try:
+        raw_statuses = subagent_manager._task_statuses  # noqa: SLF001
+    except Exception:
+        return {}
+    by_agent: dict[str, dict[str, Any]] = {}
+    for status in raw_statuses.values():
+        agent_name = getattr(status, "agent_name", "") or ""
+        if not agent_name:
+            continue
+        last_hb = getattr(status, "last_heartbeat_at", 0.0)
+        prev = by_agent.get(agent_name)
+        if prev is not None and prev.get("_hb", 0.0) >= last_hb:
+            continue
+        by_agent[agent_name] = {
+            "status": "running",
+            "current_task_id": status.task_id,
+            "last_heartbeat_at": _format_iso(last_hb),
+            "_hb": last_hb,
+        }
+    return by_agent
+
+
 # ─── Agents ──────────────────────────────────────────────────────────
 
 
 async def handle_list_agents(request: web.Request) -> web.Response:
-    """GET /api/agents — List all registered expert agents."""
+    """GET /api/agents — List all registered expert agents.
+
+    Default response is byte-stable: only the registry-derived fields, in
+    insertion order. With ``?include_status=true`` each entry is enriched
+    with ``status / current_task_id / last_heartbeat_at`` from the injected
+    :class:`SubagentManager` snapshot. Spec:
+    ``.trellis/spec/backend/dashboard-aggregation.md`` §2.6.
+    """
     registry = request.app["agent_registry"]
     agents = []
     for spec in registry:
@@ -47,6 +96,27 @@ async def handle_list_agents(request: web.Request) -> web.Response:
             "required_binaries": list(spec.required_binaries),
             "missing_binaries": list(spec.missing_binaries),
         })
+
+    include_status_raw = (request.query.get("include_status") or "").lower()
+    if include_status_raw in {"1", "true", "yes"}:
+        subagent_manager = request.app.get("subagent_manager")
+        by_agent = _collect_runtime_status(subagent_manager)
+        offline_default = subagent_manager is None
+        for entry in agents:
+            snap = by_agent.get(entry["name"])
+            if snap is None:
+                entry["status"] = "offline" if offline_default else "idle"
+                entry["current_task_id"] = None
+                entry["progress"] = None
+                entry["last_heartbeat_at"] = None
+            else:
+                entry["status"] = snap["status"]
+                entry["current_task_id"] = snap["current_task_id"]
+                # progress is reserved for a future ScanProgress aggregation
+                # pass — surface ``None`` for now so the schema is stable.
+                # Spec: dashboard-aggregation.md §2.6 ("null unless running").
+                entry["progress"] = None
+                entry["last_heartbeat_at"] = snap["last_heartbeat_at"]
     return web.json_response({"agents": agents})
 
 

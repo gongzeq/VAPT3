@@ -104,6 +104,25 @@ export default {
           success: "hsl(var(--alert-success))",
           info: "hsl(var(--alert-info))",
         },
+        // Agent status palette — semantic chip colors for the Sidebar
+        // "专家智能体" group. Mapped to existing tokens (no new hex) per
+        // PRD F6 spec; the names mirror dashboard-aggregation.md §2.6.
+        status: {
+          run: "hsl(var(--status-run))",
+          wait: "hsl(var(--status-wait))",
+          idle: "hsl(var(--status-idle))",
+          off: "hsl(var(--status-off))",
+        },
+        // Blackboard entry palette — 4 semantic colors keyed off
+        // ``BlackboardEntry.kind``. Mapped to severity tokens so we keep a
+        // single brand palette; ``blocker`` reuses ``--sev-critical`` and
+        // gets the breath animation in BlackboardPanel.
+        blackboard: {
+          milestone: "hsl(var(--bb-milestone))",
+          blocker: "hsl(var(--bb-blocker))",
+          finding: "hsl(var(--bb-finding))",
+          progress: "hsl(var(--bb-progress))",
+        },
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         sidebar: {
@@ -151,6 +170,19 @@ export default {
           "0%": { opacity: "0", transform: "translateX(16px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
+        // PRD F8 — blocker entries pulse a warm critical halo so operators
+        // notice them even mid-scroll. Distinct from ``pulse-glow`` (海蓝)
+        // so the brand-vs-alert axis stays readable.
+        breath: {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 hsl(var(--sev-critical) / 0.55)",
+            opacity: "1",
+          },
+          "50%": {
+            boxShadow: "0 0 0 6px hsl(var(--sev-critical) / 0)",
+            opacity: "0.85",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -158,6 +190,7 @@ export default {
         "pulse-glow": "pulse-glow 2.4s ease-in-out infinite",
         "fade-in-up": "fade-in-up 0.32s cubic-bezier(0.4, 0, 0.2, 1) both",
         "slide-in-right": "slide-in-right 0.32s cubic-bezier(0.4, 0, 0.2, 1) both",
+        breath: "breath 2.2s ease-in-out infinite",
       },
     },
   },

@@ -146,17 +146,18 @@ Backward-compatible extension: without the flag, response is unchanged (static Y
       "scoped_skills": ["…"],
       "status": "idle|running|queued|offline",
       "current_task_id": "TASK-2026-0510-014",
-      "progress": 0.68,
-      "last_heartbeat_at": "2026-05-10T12:38:00+08:00"
+      "progress": null,
+      "last_heartbeat_at": "2026-05-10T04:38:00+00:00"
     }
   ]
 }
 ```
 
 Rules:
-- `status` default `offline` when `SubagentManager` has no record for the agent name.
-- `progress` is `null` unless `status='running'`.
-- `last_heartbeat_at` sourced from `HeartbeatService` if available; else from the last `SubagentStatus.updated_at`.
+- `status` default `offline` when the runtime is not wired (no `SubagentManager` attached, or the binary is missing); else `idle` when there is no in-flight task.
+- `progress` is **always `null`** in this endpoint today. A future `ScanProgress` aggregator may populate it when `status='running'`; until then the field is emitted so the schema stays stable. (Historical prototype in webui `dashboard.ts` assumed a 0..1 float — **do not** infer that shape from this handler.)
+- `last_heartbeat_at` is an **ISO-8601 UTC timestamp** (`+00:00` suffix). Client-side time-zone display is the frontend's responsibility. Sourced from the last `SubagentStatus.updated_at`; falls back to `HeartbeatService` when available.
+- HTTP and WebSocket surfaces MUST stay consistent: see `secbot/channels/websocket.py::WebSocketChannel.broadcast_agent_event` — the `agent_event.agent_status` frame (§3.3 below) carries the same tuple.
 
 ---
 
@@ -194,6 +195,37 @@ Emitted when scan-local counters advance. Same throttling (1/s per `chat_id`).
   "timestamp": "…"
 }
 ```
+
+### 3.3 `agent_event.agent_status`
+
+Emitted by `SubagentManager` on every expert-agent lifecycle transition (`spawn → running → done/error`). No throttling — frequency is naturally low (one frame per phase, not per token).
+
+Frame shape (standard `agent_event` envelope used by `broadcast_agent_event`):
+
+```json
+{
+  "event": "agent_event",
+  "chat_id": "0e1b…c8",
+  "type": "agent_status",
+  "payload": {
+    "type": "agent_status",
+    "agent_name": "port_scan",
+    "agent_status": "idle|running|queued|offline",
+    "current_task_id": "task-42",
+    "last_heartbeat_at": "2026-05-10T04:38:00+00:00"
+  },
+  "timestamp": "2026-05-10T04:38:00+00:00"
+}
+```
+
+Rules:
+- Payload tuple MUST mirror `/api/agents?include_status=true` row for the same `agent_name` (last-write-wins across tasks for that agent).
+- `agent_name` is the logical registry key (the same string the HTTP endpoint returns); NEVER the display name.
+- Client-side frontends keyed by `agent_name` (e.g. `webui/src/hooks/useAgents.ts`) patch the row in place and drop frames for unknown names (degrade-don't-crash).
+
+### 3.4 `agent_event.blackboard_entry`
+
+Emitted by `secbot/agent/blackboard.py::Blackboard.write()` whenever an entry is committed. The payload carries an optional `kind` auto-extracted from the leading `[tag]` prefix; see [blackboard-registry.md](./blackboard-registry.md) for the contract.
 
 ---
 

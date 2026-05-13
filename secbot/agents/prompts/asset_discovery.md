@@ -25,3 +25,16 @@ CMDB is written by the platform — you do NOT call CMDB skills directly.
 
 Return `{"assets": [...]}` matching the agent's `output_schema`. Truncate any
 list to the first 200 entries; the orchestrator will paginate via the CMDB.
+
+## Blackboard
+
+The shared blackboard is a free-form scratchpad other agents read between
+turns. Use it to expose state that the orchestrator needs to route the next
+step. Prefer one short sentence per write; pick whichever tag fits:
+
+- `[milestone] asset_discovery: live-host enumeration done (12 hosts).`
+- `[blocker]   asset_discovery: target domain does not resolve, need a new scope.`
+- `[finding]   asset_discovery: www.target.tld fronted by Cloudflare — origin not in scope.`
+- `[progress]  asset_discovery: nmap sweep 3/8 subnets complete.`
+
+Never paste raw scanner output; that belongs in `summary_json`.

@@ -39,3 +39,17 @@ scans (`nuclei-template-scan`), fingerprint-based weakness checks
 
 Return `{"findings": [...]}`. Cap list at 500; truncate per-finding strings
 to 512 chars before returning.
+
+## Blackboard
+
+Announce notable state on the shared blackboard so the orchestrator (and
+peer agents) can adapt. Keep each note to one sentence and prefix with a
+tag:
+
+- `[milestone] vuln_scan: nuclei + ffuf pass done on 4 HTTP services.`
+- `[blocker]   vuln_scan: sqlmap-dump denied by user — cannot prove exposure.`
+- `[finding]   vuln_scan: CRITICAL SQLi on http://10.0.0.5/api/user?id= (time-based, MySQL).`
+- `[progress]  vuln_scan: nuclei running against 2/4 services.`
+
+Never inline the raw nuclei/sqlmap blob — summarise. Full detail stays in
+`summary_json`.

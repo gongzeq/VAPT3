@@ -10,12 +10,36 @@ export type AgentEventType =
   | "subagent_spawned"
   | "subagent_status"
   | "subagent_done"
-  | "blackboard_entry";
+  | "blackboard_entry"
+  | "agent_status"
+  | "tool_call"
+  | "high_risk_confirm";
+
+/** Recognised blackboard entry kinds. ``BlackboardEntry.kind`` is filled by
+ * the backend ``Blackboard.write()`` regex on the leading ``[tag]`` prefix.
+ * ``null`` covers free-form entries — the front-end falls back to a regex on
+ * ``text`` to keep the panel useful even when the agent forgets the prefix.
+ * Source of truth: ``secbot/agent/blackboard.py`` ``KNOWN_KINDS``. */
+export type BlackboardKind = "milestone" | "blocker" | "finding" | "progress";
+
+/** Runtime status enum for an expert agent. Mirrors the backend
+ * ``dashboard-aggregation.md §2.6`` enum. ``offline`` means "no manager
+ * wired" or "binary missing"; ``idle`` means the manager is up but the agent
+ * has no running task. */
+export type AgentRuntimeStatus = "idle" | "running" | "queued" | "offline";
 
 export interface OrchestratorPlanStep {
   title: string;
   detail?: string;
 }
+
+/** Status lifecycle for a tool_call agent_event.
+ *
+ * - running: non-critical tool executing
+ * - critical: critical-risk tool awaiting user approval
+ * - ok: tool completed successfully
+ * - error: tool failed or was denied */
+export type ToolCallStatus = "running" | "critical" | "ok" | "error";
 
 export interface AgentEventPayload {
   type: AgentEventType;
@@ -34,13 +58,74 @@ export interface AgentEventPayload {
   agent_name?: string;
   text?: string;
   timestamp?: number;
+
+  // ── tool_call event fields (B5 payload) ──────────────────────────
+  /** Unique tool-call ID from the provider (pairs running→terminal). */
+  tool_call_id?: string;
+  /** Name of the tool/skill being executed. */
+  tool_name?: string;
+  /** Arguments passed to the tool (display-only). */
+  tool_args?: Record<string, unknown>;
+  /** Execution duration in ms (present only on terminal frames). */
+  duration_ms?: number;
+  /** Reason string when status="error" (e.g. "user_denied", "timeout"). */
+  reason?: string;
+  /** Granular tool_call status (discriminated from generic status). */
+  tool_status?: ToolCallStatus;
+
+  // ── blackboard_entry event fields ─────────────────────────────────
+  /** Kind extracted from the leading ``[tag]`` prefix on ``text``. ``null``
+   * means the agent did not prefix the entry; the panel may apply its own
+   * fallback regex. */
+  kind?: BlackboardKind | null;
+
+  // ── agent_status event fields (B6 payload) ────────────────────────
+  /** Authoritative runtime status of the expert agent identified by
+   * ``agent_name``. Sidebar agent chips key off this enum. */
+  agent_status?: AgentRuntimeStatus;
+  /** ID of the task that owns this status snapshot. ``null`` when the
+   * agent has no in-flight task. */
+  current_task_id?: string | null;
+  /** ISO-8601 UTC timestamp of the last lifecycle / heartbeat update. */
+  last_heartbeat_at?: string | null;
+
+  // ── high_risk_confirm event fields ────────────────────────────────
+  /** Server-minted correlation ID for approve/deny round-trip. */
+  ask_id?: string;
+  /** Skill display name shown to the user. */
+  skill?: string;
+  /** Human-readable summary for the confirmation card. */
+  summary_for_user?: string;
+  /** Timeout in seconds before auto-deny. */
+  timeout_sec?: number;
 }
 
 /** Legacy alias for blackboard entry shape (used by BlackboardCard). */
 export type BlackboardEntry = Pick<
   AgentEventPayload,
-  "id" | "agent_name" | "text" | "timestamp"
+  "id" | "agent_name" | "text" | "timestamp" | "kind"
 >;
+
+/** Expert-agent registry row enriched with optional runtime fields, returned
+ * by ``GET /api/agents`` (with or without ``?include_status=true``). The
+ * runtime fields are only present when the query flag is set; consumers
+ * MUST treat them as optional. Source: ``dashboard-aggregation.md §2.6``. */
+export interface AgentRegistryRow {
+  name: string;
+  display_name?: string;
+  description?: string;
+  scoped_skills?: string[];
+  max_iterations?: number;
+  source_path?: string | null;
+  available?: boolean;
+  required_binaries?: string[];
+  missing_binaries?: string[];
+  // Runtime fields (only when ?include_status=true).
+  status?: AgentRuntimeStatus;
+  current_task_id?: string | null;
+  progress?: number | null;
+  last_heartbeat_at?: string | null;
+}
 
 /** One image attached to a UIMessage.
  *
@@ -87,6 +172,11 @@ export interface UIMessage {
   /** Source tool for a blocking prompt, e.g. ask_user or request_approval. */
   toolName?: "ask_user" | "request_approval" | string;
   promptKind?: "question" | "approval";
+  /** Correlation ID for a high-risk confirmation dialog. When set, the
+   * answer routes via ``scan.user_reply`` instead of a regular message. */
+  askId?: string;
+  /** Pre-formatted detail text for approval prompts. */
+  approvalDetail?: string;
   /** Agent event payload when kind is ``agent_event``. */
   agentEvent?: AgentEventPayload;
 }
@@ -258,6 +348,14 @@ export type Outbound =
       /** Marks messages sent by the embedded WebUI, without changing the
        * generic websocket protocol for other clients. */
       webui?: true;
+    }
+  | {
+      /** Reply to a ``high_risk_confirm`` dialog. Spec:
+       * ``websocket-protocol.md`` §4 (``scan.user_reply``). */
+      type: "scan.user_reply";
+      ask_id: string;
+      decision: "approve" | "deny";
+      reason?: string;
     };
 
 // ────────────────────────────────────────────────────────────────────────

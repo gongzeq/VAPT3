@@ -106,6 +106,23 @@
     --alert-success: 152 70% 45%;      /* #22B574 */
     --alert-info:    210 100% 56%;     /* alias to --primary */
 
+    /* Agent runtime status palette — Sidebar "专家智能体" chip colors.
+       PRD F6 spec: st-run / st-wait / st-idle / st-off. Mapped to existing
+       brand tokens so the palette stays cohesive (no new hex). */
+    --status-run:  152 70% 45%;        /* alias to --alert-success */
+    --status-wait: 38 95% 56%;         /* alias to --alert-warning */
+    --status-idle: 220 7% 64%;         /* alias to --sev-info / muted */
+    --status-off:  0 100% 65%;         /* alias to --sev-critical */
+
+    /* Blackboard entry palette — 4 kinds keyed off ``BlackboardEntry.kind``.
+       PRD F8 spec: milestone (success) / blocker (critical, breathes) /
+       finding (warning) / progress (primary). All aliased to existing
+       tokens to keep the brand palette tight. */
+    --bb-milestone: 152 70% 45%;       /* alias to --alert-success */
+    --bb-blocker:   0 100% 65%;        /* alias to --sev-critical */
+    --bb-finding:   38 95% 56%;        /* alias to --alert-warning */
+    --bb-progress:  210 100% 56%;      /* alias to --primary */
+
     /* Gradients / shadows / transitions — sourced from UI 模板 §3, retuned
        to the secbot 海蓝 primary so brand colour stays canonical. */
     --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));

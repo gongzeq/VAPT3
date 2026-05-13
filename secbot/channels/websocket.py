@@ -19,7 +19,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Mapping, Self
 from urllib.parse import parse_qs, unquote, urlparse
 
 from loguru import logger
@@ -43,6 +43,7 @@ from secbot.utils.media_decode import (
 )
 
 if TYPE_CHECKING:
+    from secbot.agent.blackboard import BlackboardRegistry
     from secbot.agent.subagent import SubagentManager
     from secbot.agents.registry import AgentRegistry
     from secbot.session.manager import SessionManager
@@ -260,6 +261,20 @@ def _query_first(query: dict[str, list[str]], key: str) -> str | None:
     """Return the first value for *key*, or None."""
     values = query.get(key)
     return values[0] if values else None
+
+
+def _format_heartbeat(ts: float) -> str | None:
+    """Format an epoch-second timestamp as ISO-8601 UTC, or None when 0/missing.
+
+    Used by ``/api/agents?include_status=true`` and the ``agent_status`` event.
+    Output format matches :class:`SubagentManager._broadcast_agent_status`:
+    ``YYYY-MM-DDTHH:MM:SS+00:00``.
+    """
+    if not ts:
+        return None
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
 def _parse_inbound_payload(raw: str) -> str | None:
@@ -497,6 +512,7 @@ class WebSocketChannel(BaseChannel):
         static_dist_path: Path | None = None,
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
+        blackboard_registry: "BlackboardRegistry | None" = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -520,11 +536,18 @@ class WebSocketChannel(BaseChannel):
         self._issued_tokens: dict[str, float] = {}
         # Multi-use tokens for the embedded webui's REST surface; checked but not consumed.
         self._api_tokens: dict[str, float] = {}
+        # Pending high-risk confirmations awaiting a ``scan.user_reply``
+        # envelope from the client. Populated by :meth:`surface_confirm` and
+        # drained by the reply branch of :meth:`_dispatch_envelope`. Spec:
+        # ``.trellis/spec/backend/high-risk-confirmation.md`` §2.1 +
+        # ``websocket-protocol.md`` §4 (``scan.user_reply``).
+        self._pending_confirms: dict[str, asyncio.Future[bool]] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
+        self._blackboard_registry = blackboard_registry
         # Throttle state for WS broadcasts (per spec: 1 update / 1s per key).
         # Maps ``(event, scope)`` → monotonic timestamp of last emission.
         self._broadcast_last_emit: dict[tuple[str, str], float] = {}
@@ -717,6 +740,12 @@ class WebSocketChannel(BaseChannel):
         # when called without ``include_status=true``.
         if got == "/api/agents":
             return self._handle_agents(request)
+
+        # Per-chat blackboard snapshot (P0/B2). Returns the entries currently
+        # held in ``BlackboardRegistry`` so the Right Rail Blackboard tab can
+        # backfill on mount or refresh. Spec: dashboard-aggregation.md §2.7.
+        if got == "/api/blackboard":
+            return await self._handle_blackboard(request)
 
         # Quick-command prompts (P1/R3). Spec:
         # `.trellis/spec/backend/prompts-config.md`. YAML-backed, hot-reloaded
@@ -1374,16 +1403,106 @@ class WebSocketChannel(BaseChannel):
         include_status_raw = (_query_first(query, "include_status") or "").lower()
         include_status = include_status_raw in {"1", "true", "yes"}
         if include_status:
-            for entry in agents_payload:
-                entry.update(
-                    {
-                        "status": "offline",
-                        "current_task_id": None,
-                        "progress": None,
-                        "last_heartbeat_at": None,
+            # Pull the per-agent runtime snapshot from the injected
+            # SubagentManager. Tests construct the channel without one — keep
+            # the documented ``offline`` fallback so the UI surface stays
+            # stable until the wiring lands. Spec: dashboard-aggregation.md
+            # §2.6 (status enum: idle | running | queued | offline).
+            statuses_by_agent: dict[str, dict[str, Any]] = {}
+            if self._subagent_manager is not None:
+                try:
+                    raw_statuses = self._subagent_manager._task_statuses  # noqa: SLF001
+                except Exception:
+                    raw_statuses = {}
+                for sub_status in raw_statuses.values():
+                    agent_name = getattr(sub_status, "agent_name", "") or ""
+                    if not agent_name:
+                        continue
+                    # Last write wins — most recent heartbeat takes the slot
+                    # so multi-task races still resolve to a single row.
+                    prev = statuses_by_agent.get(agent_name)
+                    last_hb = getattr(sub_status, "last_heartbeat_at", 0.0)
+                    if prev is not None and prev.get("_hb", 0.0) >= last_hb:
+                        continue
+                    statuses_by_agent[agent_name] = {
+                        "status": "running",
+                        "current_task_id": sub_status.task_id,
+                        "last_heartbeat_at": _format_heartbeat(last_hb),
+                        "_hb": last_hb,
                     }
-                )
+            for entry in agents_payload:
+                snap = statuses_by_agent.get(entry["name"])
+                if snap is None:
+                    if self._subagent_manager is None:
+                        entry.update(
+                            {
+                                "status": "offline",
+                                "current_task_id": None,
+                                "progress": None,
+                                "last_heartbeat_at": None,
+                            }
+                        )
+                    else:
+                        entry.update(
+                            {
+                                "status": "idle",
+                                "current_task_id": None,
+                                "progress": None,
+                                "last_heartbeat_at": None,
+                            }
+                        )
+                else:
+                    entry.update(
+                        {
+                            "status": snap["status"],
+                            "current_task_id": snap["current_task_id"],
+                            "progress": None,
+                            "last_heartbeat_at": snap["last_heartbeat_at"],
+                        }
+                    )
         return _http_json_response({"agents": agents_payload})
+
+    # -- Per-chat blackboard snapshot --------------------------------------
+
+    async def _handle_blackboard(self, request: WsRequest) -> Response:
+        """Return ``BlackboardRegistry`` entries for ``?chat_id=``.
+
+        Spec: dashboard-aggregation.md §2.7 (Blackboard snapshot endpoint).
+        Behavior:
+
+        * 401 when bearer token missing/invalid.
+        * 400 when ``chat_id`` query is missing.
+        * 200 with ``{"chat_id": ..., "entries": []}`` when the registry has no
+          board for that chat (no implicit creation — keeps the registry from
+          accumulating empty boards for spurious queries).
+        * 200 with the entry list otherwise. Each entry retains the canonical
+          shape produced by :meth:`Blackboard.to_dict_list` (id / agent_name /
+          text / timestamp / kind).
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        chat_id = _query_first(query, "chat_id")
+        if not chat_id:
+            return _http_error(400, "missing chat_id")
+        if self._blackboard_registry is None:
+            # No registry attached (e.g. early test fixture). Return an empty
+            # snapshot rather than 500 — the surface stays stable and the UI
+            # simply renders "no entries yet".
+            return _http_json_response({"chat_id": chat_id, "entries": []})
+        try:
+            board = await self._blackboard_registry.get(chat_id)
+        except Exception:
+            self.logger.exception("blackboard registry lookup failed for {}", chat_id)
+            return _http_json_response({"chat_id": chat_id, "entries": []})
+        if board is None:
+            return _http_json_response({"chat_id": chat_id, "entries": []})
+        try:
+            entries = await board.to_dict_list()
+        except Exception:
+            self.logger.exception("blackboard.to_dict_list failed for {}", chat_id)
+            entries = []
+        return _http_json_response({"chat_id": chat_id, "entries": entries})
 
     def _load_agent_registry_cached(self) -> "AgentRegistry":
         """Return the injected registry, or lazy-load from ``secbot/agents/``.
@@ -1699,6 +1818,47 @@ class WebSocketChannel(BaseChannel):
             "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
         return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def surface_confirm(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        chat_id: str,
+    ) -> bool:
+        """Surface a high-risk confirmation to the WebUI and await user reply.
+
+        Implements the WebSocket-facing half of the ``ctx.confirm`` contract
+        defined in ``.trellis/spec/backend/high-risk-confirmation.md``. The
+        method:
+
+        1. Mints an ``ask_id``, registers a ``Future`` in ``_pending_confirms``.
+        2. Broadcasts an ``agent_event`` of type ``high_risk_confirm`` with the
+           confirmation payload plus the generated ``ask_id`` (see
+           ``websocket-protocol.md`` §4 note on reusing the existing
+           ``agent_event`` envelope pattern rather than the spec's
+           ``scan.awaiting_user`` to stay consistent with current code).
+        3. Awaits the ``Future``; the client replies via a ``scan.user_reply``
+           envelope which ``_dispatch_envelope`` routes to :meth:`set_result`.
+
+        Cancellation (e.g. :class:`HighRiskGate` timeout) cleans up the
+        ``Future`` via the ``finally`` clause so stale entries can't pile up.
+        """
+        ask_id = uuid.uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+        self._pending_confirms[ask_id] = future
+        try:
+            enriched: dict[str, Any] = {"ask_id": ask_id, **dict(payload)}
+            await self.broadcast_agent_event(
+                chat_id=chat_id,
+                type="high_risk_confirm",
+                payload=enriched,
+            )
+            return await future
+        finally:
+            # Pop unconditionally — whether we returned normally, were cancelled
+            # by an asyncio.wait_for timeout, or the future was already resolved.
+            self._pending_confirms.pop(ask_id, None)
 
     async def _broadcast_frame(
         self, body: dict[str, Any], *, chat_id: str | None
@@ -2214,6 +2374,37 @@ class WebSocketChannel(BaseChannel):
                 active_turn=cid in self._active_turns,
             )
             return
+        if t == "scan.user_reply":
+            # Client acknowledged a ``high_risk_confirm`` dialog. Spec:
+            # ``websocket-protocol.md`` §4. Route to the pending Future so the
+            # awaiting :class:`HighRiskGate` can unblock. We do NOT mint a new
+            # bus inbound — this is a control frame, not a chat message.
+            ask_id = envelope.get("ask_id")
+            decision = envelope.get("decision")
+            if not isinstance(ask_id, str) or not ask_id:
+                await self._send_event(
+                    connection, "error", detail="missing ask_id"
+                )
+                return
+            if decision not in ("approve", "deny"):
+                await self._send_event(
+                    connection,
+                    "error",
+                    detail="invalid decision",
+                    ask_id=ask_id,
+                )
+                return
+            future = self._pending_confirms.get(ask_id)
+            if future is None or future.done():
+                await self._send_event(
+                    connection,
+                    "error",
+                    detail="unknown ask_id",
+                    ask_id=ask_id,
+                )
+                return
+            future.set_result(decision == "approve")
+            return
         if t == "stop":
             # Silent cancel request from the WebUI composer — route it as an
             # internal /stop inbound so the existing cancellation path runs,
@@ -2308,6 +2499,12 @@ class WebSocketChannel(BaseChannel):
         self._conn_default.clear()
         self._issued_tokens.clear()
         self._api_tokens.clear()
+        # Cancel any confirmations still waiting on client input; without this
+        # callers blocked inside :meth:`surface_confirm` would hang on shutdown.
+        for _ask_id, future in list(self._pending_confirms.items()):
+            if not future.done():
+                future.cancel()
+        self._pending_confirms.clear()
 
     async def _safe_send_to(self, connection: Any, raw: str, *, label: str = "") -> None:
         """Send a raw frame to one connection, cleaning up on ConnectionClosed."""

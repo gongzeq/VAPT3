@@ -39,6 +39,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Report Pipeline](./report-pipeline.md) | Markdown-canonical render path, DOCX/PDF skills, severity-color binding | Active |
 | [Report Meta](./report-meta.md) | `report_meta` table contract + `/api/reports` endpoints | Active |
 | [Dashboard Aggregation](./dashboard-aggregation.md) | `/api/dashboard/*` contracts, query shapes, agent runtime status | Active |
+| [Blackboard Registry](./blackboard-registry.md) | `BlackboardRegistry`, `/api/blackboard`, `BlackboardEntry.kind` taxonomy | Active |
 | [Prompts Config](./prompts-config.md) | `GET /api/prompts` YAML source + hot reload rules | Active |
 | [Scan Lifecycle](./scan-lifecycle.md) | Scan state machine, bus events, cancellation semantics | Active |
 | [WebSocket Protocol](./websocket-protocol.md) | Wire envelope, server↔client event catalog, versioning | Active |

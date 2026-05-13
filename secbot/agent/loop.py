@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from secbot.agent.autocompact import AutoCompact
-from secbot.agent.blackboard import Blackboard
+from secbot.agent.blackboard import Blackboard, BlackboardRegistry
 from secbot.agent.context import ContextBuilder
 from secbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
@@ -438,8 +438,14 @@ class AgentLoop:
         # shared by this loop, so tools resolve the active state via contextvars.
         self._file_state_store = FileStateStore()
         self.runner = AgentRunner(provider)
-        # Shared blackboard for inter-agent communication within a task.
-        # on_write is bound per-turn in _run_agent_loop when channel == "websocket".
+        # Per-chat shared blackboards — owned by a process-wide registry so a
+        # page refresh (``GET /api/blackboard?chat_id=...``) can recover
+        # entries appended across previous turns. ``self.blackboard`` is kept
+        # as the *active* per-turn pointer for legacy callers (orchestrator
+        # tools register against it at __init__ time before chat_id is known);
+        # ``_run_agent_loop`` rebinds it from the registry on every turn.
+        # ``on_write`` is bound per-turn in _run_agent_loop when channel == "websocket".
+        self.blackboard_registry = BlackboardRegistry()
         self.blackboard = Blackboard()
         # PR3: lazy-load the expert-agent registry so SpawnTool can validate
         # ``agent=`` and SubagentManager can filter scoped skills. A broken
@@ -474,6 +480,7 @@ class AgentLoop:
             max_iterations=self.max_iterations,
             agent_registry=self._agent_registry,
             blackboard=self.blackboard,
+            blackboard_registry=self.blackboard_registry,
         )
         self._unified_session = unified_session
         self._max_messages = max_messages if max_messages > 0 else 120
@@ -571,7 +578,7 @@ class AgentLoop:
     def _register_orchestrator_tools(self) -> None:
         """Register the orchestrator's strict coordination-only tool surface."""
         self.tools.register(SpawnTool(manager=self.subagents))
-        self.tools.register(BlackboardReadTool(blackboard=self.blackboard))
+        self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         self.tools.register(RequestApprovalTool())
         self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))
 
@@ -624,8 +631,8 @@ class AgentLoop:
             )
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound, workspace=self.workspace))
         self.tools.register(SpawnTool(manager=self.subagents))
-        self.tools.register(BlackboardWriteTool(blackboard=self.blackboard, agent_name="orchestrator"))
-        self.tools.register(BlackboardReadTool(blackboard=self.blackboard))
+        self.tools.register(BlackboardWriteTool(blackboard=lambda: self.blackboard, agent_name="orchestrator"))
+        self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         # Register every valid secbot skill as a first-class tool so the LLM
         # can invoke nmap / fscan / hydra / nuclei etc. with typed parameters
         # instead of synthesising shell commands via ``exec``. Skills whose
@@ -891,7 +898,32 @@ class AgentLoop:
         scan_id = (active_session_key or "adhoc").replace(":", "_") or "adhoc"
         scan_dir = self.workspace / ".secbot" / "scans" / scan_id
         scan_dir.mkdir(parents=True, exist_ok=True)
-        bind_skill_context(scan_id=scan_id, scan_dir=scan_dir)
+
+        # When the turn originates from the WebSocket channel, wire up the
+        # ``ctx.confirm`` callback so critical-risk skills can surface a
+        # blocking dialog to the WebUI via ``surface_confirm``. Non-WS
+        # channels (CLI/API) leave confirm=None which causes HighRiskGate to
+        # run skills unconditionally (no UI to ask).
+        confirm_fn = None
+        if channel == "websocket":
+            from secbot.channels.websocket import WebSocketChannel
+
+            _ws = WebSocketChannel.get_active_instance()
+            if _ws is not None:
+                _chat = chat_id  # capture for closure
+
+                async def confirm_fn(payload):  # type: ignore[assignment]
+                    return await _ws.surface_confirm(payload, chat_id=_chat)
+
+        bind_skill_context(scan_id=scan_id, scan_dir=scan_dir, confirm=confirm_fn)
+
+        # Resolve / install the chat-scoped blackboard (PRD D3). Every
+        # ``self.blackboard`` reference (orchestrator tools, the Subagent
+        # tools registered via callable, broadcast bind below) follows the
+        # same pointer so a single chat keeps a single board across turns
+        # and across spawned subagents.
+        active_blackboard = await self.blackboard_registry.get_or_create(chat_id)
+        self.blackboard = active_blackboard
 
         # Bind blackboard write callback for websocket channels so entries
         # are broadcast to the chat surface in real-time.
@@ -905,19 +937,14 @@ class AgentLoop:
                         ws_channel.broadcast_agent_event(
                             chat_id=chat_id,
                             type="blackboard_entry",
-                            payload={
-                                "id": entry.id,
-                                "agent_name": entry.agent_name,
-                                "text": entry.text,
-                                "timestamp": entry.timestamp,
-                            },
+                            payload=entry.to_dict(),
                         )
                     )
-                self.blackboard.set_on_write(_on_bb_write)
+                active_blackboard.set_on_write(_on_bb_write)
             else:
-                self.blackboard.set_on_write(None)
+                active_blackboard.set_on_write(None)
         else:
-            self.blackboard.set_on_write(None)
+            active_blackboard.set_on_write(None)
 
         try:
             result = await self.runner.run(AgentRunSpec(
@@ -942,7 +969,7 @@ class AgentLoop:
             ))
         finally:
             reset_file_states(file_state_token)
-            self.blackboard.set_on_write(None)
+            active_blackboard.set_on_write(None)
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)

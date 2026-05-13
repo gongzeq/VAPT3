@@ -393,8 +393,20 @@ def create_app(
     app["model_name"] = model_name
     app["request_timeout"] = request_timeout
     app["session_locks"] = {}  # per-user locks, keyed by session_key
+    # Wire optional handles from the AgentLoop so the agents/blackboard
+    # routes can read runtime state. ``getattr`` defaults keep older
+    # AgentLoop test doubles working without a hard breakage.
+    app["subagent_manager"] = getattr(agent_loop, "subagents", None)
+    app["blackboard_registry"] = getattr(agent_loop, "blackboard_registry", None)
 
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
     app.router.add_get("/health", handle_health)
+
+    # Register optional /api routes used by the embedded webui surface. Both
+    # registrars are no-ops besides path mounting; they don't pull state out
+    # of ``app`` until a request arrives, so the import order is irrelevant.
+    from secbot.api.blackboard import register_blackboard_routes
+
+    register_blackboard_routes(app)
     return app

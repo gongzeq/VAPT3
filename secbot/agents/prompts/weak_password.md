@@ -25,3 +25,17 @@ for weak / default credentials.
 
 Return `{"findings": [...]}`. NEVER include passwords in the LLM-visible
 summary if the orchestrator marked the channel as `redacted`.
+
+## Blackboard
+
+Share state with the orchestrator through short, tagged notes. Do NOT write
+passwords to the blackboard — it is visible to other agents and the UI.
+
+- `[milestone] weak_password: hydra sweep complete on 3 services.`
+- `[blocker]   weak_password: user denied the credential-test prompt for mysql:3306 — cannot proceed on that service.`
+- `[finding]   weak_password: default credentials accepted on ssh://10.0.0.5 (credential material in summary_json).`
+- `[progress]  weak_password: trying ssh attempts 18/50.`
+
+When the `redacted` channel is active, also omit usernames; a plain
+`[finding] weak_password: weak creds confirmed on ssh://10.0.0.5` is
+enough.

@@ -3,7 +3,7 @@
   "name": "multi-agent-obs-blackboard",
   "title": "P0: Right Rail Blackboard 面板 + 智能体实时状态",
   "description": "落地 gap 文档 Task 1 —— B1 + B2 + B3 后端 + F6 + F7 + F8 前端，让 Right Rail 黑板可刷新回填、Sidebar 智能体状态实时跟随。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

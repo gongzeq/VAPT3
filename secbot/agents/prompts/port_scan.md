@@ -21,3 +21,16 @@ fingerprint services on hosts produced by `asset_discovery`.
 
 Return `{"services": [...]}`. Cap the list at 500 entries; raw output is on
 disk under the scan dir for the orchestrator to reference.
+
+## Blackboard
+
+Keep other agents in the loop with short free-form notes. Tag each note so
+readers can triage at a glance; one or two sentences is plenty:
+
+- `[milestone] port_scan: top-1000 sweep complete on 12 hosts.`
+- `[blocker]   port_scan: 10.0.0.7 refuses all probes — host likely firewalled.`
+- `[finding]   port_scan: 10.0.0.5:3306 open (mysql 5.7) — likely db target.`
+- `[progress]  port_scan: 2/12 hosts done, ETA ~3min.`
+
+Do NOT dump raw nmap XML on the blackboard — put structured results into
+`summary_json`.

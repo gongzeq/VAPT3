@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from secbot.agent.blackboard import Blackboard, BlackboardEntry
+from secbot.agent.blackboard import Blackboard, BlackboardEntry, BlackboardRegistry
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 
 
@@ -137,3 +137,110 @@ async def test_read_tool_with_entries():
     assert "agent_b" in result
     assert "Port 22 open" in result
     assert "SSH vulnerable" in result
+
+
+# ---------------------------------------------------------------------------
+# Kind auto-extraction (P0/B3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("[milestone] Done with discovery", "milestone"),
+        ("[blocker] Stuck on creds", "blocker"),
+        ("[finding] Port 22 open", "finding"),
+        ("[progress] 30% scanned", "progress"),
+        # Leading whitespace + case-insensitive matching.
+        ("   [Milestone] mixed case", "milestone"),
+        ("\t[BLOCKER] tab prefix", "blocker"),
+    ],
+)
+async def test_write_extracts_known_kind(text: str, expected: str) -> None:
+    bb = Blackboard()
+    entry = await bb.write("agent_a", text)
+    assert entry.kind == expected
+    # to_dict must transparently surface the kind.
+    assert entry.to_dict()["kind"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "no prefix at all",
+        "[unknown] not in known set",
+        "milestone] missing leading bracket",
+        "[milestone something",  # missing closing bracket
+        "",
+    ],
+)
+async def test_write_kind_falls_back_to_none(text: str) -> None:
+    bb = Blackboard()
+    entry = await bb.write("agent_a", text)
+    assert entry.kind is None
+    assert entry.to_dict()["kind"] is None
+
+
+@pytest.mark.asyncio
+async def test_to_dict_list_preserves_kind() -> None:
+    bb = Blackboard()
+    await bb.write("agent_a", "[finding] open port 80")
+    await bb.write("agent_b", "no prefix here")
+    payload = await bb.to_dict_list()
+    assert [row["kind"] for row in payload] == ["finding", None]
+
+
+# ---------------------------------------------------------------------------
+# BlackboardRegistry — per-chat isolation (P0/D3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_registry_isolates_boards_per_chat_id() -> None:
+    registry = BlackboardRegistry()
+    board_a = await registry.get_or_create("chat-a")
+    board_b = await registry.get_or_create("chat-b")
+    assert board_a is not board_b
+
+    await board_a.write("agent", "[milestone] for chat-a")
+    await board_b.write("agent", "[finding] for chat-b")
+
+    assert len(board_a) == 1
+    assert len(board_b) == 1
+
+
+@pytest.mark.asyncio
+async def test_registry_get_or_create_returns_same_instance() -> None:
+    registry = BlackboardRegistry()
+    first = await registry.get_or_create("chat-x")
+    second = await registry.get_or_create("chat-x")
+    assert first is second
+
+
+@pytest.mark.asyncio
+async def test_registry_get_returns_none_for_unknown_chat() -> None:
+    registry = BlackboardRegistry()
+    assert await registry.get("never-created") is None
+    assert "never-created" not in registry.chat_ids()
+
+
+@pytest.mark.asyncio
+async def test_registry_drop_removes_board() -> None:
+    registry = BlackboardRegistry()
+    await registry.get_or_create("chat-y")
+    assert "chat-y" in registry.chat_ids()
+    await registry.drop("chat-y")
+    assert "chat-y" not in registry.chat_ids()
+    assert await registry.get("chat-y") is None
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_get_or_create_is_singleton() -> None:
+    registry = BlackboardRegistry()
+    boards = await asyncio.gather(
+        *[registry.get_or_create("chat-z") for _ in range(20)]
+    )
+    first = boards[0]
+    assert all(b is first for b in boards)

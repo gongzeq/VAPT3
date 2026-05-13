@@ -35,6 +35,9 @@ export interface ShellProps {
   rightRail?: (props: {
     onToggleSidebar: () => void;
     onToggleRightRail: () => void;
+    /** Active chat session (null when no chat is selected). The right rail
+     * uses this to scope per-chat data such as the Blackboard panel. */
+    session: ChatSummary | null;
   }) => React.ReactNode;
 }
 
@@ -220,6 +223,7 @@ export function Shell({
     onSelect: onSelectChat,
     onRequestDelete: (key: string, label: string) =>
       setPendingDelete({ key, label }),
+    activeChatId: activeSession?.chatId ?? null,
   };
 
   return (
@@ -355,6 +359,7 @@ export function Shell({
             {rightRail?.({
               onToggleSidebar: toggleSidebar,
               onToggleRightRail: () => setRightRailOpen((v) => !v),
+              session: activeSession,
             })}
           </div>
         </aside>

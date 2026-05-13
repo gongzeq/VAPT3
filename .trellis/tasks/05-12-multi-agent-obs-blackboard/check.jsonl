@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend 质量总闸：代码规范、禁用模式、提交前检查项"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "校验 ?include_status=true 不破坏老响应（验收 6 字节级一致）"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "校验新增 agent_status / blackboard_entry.kind 是否符合 envelope 与 versioning"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "校验 /api/blackboard 与既有 /api/* 路由约定一致（query / 错误码 / pagination）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验新 handler 错误返回格式"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend hard rules：no raw hex / chart whitelist / destructive"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "校验状态色和 4 色 + 呼吸动画全部走 token，无 raw hex"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "校验 Sidebar 分组 / Right Rail Tabs / BlackboardPanel 卡片结构合规"}

@@ -1,10 +1,18 @@
 import { useMemo, useState } from "react";
-import { Archive, PanelLeftClose, Plus, Search } from "lucide-react";
+import {
+  Archive,
+  Bot,
+  PanelLeftClose,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ChatList } from "@/components/ChatList";
+import { useAgents } from "@/hooks/useAgents";
+import { cn } from "@/lib/utils";
 
-import type { ChatSummary } from "@/lib/types";
+import type { AgentRegistryRow, AgentRuntimeStatus, ChatSummary } from "@/lib/types";
 
 interface SidebarProps {
   sessions: ChatSummary[];
@@ -14,11 +22,54 @@ interface SidebarProps {
   onSelect: (key: string) => void;
   onRequestDelete: (key: string, label: string) => void;
   onCollapse: () => void;
+  /** Active chat id used to scope WS ``agent_status`` updates. */
+  activeChatId?: string | null;
+}
+
+/** Status chip class map.  Tokens come from ``--status-*`` aliases declared
+ * in ``globals.css`` (component-patterns.md §1: no raw hex). */
+const STATUS_STYLE: Record<
+  AgentRuntimeStatus,
+  { dot: string; label: string; text: string }
+> = {
+  running: { dot: "bg-status-run", label: "运行中", text: "text-status-run" },
+  queued: { dot: "bg-status-wait", label: "排队", text: "text-status-wait" },
+  idle: { dot: "bg-status-idle", label: "空闲", text: "text-status-idle" },
+  offline: { dot: "bg-status-off", label: "离线", text: "text-status-off" },
+};
+
+function AgentRow({ agent }: { agent: AgentRegistryRow }) {
+  const { t } = useTranslation();
+  const status: AgentRuntimeStatus = agent.status ?? "offline";
+  const style = STATUS_STYLE[status];
+  const display = agent.display_name || agent.name;
+  const i18nLabel = t(`sidebar.agents.status.${status}`, {
+    defaultValue: style.label,
+  });
+  return (
+    <li className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+      <span className="flex min-w-0 items-center gap-2 text-foreground">
+        <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-xs">{display}</span>
+      </span>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]",
+          status === "running" && "animate-pulse",
+        )}
+        title={i18nLabel}
+      >
+        <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
+        <span className={cn("font-mono", style.text)}>{i18nLabel}</span>
+      </span>
+    </li>
+  );
 }
 
 export function Sidebar(props: SidebarProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const { agents } = useAgents({ chatId: props.activeChatId ?? null });
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSessions = useMemo(() => {
     if (!normalizedQuery) return props.sessions;
@@ -92,6 +143,25 @@ export function Sidebar(props: SidebarProps) {
           onRequestDelete={props.onRequestDelete}
         />
       </div>
+
+      {/* 专家智能体分组（F6） */}
+      {agents.length > 0 && (
+        <div className="shrink-0 border-t border-border px-4 pt-3 pb-2">
+          <div className="mb-2 flex items-center justify-between text-xs uppercase tracking-wider text-muted-foreground">
+            <span>
+              {t("sidebar.agents.title", {
+                defaultValue: "专家智能体 ({{count}})",
+                count: agents.length,
+              })}
+            </span>
+          </div>
+          <ul className="max-h-48 space-y-1 overflow-y-auto scroll-hide">
+            {agents.map((agent) => (
+              <AgentRow key={agent.name} agent={agent} />
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* 底部 */}
       <div className="mt-auto border-t border-border px-4 py-3">

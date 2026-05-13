@@ -3,11 +3,35 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+# Recognised entry kinds. ``write()`` auto-extracts one of these from the
+# leading ``[tag]`` prefix (whitespace-tolerant). LLMs need NOT pass ``kind``
+# explicitly — the registry contract is "free text in, kind out".
+KNOWN_KINDS: tuple[str, ...] = ("milestone", "blocker", "finding", "progress")
+_KIND_PREFIX_RE = re.compile(
+    r"^\s*\[(" + "|".join(KNOWN_KINDS) + r")\]",
+    flags=re.IGNORECASE,
+)
+
+
+def _extract_kind(text: str) -> str | None:
+    """Return the kind name when ``text`` starts with a known ``[tag]`` prefix.
+
+    Whitespace-tolerant; case-insensitive. Returns ``None`` for unprefixed or
+    unknown-prefixed text so the front-end can fall back to its own heuristic.
+    """
+    if not isinstance(text, str):
+        return None
+    match = _KIND_PREFIX_RE.match(text)
+    if match is None:
+        return None
+    return match.group(1).lower()
 
 
 @dataclass(slots=True)
@@ -17,6 +41,7 @@ class BlackboardEntry:
     agent_name: str
     text: str
     timestamp: float
+    kind: str | None = None
 
     def to_dict(self) -> dict:
         """Serialize this entry for JSON transport."""
@@ -25,13 +50,19 @@ class BlackboardEntry:
             "agent_name": self.agent_name,
             "text": self.text,
             "timestamp": self.timestamp,
+            "kind": self.kind,
         }
 
 
 class Blackboard:
-    """Thread-safe, task-scoped shared blackboard.
+    """Thread-safe, chat-scoped shared blackboard.
 
-    Lifecycle: created at orchestration task start, destroyed on completion.
+    Historically per-orchestration-task; PR P0 moved ownership to
+    ``BlackboardRegistry`` so HTTP refresh-after-reload (``GET
+    /api/blackboard?chat_id=...``) can recover entries that survived the
+    AgentLoop turn that wrote them. Each ``Blackboard`` is keyed by chat_id
+    inside the registry; the chat_id itself is not stored on the instance to
+    keep this class drop-in compatible with legacy per-loop usage.
     """
 
     def __init__(self, on_write: Callable[[BlackboardEntry], Any] | None = None) -> None:
@@ -50,6 +81,7 @@ class Blackboard:
             agent_name=agent_name,
             text=text,
             timestamp=time.time(),
+            kind=_extract_kind(text),
         )
         async with self._lock:
             self._entries.append(entry)
@@ -79,7 +111,47 @@ class Blackboard:
     async def to_dict_list(self) -> list[dict]:
         """Serialize all entries for JSON transport."""
         async with self._lock:
-            return [
-                {"id": e.id, "agent_name": e.agent_name, "text": e.text, "timestamp": e.timestamp}
-                for e in self._entries
-            ]
+            return [e.to_dict() for e in self._entries]
+
+
+class BlackboardRegistry:
+    """In-memory ``chat_id → Blackboard`` registry.
+
+    ``AgentLoop`` no longer owns its blackboard directly; instead it asks the
+    process-wide registry for the instance keyed by the active ``chat_id`` so
+    that a page refresh (``GET /api/blackboard?chat_id=...``) can return all
+    entries appended across previous turns.
+
+    Lifecycle policy (PRD D3):
+    - ``get_or_create`` on AgentLoop turn start
+    - Instances are **retained** when the loop ends (in-memory only — no disk
+      persistence; restart wipes everything, which is acceptable for P0).
+    - ``drop`` is exposed for tests / explicit chat deletion.
+    """
+
+    def __init__(self) -> None:
+        self._boards: dict[str, Blackboard] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_or_create(self, chat_id: str) -> Blackboard:
+        """Return the Blackboard for ``chat_id``, creating it on first use."""
+        async with self._lock:
+            board = self._boards.get(chat_id)
+            if board is None:
+                board = Blackboard()
+                self._boards[chat_id] = board
+            return board
+
+    async def get(self, chat_id: str) -> Blackboard | None:
+        """Return the Blackboard for ``chat_id`` or ``None`` when absent."""
+        async with self._lock:
+            return self._boards.get(chat_id)
+
+    async def drop(self, chat_id: str) -> None:
+        """Forget the Blackboard for ``chat_id`` (best-effort)."""
+        async with self._lock:
+            self._boards.pop(chat_id, None)
+
+    def chat_ids(self) -> list[str]:
+        """Snapshot of currently-tracked chat ids (lock-free; for diagnostics)."""
+        return list(self._boards.keys())

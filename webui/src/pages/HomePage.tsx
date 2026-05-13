@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
-import { PromptSuggestions } from "@/components/PromptSuggestions";
+import { RightRail } from "@/components/RightRail";
 import { Shell } from "@/components/Shell";
 
 export interface HomePageProps {
@@ -11,16 +11,15 @@ export interface HomePageProps {
 /**
  * /  — Chat HomePage (template §7.2).
  *
- * Mounts the existing Shell (sidebar + ThreadShell) with the new
- * `rightRail` prop so that on xl: screens the PromptSuggestions panel +
- * Quick-stats card appears in a collapsible 320px rail on the right side.
- * On smaller screens the rail is hidden and the UX degrades gracefully to
- * the full-width chat surface from PR3.
+ * Mounts the existing Shell with the new tabbed `RightRail` (F7) so that on
+ * xl: screens the Blackboard panel (default) + PromptSuggestions tab appears
+ * in a collapsible 320px rail on the right side. On smaller screens the rail
+ * is hidden and the UX degrades gracefully to the full-width chat surface.
  *
- * The prompt chips use a CustomEvent (`secbot:composer-prefill`) to inject
- * the suggestion text into ThreadComposer's textarea without creating a
- * deep props chain. See PromptSuggestions.tsx / ThreadComposer.tsx for the
- * integration contract.
+ * The Blackboard tab is scoped per-chat: HomePage forwards `session` from
+ * Shell down to RightRail so the panel can hydrate via
+ * `GET /api/blackboard?chat_id=...` and subscribe to the same chat's
+ * `agent_event.blackboard_entry` WS frames (PRD F8).
  */
 export function HomePage({ onModelNameChange, onLogout }: HomePageProps) {
   const navigate = useNavigate();
@@ -32,8 +31,9 @@ export function HomePage({ onModelNameChange, onLogout }: HomePageProps) {
           onModelNameChange={onModelNameChange}
           onLogout={onLogout}
           onOpenSettingsExternal={() => navigate("/settings")}
-          rightRail={({ onToggleSidebar, onToggleRightRail }) => (
-            <PromptSuggestions
+          rightRail={({ onToggleSidebar, onToggleRightRail, session }) => (
+            <RightRail
+              session={session}
               onToggleSidebar={onToggleSidebar}
               onToggleRightRail={onToggleRightRail}
             />

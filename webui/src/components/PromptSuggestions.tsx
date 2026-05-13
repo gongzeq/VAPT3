@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   FileText,
   Key,
-  Loader,
   PanelRightClose,
   Radar,
   Zap,
@@ -123,12 +122,11 @@ interface AgentDef {
   status: "idle" | "running" | "queued";
 }
 
-const AGENTS: AgentDef[] = [
-  { key: "asset_discovery", name: "asset_discovery", icon: Radar, status: "idle" },
-  { key: "port_scan", name: "port_scan", icon: Loader, status: "running" },
-  { key: "vuln_scan", name: "vuln_scan", icon: Bug, status: "queued" },
-  { key: "weak_password", name: "weak_password", icon: Key, status: "idle" },
-];
+// AGENTS list moved to Sidebar (F6 — sidebar.agents group sources data from
+// /api/agents?include_status=true + agent_event.agent_status WS frames).
+// Static mock removed; AgentDef is kept for type stability if a future card
+// re-introduces a per-prompt-rail variant.
+void ([] as AgentDef[]);
 
 /**
  * Dispatches a composer prefill request. Exposed so other modules (tests,
@@ -255,52 +253,9 @@ export function PromptSuggestions({
         </div>
       </section>
 
-      {/* 在线智能体 */}
-      <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
-        <header className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">
-            {t("home.agents.title", { defaultValue: "专家智能体 (4)" })}
-          </h4>
-          <span className="text-xs text-emerald-500">
-            {t("home.agents.status", { defaultValue: "● 全部在线" })}
-          </span>
-        </header>
-        <ul className="space-y-2 text-xs">
-          {AGENTS.map((agent) => {
-            const Icon = agent.icon;
-            const isRunning = agent.status === "running";
-            return (
-              <li
-                key={agent.key}
-                className={cn(
-                  "flex items-center justify-between rounded-md px-2.5 py-1.5",
-                  isRunning
-                    ? "border border-primary/30 bg-primary/10"
-                    : "bg-muted/40",
-                )}
-              >
-                <span className="flex items-center gap-2 text-foreground">
-                  <Icon
-                    className={cn(
-                      "h-3.5 w-3.5 text-primary",
-                      isRunning && "animate-spin",
-                    )}
-                  />
-                  {agent.name}
-                </span>
-                <span
-                  className={cn(
-                    "font-mono",
-                    isRunning ? "text-primary" : "text-muted-foreground",
-                  )}
-                >
-                  {agent.status}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      {/* 在线智能体已迁出 — 现由 Sidebar 底部 sidebar.agents 分组（F6）
+          基于 GET /api/agents?include_status=true + WS agent_status 事件
+          实时驱动。这里保留注释以便后续做 Trace Tab 时知道哪个 section 已迁。 */}
     </aside>
   );
 }

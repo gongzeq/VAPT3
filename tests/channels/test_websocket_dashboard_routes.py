@@ -439,10 +439,67 @@ async def test_agents_include_status_appends_runtime_fields(
     body = _body(resp)
     assert body["agents"], "expected at least one expert agent yaml in the repo"
     for entry in body["agents"]:
+        # No SubagentManager attached → the documented offline fallback.
         assert entry["status"] == "offline"
         assert entry["current_task_id"] is None
         assert entry["progress"] is None
         assert entry["last_heartbeat_at"] is None
+
+
+async def test_agents_include_status_idle_when_subagent_manager_attached(
+    channel: WebSocketChannel,
+) -> None:
+    """When a SubagentManager is attached but has no running tasks, every
+    agent reports ``idle`` (not ``offline``). Spec: dashboard-aggregation.md
+    §2.6 — ``offline`` is reserved for "no manager wired" + "binary missing"
+    surfaces; idle/running come from the live status table.
+    """
+    class _StubManager:
+        def __init__(self) -> None:
+            self._task_statuses: dict[str, object] = {}
+
+    channel._subagent_manager = _StubManager()
+    resp = channel._handle_agents(_Req("/api/agents?include_status=true"))
+    body = _body(resp)
+    for entry in body["agents"]:
+        assert entry["status"] == "idle"
+        assert entry["current_task_id"] is None
+        assert entry["last_heartbeat_at"] is None
+
+
+async def test_agents_include_status_running_when_subagent_active(
+    channel: WebSocketChannel,
+) -> None:
+    """A running ``SubagentStatus`` keyed by ``agent_name`` propagates as
+    ``status='running'`` plus ``current_task_id`` + ISO ``last_heartbeat_at``.
+    """
+    from secbot.agent.subagent import SubagentStatus
+    import time as _time
+
+    status = SubagentStatus(
+        task_id="t-1",
+        label="port_scan run",
+        task_description="...",
+        started_at=_time.monotonic(),
+        agent_name="port_scan",
+        last_heartbeat_at=_time.time(),
+    )
+
+    class _StubManager:
+        def __init__(self) -> None:
+            self._task_statuses = {"t-1": status}
+
+    channel._subagent_manager = _StubManager()
+    resp = channel._handle_agents(_Req("/api/agents?include_status=true"))
+    body = _body(resp)
+    by_name = {entry["name"]: entry for entry in body["agents"]}
+    if "port_scan" not in by_name:
+        return  # repo registry didn't load — skip the runtime assertion.
+    entry = by_name["port_scan"]
+    assert entry["status"] == "running"
+    assert entry["current_task_id"] == "t-1"
+    assert isinstance(entry["last_heartbeat_at"], str)
+    assert entry["last_heartbeat_at"].endswith("+00:00")
 
 
 async def test_agents_handler_with_injected_empty_registry_returns_empty_list(

@@ -1,5 +1,7 @@
 import type {
   ActivityEventListResponse,
+  AgentRegistryRow,
+  BlackboardEntry,
   ChatSummary,
   NotificationListResponse,
   SettingsPayload,
@@ -428,4 +430,38 @@ export async function deleteSkill(
   return request(`${base}/api/skills/${encodeURIComponent(name)}`, token, {
     method: "DELETE",
   });
+}
+
+/** Fetch the expert-agent registry. With ``includeStatus=true`` each row is
+ * enriched with ``status / current_task_id / progress / last_heartbeat_at``
+ * pulled from the live ``SubagentManager`` snapshot. The default response
+ * stays byte-stable for older callers (PRD 验收 6).
+ */
+export async function fetchAgents(
+  token: string,
+  options: { includeStatus?: boolean; base?: string } = {},
+): Promise<AgentRegistryRow[]> {
+  const { includeStatus = false, base = "" } = options;
+  const qs = includeStatus ? "?include_status=true" : "";
+  const body = await request<{ agents: AgentRegistryRow[] }>(
+    `${base}/api/agents${qs}`,
+    token,
+  );
+  return body.agents;
+}
+
+/** Fetch the blackboard snapshot for ``chatId``. The route returns an empty
+ * ``entries`` array when the registry has no board for the chat (intentional
+ * — reads do NOT create boards). 400 surfaces as ``ApiError`` with the
+ * descriptive backend message. */
+export async function fetchBlackboard(
+  token: string,
+  chatId: string,
+  base: string = "",
+): Promise<BlackboardEntry[]> {
+  const body = await request<{ chat_id: string; entries: BlackboardEntry[] }>(
+    `${base}/api/blackboard?chat_id=${encodeURIComponent(chatId)}`,
+    token,
+  );
+  return body.entries ?? [];
 }

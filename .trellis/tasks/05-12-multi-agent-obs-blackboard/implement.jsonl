@@ -1,1 +1,12 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec 入口；本任务涉及多个 backend 层规范，先读 index 才能命中"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "B6 生命周期钩子在 Orchestrator+Expert 两层拓扑下的边界"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "B1 给 /api/agents 追加 status/current_task_id/last_heartbeat_at 字段必须沿用此契约"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "B3 blackboard_entry 透出 kind、B6 新增 agent_event.agent_status 子类型必须遵守 envelope"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "B1/B2 新 endpoint(/api/blackboard, /api/agents?include_status) 与现有 dashboard 路由风格对齐"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "新增 handler 与 BlackboardRegistry 查询的错误码 / 异常约定"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "BlackboardRegistry 注册/查询、agent_status 广播的日志规范"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 secbot/api/blackboard.py 与 BlackboardRegistry 模块归属"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend hard rules：no raw hex / chart whitelist / destructive 规范"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "状态 chip 配色 st-run/st-wait/st-idle/st-off 与黑板 4 色、blocker 呼吸动画 token 来源"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Sidebar 分组、Right Rail Tabs、BlackboardPanel 卡片结构必须遵守"}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Right Rail 在视图层级与 HomePage rightRail 切换的位置约束"}

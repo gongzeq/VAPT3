@@ -17,6 +17,7 @@ from secbot.config.schema import Config
 from secbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
 
 if TYPE_CHECKING:
+    from secbot.agent.blackboard import BlackboardRegistry
     from secbot.agent.subagent import SubagentManager
     from secbot.agents.registry import AgentRegistry
     from secbot.session.manager import SessionManager
@@ -58,12 +59,14 @@ class ChannelManager:
         session_manager: "SessionManager | None" = None,
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
+        blackboard_registry: "BlackboardRegistry | None" = None,
     ):
         self.config = config
         self.bus = bus
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
+        self._blackboard_registry = blackboard_registry
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
@@ -108,6 +111,8 @@ class ChannelManager:
                         kwargs["subagent_manager"] = self._subagent_manager
                     if self._agent_registry is not None:
                         kwargs["agent_registry"] = self._agent_registry
+                    if self._blackboard_registry is not None:
+                        kwargs["blackboard_registry"] = self._blackboard_registry
                 channel = cls(section, self.bus, **kwargs)
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key

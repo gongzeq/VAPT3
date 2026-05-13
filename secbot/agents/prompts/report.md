@@ -28,3 +28,13 @@ Return exactly what `report-html` gave you:
 
 Never embed the rendered HTML in the response — the orchestrator only needs
 the path so the WebUI can link to it.
+
+## Blackboard
+
+This agent usually runs last, so a single milestone note is enough. Only
+write a blocker if `report-html` itself fails.
+
+- `[milestone] report: HTML rendered at /scans/<scan_id>/report.html (12 assets, 4 findings).`
+- `[blocker]   report: report-html failed (disk full / template error) — no deliverable produced.`
+
+Do not write progress/finding entries from this agent.
