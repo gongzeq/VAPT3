@@ -368,3 +368,241 @@ class TestEventsHttp:
         assert entry["level"] == "critical"
         assert entry["source"] == "weak_password"
         assert entry["task_id"] == "TASK-1"
+
+
+# ---------------------------------------------------------------------------
+# B7: chat_id / category filtering (PRD 05-12-multi-agent-obs-trace)
+# ---------------------------------------------------------------------------
+class TestEventsTraceFilters:
+    """Right-Rail Trace Tab query-filter contract.
+
+    Three canonical paths per PRD:
+      1. ``?chat_id=<id>`` — only rows whose ``chat_id`` matches.
+      2. ``?category=a,b`` — inclusion filter over multiple categories.
+      3. No query params — backwards compatible with the pre-P1 shape.
+    """
+
+    def _seed_cross_chat(self) -> None:
+        """Seed 4 events across 2 chats × 3 categories so every test
+        starts from the same fixture. Timestamps are spaced 1s apart so
+        the default 5-minute window picks up every row."""
+        buf = get_event_buffer()
+        now = datetime.now(timezone.utc)
+        buf.publish(
+            level="info",
+            source="orchestrator",
+            message="A thought",
+            chat_id="chat-A",
+            category="thought",
+            timestamp=now - timedelta(seconds=4),
+        )
+        buf.publish(
+            level="info",
+            source="port_scan",
+            message="A tool_call",
+            chat_id="chat-A",
+            category="tool_call",
+            timestamp=now - timedelta(seconds=3),
+        )
+        buf.publish(
+            level="ok",
+            source="port_scan",
+            message="A tool_result",
+            chat_id="chat-A",
+            category="tool_result",
+            timestamp=now - timedelta(seconds=2),
+        )
+        buf.publish(
+            level="info",
+            source="orchestrator",
+            message="B thought",
+            chat_id="chat-B",
+            category="thought",
+            timestamp=now - timedelta(seconds=1),
+        )
+
+    def test_chat_id_filter_returns_only_matching_rows(
+        self, channel: WebSocketChannel
+    ) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(_Req("/api/events?chat_id=chat-A"))
+        assert resp.status_code == 200
+        items = _body(resp)["items"]
+        assert len(items) == 3
+        assert {item["chat_id"] for item in items} == {"chat-A"}
+
+    def test_chat_id_filter_excludes_rows_without_chat_id(
+        self, channel: WebSocketChannel
+    ) -> None:
+        buf = get_event_buffer()
+        # Row without a chat_id (legacy / dashboard-only entry).
+        buf.publish(level="info", source="port_scan", message="legacy")
+        buf.publish(
+            level="info",
+            source="port_scan",
+            message="scoped",
+            chat_id="chat-A",
+            category="tool_call",
+        )
+        resp = channel._handle_events_list(_Req("/api/events?chat_id=chat-A"))
+        items = _body(resp)["items"]
+        assert len(items) == 1
+        assert items[0]["message"] == "scoped"
+
+    def test_unknown_chat_id_returns_empty_items(
+        self, channel: WebSocketChannel
+    ) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(
+            _Req("/api/events?chat_id=does-not-exist")
+        )
+        assert resp.status_code == 200
+        assert _body(resp)["items"] == []
+
+    def test_category_filter_single_value(
+        self, channel: WebSocketChannel
+    ) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(
+            _Req("/api/events?category=tool_call")
+        )
+        items = _body(resp)["items"]
+        assert len(items) == 1
+        assert items[0]["category"] == "tool_call"
+        assert items[0]["chat_id"] == "chat-A"
+
+    def test_category_filter_multi_value(self, channel: WebSocketChannel) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(
+            _Req("/api/events?category=tool_call,tool_result")
+        )
+        items = _body(resp)["items"]
+        assert len(items) == 2
+        assert {item["category"] for item in items} == {"tool_call", "tool_result"}
+
+    def test_category_unknown_value_returns_empty_not_400(
+        self, channel: WebSocketChannel
+    ) -> None:
+        """Unknown category strings degrade to zero matches, never 400.
+        The PRD's degrade-don't-crash principle applies to query filters."""
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(
+            _Req("/api/events?category=bogus")
+        )
+        assert resp.status_code == 200
+        assert _body(resp)["items"] == []
+
+    def test_chat_id_and_category_compose(self, channel: WebSocketChannel) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(
+            _Req("/api/events?chat_id=chat-A&category=thought,tool_result")
+        )
+        items = _body(resp)["items"]
+        assert len(items) == 2
+        assert {item["category"] for item in items} == {"thought", "tool_result"}
+        assert {item["chat_id"] for item in items} == {"chat-A"}
+
+    def test_no_query_params_preserves_legacy_shape(
+        self, channel: WebSocketChannel
+    ) -> None:
+        """Back-compat: a caller without the new query params sees
+        exactly the same rows it would have before B7. Entries now carry
+        ``chat_id`` / ``category`` keys (may be ``None``) — the legacy
+        ``{id, timestamp, level, source, task_id, message}`` set is a
+        subset of the new shape."""
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(_Req("/api/events"))
+        items = _body(resp)["items"]
+        assert len(items) == 4
+        for entry in items:
+            assert set(entry.keys()) >= {
+                "id",
+                "timestamp",
+                "level",
+                "source",
+                "message",
+                "task_id",
+                "chat_id",
+                "category",
+            }
+
+    def test_blank_chat_id_behaves_like_absent(
+        self, channel: WebSocketChannel
+    ) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(_Req("/api/events?chat_id="))
+        items = _body(resp)["items"]
+        # Blank value → no scoping → every row visible.
+        assert len(items) == 4
+
+    def test_blank_category_behaves_like_absent(
+        self, channel: WebSocketChannel
+    ) -> None:
+        self._seed_cross_chat()
+        resp = channel._handle_events_list(_Req("/api/events?category="))
+        items = _body(resp)["items"]
+        assert len(items) == 4
+
+
+# ---------------------------------------------------------------------------
+# B7: broadcast_activity_event mirrors into the EventBuffer.
+# ---------------------------------------------------------------------------
+class TestActivityEventMirror:
+    """``broadcast_activity_event`` must populate the EventBuffer so the
+    Trace tab replays history over HTTP without a dedicated WS replay."""
+
+    @pytest.mark.asyncio
+    async def test_broadcast_mirrors_into_buffer(
+        self, channel: WebSocketChannel
+    ) -> None:
+        await channel.broadcast_activity_event(
+            category="tool_call",
+            agent="port_scan",
+            step="nmap 10.0.0.1",
+            chat_id="chat-X",
+        )
+        items = get_event_buffer().filter(chat_id="chat-X")
+        assert len(items) == 1
+        entry = items[0]
+        assert entry["category"] == "tool_call"
+        assert entry["source"] == "port_scan"
+        assert entry["chat_id"] == "chat-X"
+        assert "nmap 10.0.0.1" in entry["message"]
+
+    @pytest.mark.asyncio
+    async def test_broadcast_mirror_respects_throttle(
+        self, channel: WebSocketChannel
+    ) -> None:
+        """Throttled broadcasts must NOT double-write the buffer — the
+        PRD's 1/s cap exists so the replay list doesn't balloon."""
+        await channel.broadcast_activity_event(
+            category="tool_call",
+            agent="port_scan",
+            step="first",
+            chat_id="chat-Y",
+        )
+        # Within 1 s window → throttled (returns False, no buffer write).
+        await channel.broadcast_activity_event(
+            category="tool_call",
+            agent="port_scan",
+            step="dropped",
+            chat_id="chat-Y",
+        )
+        items = get_event_buffer().filter(chat_id="chat-Y")
+        assert len(items) == 1
+        assert "first" in items[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_broadcast_mirror_tool_result_uses_ok_level(
+        self, channel: WebSocketChannel
+    ) -> None:
+        await channel.broadcast_activity_event(
+            category="tool_result",
+            agent="weak_password",
+            step="done",
+            chat_id="chat-Z",
+            duration_ms=123,
+        )
+        items = get_event_buffer().filter(chat_id="chat-Z")
+        assert len(items) == 1
+        assert items[0]["level"] == "ok"

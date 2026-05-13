@@ -1,1 +1,7 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "check 对照后端 hard rules / pre-impl checklist"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "check /api/events query 行为与 §3.x 是否一致（不带 query 兼容 / chat_id 未知返空数组 / category 多值解析）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "check 400 校验错 / degrade-don't-crash 是否遵守"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "check 是否覆盖 3 条路径单测（带 chat_id / 多 category / 不带 query）"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "check 前端 hard rules（无 raw hex / 组件复用 / 依赖白名单）"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "check ActivityEventStream 复用模式 / Tabs §1 三 sub-component 上限"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "check 是否误引入 raw hex / 非语义 token"}

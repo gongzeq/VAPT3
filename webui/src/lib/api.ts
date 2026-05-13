@@ -255,6 +255,12 @@ export interface FetchActivityEventsOptions {
   since?: string;
   /** Default 50; backend caps at ring-buffer capacity (500). */
   limit?: number;
+  /** Right-Rail Trace scope: restrict the HTTP replay to one chat. */
+  chatId?: string;
+  /** Right-Rail Trace scope: include only rows whose ``category`` is in
+   * this set. Serialised as a comma-joined query param (matches the
+   * backend's ``?category=a,b`` contract). */
+  categories?: ReadonlyArray<string>;
 }
 
 export async function fetchActivityEvents(
@@ -265,6 +271,10 @@ export async function fetchActivityEvents(
   const query = new URLSearchParams();
   if (options.since) query.set("since", options.since);
   if (options.limit !== undefined) query.set("limit", String(options.limit));
+  if (options.chatId) query.set("chat_id", options.chatId);
+  if (options.categories && options.categories.length > 0) {
+    query.set("category", options.categories.join(","));
+  }
   const qs = query.toString();
   return request<ActivityEventListResponse>(
     `${base}/api/events${qs ? `?${qs}` : ""}`,

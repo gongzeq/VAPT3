@@ -41,6 +41,15 @@ export interface UseActivityStreamOptions {
   /** Inject an alternative ``now()`` — used by tests to stabilise the
    * WS-derived event id (falls back to the frame's ``timestamp``). */
   now?: () => number;
+  /** Right-Rail Trace scope: when set, the HTTP seed uses
+   * ``?chat_id=<id>`` and every incoming WS frame is dropped unless
+   * ``frame.chat_id === chatId``. Omitting this keeps the dashboard's
+   * pre-existing global feed behaviour (D1 in the PRD: hook shape is
+   * additive; callers that don't pass ``chatId`` are unaffected). */
+  chatId?: string;
+  /** Right-Rail Trace scope: category inclusion filter. Applied on
+   * both the HTTP seed (as ``?category=a,b``) and the live WS stream. */
+  categories?: ReadonlyArray<ActivityCategory>;
 }
 
 /**
@@ -139,7 +148,7 @@ function dedupeAndSort(events: ActivityEvent[]): ActivityEvent[] {
 export function useActivityStream(
   options: UseActivityStreamOptions = {},
 ): UseActivityStreamResult {
-  const { seedLimit = DEFAULT_SEED_LIMIT } = options;
+  const { seedLimit = DEFAULT_SEED_LIMIT, chatId, categories } = options;
   const { client, token } = useClient();
 
   const [events, setEvents] = useState<ActivityEvent[]>([]);
@@ -150,6 +159,18 @@ export function useActivityStream(
   const lastCommittedRef = useRef(0);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+
+  // Freeze the categories list into a stable reference so effects don't
+  // re-fire on every parent render. A joined string is cheaper than
+  // array reference equality in deps.
+  const categoriesKey = useMemo(
+    () => (categories ? categories.join(",") : ""),
+    [categories],
+  );
+  const categoriesRef = useRef<ReadonlyArray<ActivityCategory> | undefined>(
+    categories,
+  );
+  categoriesRef.current = categories;
 
   const refresh = useCallback(async () => {
     const activeToken = tokenRef.current;
@@ -163,7 +184,11 @@ export function useActivityStream(
     setState((prev) => (prev === "ready" ? prev : "loading"));
     setErrorCode(null);
     try {
-      const body = await fetchActivityEvents(activeToken, { limit: seedLimit });
+      const body = await fetchActivityEvents(activeToken, {
+        limit: seedLimit,
+        chatId: chatId || undefined,
+        categories: categoriesRef.current,
+      });
       if (myId < lastCommittedRef.current) return;
       lastCommittedRef.current = myId;
       const seed = Array.isArray(body.items) ? body.items : [];
@@ -175,20 +200,29 @@ export function useActivityStream(
       setErrorCode(err instanceof ApiError ? String(err.status) : "network");
       setState("error");
     }
-  }, [seedLimit]);
+  }, [seedLimit, chatId, categoriesKey]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // Category set is rebuilt only when the joined key changes — cheap
+  // lookup inside the (potentially hot) WS handler.
+  const categorySet = useMemo(() => {
+    if (!categories || categories.length === 0) return null;
+    return new Set<string>(categories as unknown as string[]);
+  }, [categoriesKey]);
+
   // WS subscription — independent of REST seed lifecycle. Keep it mounted
   // for the life of the component; unsubscribe on unmount.
   useEffect(() => {
     const unsubscribe = client.onActivityEvent((frame) => {
+      if (chatId && frame.chat_id !== chatId) return;
+      if (categorySet && !categorySet.has(String(frame.category))) return;
       setEvents((prev) => dedupeAndSort([frameToEvent(frame), ...prev]));
     });
     return unsubscribe;
-  }, [client]);
+  }, [client, chatId, categorySet]);
 
   return useMemo(
     () => ({ events, state, errorCode, refresh }),

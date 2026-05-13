@@ -12,6 +12,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActivityStream } from "@/hooks/useActivityStream";
 import type {
+  ActivityCategory,
   ActivityEvent,
   ActivityLevel,
   ActivitySource,
@@ -62,6 +63,13 @@ export interface ActivityEventStreamProps {
   state?: "loading" | "ready" | "error";
   errorCode?: string | null;
   onRefresh?: () => void;
+  /** Right-Rail Trace scope: forwarded to :func:`useActivityStream`.
+   * When set, the HTTP seed uses ``?chat_id=<id>`` and live WS frames
+   * are filtered to ``frame.chat_id === chatId``. Omitting this keeps
+   * the dashboard's global feed behaviour (D1 in the PRD). */
+  chatId?: string;
+  /** Right-Rail Trace scope: forwarded to :func:`useActivityStream`. */
+  categories?: ReadonlyArray<ActivityCategory>;
 }
 
 /** Thin presentational shell — accepts pre-rendered data. Kept pure so
@@ -234,8 +242,19 @@ function ActivityEventStreamView({
 }
 
 /** Live wrapper: hosts :func:`useActivityStream` and forwards to the view. */
-function ActivityEventStreamLive({ height }: { height?: number | string }) {
-  const { events, state, errorCode, refresh } = useActivityStream();
+function ActivityEventStreamLive({
+  height,
+  chatId,
+  categories,
+}: {
+  height?: number | string;
+  chatId?: string;
+  categories?: ReadonlyArray<ActivityCategory>;
+}) {
+  const { events, state, errorCode, refresh } = useActivityStream({
+    chatId,
+    categories,
+  });
   return (
     <ActivityEventStreamView
       height={height}
@@ -262,6 +281,8 @@ export function ActivityEventStream({
   state,
   errorCode,
   onRefresh,
+  chatId,
+  categories,
 }: ActivityEventStreamProps) {
   if (events !== undefined) {
     return (
@@ -274,7 +295,13 @@ export function ActivityEventStream({
       />
     );
   }
-  return <ActivityEventStreamLive height={height} />;
+  return (
+    <ActivityEventStreamLive
+      height={height}
+      chatId={chatId}
+      categories={categories}
+    />
+  );
 }
 
 export default ActivityEventStream;

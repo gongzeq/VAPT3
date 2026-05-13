@@ -3,7 +3,7 @@
   "name": "multi-agent-obs-trace",
   "title": "P1: Right Rail Trace Tab 复用 ActivityEventStream",
   "description": "落地 gap 文档 Task 3 —— B7 后端 /api/events 增加 chat_id 过滤 + F7/F9 前端 Right Rail 新增 Trace Tab 复用 ActivityEventStream。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

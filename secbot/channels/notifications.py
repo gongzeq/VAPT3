@@ -58,6 +58,9 @@ ALLOWED_EVENT_SOURCES: tuple[str, ...] = (
     "report",
     "orchestrator",
 )
+# Activity categories — sourced from ``broadcast_activity_event`` callers
+# (orchestrator / subagent loop). Forward-compat with unknown values.
+ALLOWED_EVENT_CATEGORIES: tuple[str, ...] = ("thought", "tool_call", "tool_result")
 
 
 def _resolve_maxlen(
@@ -284,17 +287,27 @@ class EventBuffer:
         source: str,
         message: str,
         task_id: Optional[str] = None,
+        chat_id: Optional[str] = None,
+        category: Optional[str] = None,
         timestamp: Optional[datetime] = None,
     ) -> dict[str, Any]:
         """Append a new event row. Timestamp defaults to ``now(UTC)``.
 
-        Unknown ``level`` / ``source`` values are logged once per call
-        but still accepted (forward-compat with agent-specific tags).
+        Unknown ``level`` / ``source`` / ``category`` values are logged
+        once per call but still accepted (forward-compat with
+        agent-specific tags).
+
+        ``chat_id`` / ``category`` carry the Right-Rail Trace dimension
+        introduced by PRD ``05-12-multi-agent-obs-trace``. Both are
+        optional so legacy callers (tests / global activity feed) stay
+        unchanged — unset fields serialise as ``None``.
         """
         if level not in ALLOWED_EVENT_LEVELS:
             logger.warning("events.unknown_level level=%s", level)
         if source not in ALLOWED_EVENT_SOURCES:
             logger.warning("events.unknown_source source=%s", source)
+        if category is not None and category not in ALLOWED_EVENT_CATEGORIES:
+            logger.warning("events.unknown_category category=%s", category)
         ts_dt = timestamp or datetime.now(timezone.utc)
         if ts_dt.tzinfo is None:
             # Normalise naive datetimes to UTC so filter() compares apples
@@ -308,6 +321,8 @@ class EventBuffer:
             "source": source,
             "task_id": task_id,
             "message": message,
+            "chat_id": chat_id,
+            "category": category,
         }
         with self._lock:
             self._items.appendleft((ts_dt, entry))
@@ -320,7 +335,12 @@ class EventBuffer:
             return [dict(entry) for _, entry in self._items]
 
     def filter(
-        self, *, since: Optional[datetime] = None, limit: int = 50
+        self,
+        *,
+        since: Optional[datetime] = None,
+        limit: int = 50,
+        chat_id: Optional[str] = None,
+        categories: Optional[Iterable[str]] = None,
     ) -> list[dict[str, Any]]:
         """Return events whose timestamp is ``>= since``, newest-first.
 
@@ -328,6 +348,17 @@ class EventBuffer:
         (configurable via :data:`DEFAULT_EVENTS_WINDOW_SECONDS` or the env
         override). ``limit`` clamps the response size — values <=0 return
         an empty list.
+
+        ``chat_id`` / ``categories`` are Right-Rail Trace filters (PRD
+        ``05-12-multi-agent-obs-trace`` §B7):
+
+        * ``chat_id`` — exact string match on ``entry["chat_id"]``; rows
+          without a ``chat_id`` are excluded when this filter is set.
+        * ``categories`` — inclusion match on ``entry["category"]``;
+          empty iterable behaves the same as ``None`` (no filter).
+
+        Unknown values simply yield zero matches — the handler MUST NOT
+        raise on unexpected inputs (degrade-don't-crash).
         """
         if limit <= 0:
             return []
@@ -338,6 +369,12 @@ class EventBuffer:
         elif since.tzinfo is None:
             since = since.replace(tzinfo=timezone.utc)
 
+        category_set: Optional[set[str]] = None
+        if categories is not None:
+            category_set = {c for c in categories if c}
+            if not category_set:
+                category_set = None
+
         with self._lock:
             picks: list[dict[str, Any]] = []
             # Iterate newest-first; break early once we drop below ``since``
@@ -345,6 +382,13 @@ class EventBuffer:
             for ts_dt, entry in self._items:
                 if ts_dt < since:
                     break
+                if chat_id is not None and entry.get("chat_id") != chat_id:
+                    continue
+                if (
+                    category_set is not None
+                    and entry.get("category") not in category_set
+                ):
+                    continue
                 picks.append(dict(entry))
                 if len(picks) >= limit:
                     break

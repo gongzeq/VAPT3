@@ -159,6 +159,77 @@ Rules:
 - `last_heartbeat_at` is an **ISO-8601 UTC timestamp** (`+00:00` suffix). Client-side time-zone display is the frontend's responsibility. Sourced from the last `SubagentStatus.updated_at`; falls back to `HeartbeatService` when available.
 - HTTP and WebSocket surfaces MUST stay consistent: see `secbot/channels/websocket.py::WebSocketChannel.broadcast_agent_event` — the `agent_event.agent_status` frame (§3.3 below) carries the same tuple.
 
+### 2.7 `GET /api/events`
+
+> Added 2026-05-13. Origin: PRD `05-12-multi-agent-obs-trace` §B7. Implementation: `secbot/channels/websocket.py::_handle_events_list` + `secbot/channels/notifications.py::EventBuffer`.
+
+Serves two surfaces over one contract:
+
+- **Global activity feed** (dashboard) — no query filter; returns every recent row.
+- **Right-Rail Trace tab** — caller restricts by `chat_id` (+ optional `category`) to rehydrate a single conversation's timeline after a fresh mount or reconnect.
+
+#### Request
+
+```
+GET /api/events?since=<iso>&limit=<n>&chat_id=<id>&category=<a,b,c>
+```
+
+| Param | Type | Default | Rules |
+|-------|------|---------|-------|
+| `since` | ISO-8601 string | `now - DEFAULT_EVENTS_WINDOW_SECONDS` (5 min) | Invalid timestamp → `400`. Accepts `±HH:MM` offset. |
+| `limit` | int | `50` | Clamp to `[1, 500]`; `<=0` → empty list (not 400). |
+| `chat_id` | string | — | Exact match on `entry.chat_id`. Blank / absent → no chat scoping (global feed). Rows without a `chat_id` are excluded when this filter is set. |
+| `category` | comma-separated set | — | Subset of `ALLOWED_EVENT_CATEGORIES = ("thought", "tool_call", "tool_result")`. Blank / absent → no category filter. Unknown values yield zero matches rather than `400` (degrade-don't-crash). |
+
+#### Response
+
+```json
+{
+  "items": [
+    {
+      "timestamp": "2026-05-13T10:00:00+00:00",
+      "level":    "info|ok|warn|error",
+      "source":   "orchestrator|planner|asset_discovery|…",
+      "message":  "<human-readable label>",
+      "task_id":  "TASK-… or null",
+      "chat_id":  "0e1b…c8 or null",
+      "category": "thought|tool_call|tool_result or null"
+    }
+  ]
+}
+```
+
+Rules:
+- Response is a bare `{items: [...]}` object. **No `total` field** — the buffer is a bounded ring, not a paginated resource.
+- `chat_id` / `category` are always present in entries (may be `null` for legacy publishers that predate the Trace dimension, e.g. notification API callers).
+- Ordering: newest-first by `timestamp`.
+
+#### Mirror contract with WS
+
+Every non-throttled `broadcast_activity_event` frame (see §3.5) mirrors itself into the `EventBuffer` with:
+- `source = agent`
+- `level = "ok"` when `category == "tool_result"`, else `"info"`
+- `message = " · ".join([agent, step, category])`
+- `chat_id` / `category` from the frame
+
+This lets a newly-mounted Trace tab call `GET /api/events?chat_id=...&category=tool_call,tool_result` and receive history that matches what live WS frames will deliver next. Mirror failures are logged but **must not** break the WS broadcast.
+
+#### Validation & Error Matrix
+
+| Input | Result |
+|-------|--------|
+| `since=not-a-date` | `400 {"error": "since must be an ISO-8601 timestamp"}` |
+| `limit=0` or `limit=-1` | `200 {"items": []}` |
+| `limit=9999` | clamped to ring capacity (500), `200` |
+| `chat_id=` (blank) | treated as absent → global feed |
+| `category=foo` (unknown) | `200 {"items": []}` (no 400) |
+| `category=tool_call,` (trailing comma) | parsed as `["tool_call"]`, not error |
+| `chat_id=<id>` (no such chat) | `200 {"items": []}` |
+
+#### Tests Required
+
+`tests/api/test_events.py::TestEventsTraceFilters` asserts each of the above cases. `tests/api/test_events.py::TestActivityEventMirror` asserts the WS-broadcast → HTTP-replay parity (including that the throttled second call does NOT double-mirror).
+
 ---
 
 ## 3. WebSocket broadcast complements
@@ -226,6 +297,32 @@ Rules:
 ### 3.4 `agent_event.blackboard_entry`
 
 Emitted by `secbot/agent/blackboard.py::Blackboard.write()` whenever an entry is committed. The payload carries an optional `kind` auto-extracted from the leading `[tag]` prefix; see [blackboard-registry.md](./blackboard-registry.md) for the contract.
+
+### 3.5 `activity_event`
+
+> Added 2026-05-13. Origin: PRD `05-12-multi-agent-obs-trace` §B7. Emitter: `secbot/channels/websocket.py::WebSocketChannel.broadcast_activity_event`.
+
+Per-conversation observability frame that drives the Right-Rail Trace tab. Throttled to **1 frame / 1s per `chat_id`** — callers burst multiple tool-calls per second but the UI only needs one point per second per conversation.
+
+Frame shape:
+
+```json
+{
+  "event": "activity_event",
+  "chat_id": "0e1b…c8",
+  "category": "thought|tool_call|tool_result",
+  "agent":    "orchestrator|<subagent-name>",
+  "step":     "<skill name | phase label>",
+  "duration_ms": 1234,
+  "timestamp": "2026-05-13T10:00:00+00:00"
+}
+```
+
+Rules:
+- `category` ∈ `ALLOWED_EVENT_CATEGORIES` (`notifications.py`). Unknown values are still broadcast (forward-compat) but the HTTP mirror logs a warning.
+- `duration_ms` is optional; emitted on `tool_result` frames when the skill tracked wall-clock time.
+- Every non-throttled frame mirrors into `EventBuffer` (see §2.7 "Mirror contract with WS"). Throttled frames are **not** mirrored — otherwise history would double-count during bursts.
+- Client-side consumers (`webui/src/hooks/useActivityStream.ts`) that pass `chatId` MUST drop frames whose `chat_id` does not match (defence-in-depth: the server already scopes by dispatch path, but cross-chat multiplexed sockets are allowed).
 
 ---
 

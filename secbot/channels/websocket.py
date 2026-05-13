@@ -1659,6 +1659,14 @@ class WebSocketChannel(BaseChannel):
             Python's ``datetime.fromisoformat`` accepts, including the
             ``+08:00`` offset the agent loop emits. Invalid input → 400.
           * ``limit`` — 1..500, default 50.
+          * ``chat_id`` — exact match on the event's ``chat_id`` field.
+            Rows without a ``chat_id`` are excluded. Absent / blank value
+            falls back to the pre-existing behaviour (no chat scoping).
+          * ``category`` — comma-separated set (``tool_call,tool_result,
+            thought``). Only rows whose ``category`` is in the set match.
+            Absent / blank → no category filter. Unknown values yield
+            zero matches rather than 400 (degrade-don't-crash, per
+            PRD ``05-12-multi-agent-obs-trace``).
 
         When ``since`` is omitted, the buffer's default 5-minute window
         applies (see :data:`DEFAULT_EVENTS_WINDOW_SECONDS`).
@@ -1688,7 +1696,22 @@ class WebSocketChannel(BaseChannel):
             except ValueError:
                 return _http_error(400, "since must be an ISO-8601 timestamp")
 
-        items = get_event_buffer().filter(since=since_dt, limit=limit)
+        chat_id_raw = (_query_first(query, "chat_id") or "").strip()
+        chat_id = chat_id_raw or None
+
+        category_raw = (_query_first(query, "category") or "").strip()
+        categories: list[str] | None = None
+        if category_raw:
+            categories = [c.strip() for c in category_raw.split(",") if c.strip()]
+            if not categories:
+                categories = None
+
+        items = get_event_buffer().filter(
+            since=since_dt,
+            limit=limit,
+            chat_id=chat_id,
+            categories=categories,
+        )
         return _http_json_response({"items": items})
 
     # -- WebSocket event broadcasts (task_update / blackboard_update) -------
@@ -1776,6 +1799,12 @@ class WebSocketChannel(BaseChannel):
         §5 (WebSocket event). Throttle scope is per-``chat_id`` — agents can
         burst several tool-calls per second but the dashboard only needs one
         point per second per conversation.
+
+        Side-effect: non-throttled frames are mirrored to the shared
+        :class:`EventBuffer` so the Right-Rail Trace tab (PRD
+        ``05-12-multi-agent-obs-trace``) can replay history over HTTP.
+        Mirror failures are logged but never raise — the WS frame is the
+        authoritative delivery path.
         """
 
         if self._should_throttle_broadcast("activity_event", chat_id):
@@ -1790,6 +1819,28 @@ class WebSocketChannel(BaseChannel):
         }
         if duration_ms is not None:
             body["duration_ms"] = int(duration_ms)
+
+        # Mirror into the shared ring buffer so /api/events?chat_id=...
+        # replays it for newly-mounted Trace panels.
+        try:
+            from secbot.channels.notifications import get_event_buffer
+
+            level = "ok" if category == "tool_result" else "info"
+            # ``agent`` is the logical source; keep the forward-compat
+            # contract — EventBuffer.publish() logs unknown sources but
+            # still stores the row.
+            message_bits = [agent, step, category]
+            message = " · ".join(bit for bit in message_bits if bit)
+            get_event_buffer().publish(
+                level=level,
+                source=agent,
+                message=message,
+                chat_id=chat_id,
+                category=category,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("events.mirror_failed chat_id=%s err=%s", chat_id, exc)
+
         return await self._broadcast_frame(body, chat_id=chat_id)
 
     async def broadcast_agent_event(
