@@ -480,3 +480,36 @@ B5 subagent tool_call 广播 + B6 WebUI surface_confirm / scan.user_reply + F1~F
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 05-12-multi-agent-obs-trace (P1 Right Rail Trace Tab)
+
+**Date**: 2026-05-13
+**Task**: 05-12-multi-agent-obs-trace (P1 Right Rail Trace Tab)
+**Branch**: `main`
+
+### Summary
+
+B7 /api/events chat_id+category filter & broadcast mirror; F9 useActivityStream/ActivityEventStream/fetchActivityEvents additive chatId+categories (dashboard back-compat); F7 RightRail Blackboard|Trace|Prompts tabs + empty state; spec dashboard-aggregation.md §2.7+§3.5; tests 40 backend + 4 frontend (all green)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9fe2bba0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
