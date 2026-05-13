@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "§0 LLM Reach-Out Surface 四条不变式：exec 默关 / 全走 SkillTool / scoped_skills 白名单 / critical 必经 confirm——本任务的合规基线"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "SKILL.md front-matter + handler.run 签名 + risk_level 枚举——核对新 skill 是否字段齐全、签名一致"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "risk=critical 必须 await ctx.confirm(...) 阻塞的合同——核对 hydra/sqlmap 等 critical skill 是否真的门控"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "availability / missing_binaries / /api/agents 契约——核对健康检查语义与 offline 专家的剔除路径"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "离线 agent 从可选列表剔除的注入策略——核对 Orchestrator 看到的 agent 列表是否与 registry 实时状态一致"}
