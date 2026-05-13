@@ -119,6 +119,7 @@
       "placeholderStreaming": "Model is responding…",
       "inputAria": "Message input",
       "sendHint": "Enter to send · Shift+Enter for newline",
+      "toolHintLabel": "Available tools:",
       "send": "Send message",
       "stop": "Stop generating",
       "attachImage": "Attach image",
