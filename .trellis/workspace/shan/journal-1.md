@@ -546,3 +546,60 @@ agent_event 统一广播协议（backend loop/subagent/blackboard 侧发送 thou
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: 收尾 05-11-security-tools-as-tools：exec 默关 + Skill-as-Tool 文档
+
+**Date**: 2026-05-13
+**Task**: 收尾 05-11-security-tools-as-tools：exec 默关 + Skill-as-Tool 文档
+**Branch**: `main`
+
+### Summary
+
+PRD §D4 exec 默关落地 + Skill-as-Tool 指南 + tool-invocation-safety §0 不变式 + check.jsonl curate + archive
+
+### Main Changes
+
+# Session 收尾 05-11-security-tools-as-tools
+
+## 任务范围
+PRD 四 PR 中前三 PR 代码已落地（SkillTool / 7 新 skill / AgentRegistry + /api/agents）。本 session 聚焦 PR4 剩余 gap 与文档/spec 收尾。
+
+## 收尾改动（commit ad9dff69）
+1. `secbot/config/schema.py`：`ExecToolConfig.enable` 默认值 `True → False`（PRD §D4 核心决策落地）。行内中文注释说明：LLM 不再直调 shell；所有安全 binary 经 SkillTool/sandbox；进阶用户可显式 enable=True。
+2. `docs/skill-as-tool.md`（新建，104 行）：Skill 写作指南 + risk_level 四级行为表 + runtime wiring + SkillTool 错误映射 + re-enabling exec 节。
+3. `.trellis/spec/backend/tool-invocation-safety.md`：标题描述扩容（httpx/ffuf/sqlmap）+ 默关脚注 + 新增 §0 "LLM Reach-Out Surface"（4 条不变式 + 3 条 Consequences，exec 回 True 视作 P0 安全回归）。
+4. `.trellis/tasks/.../check.jsonl`：curated 5 条（tool-invocation-safety / skill-contract / high-risk-confirmation / agent-registry-contract / orchestrator-prompt）。
+
+## 验证
+- exec 套件：86 passed
+- tests/agent + channels + api：1238 passed（2 pre-existing baseline fail 与本改动无关）
+- 工作区无残留未提交改动（本任务 scope 内）
+
+## 关键决策
+- Triage 发现代码已基本就位，仅剩配置 flip + 文档/spec → 走"完整收尾"而非补实施，避免重复劳动。
+- check.jsonl 精选 5 条，聚焦合规审查视角（不与 implement.jsonl 12 条重合冗余）。
+
+## 提交链
+- `ad9dff69` feat(security-tools): exec 默关 + Skill-as-Tool 契约文档 + tool-invocation-safety §0
+- `9e1d277e` chore(task): archive 05-11-security-tools-as-tools
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ad9dff69` | (see git log) |
+| `9e1d277e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

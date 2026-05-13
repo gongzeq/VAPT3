@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
+- **Total Sessions**: 10
 - **Last Active**: 2026-05-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~548 | Active |
+| `journal-1.md` | ~605 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-05-13 | 收尾 05-11-security-tools-as-tools：exec 默关 + Skill-as-Tool 文档 | `ad9dff69`, `9e1d277e` | `main` |
 | 9 | 2026-05-13 | 05-11-frontend-agent-display-gap (P2 前端思维链/子智能体/黑板缺口) | `06956e94` | `main` |
 | 8 | 2026-05-13 | 05-12-multi-agent-obs-trace (P1 Right Rail Trace Tab) | `9fe2bba0` | `main` |
 | 7 | 2026-05-12 | multi-agent-obs-tool-call B5+B6+F1-F5 实现 | - | `main` |
