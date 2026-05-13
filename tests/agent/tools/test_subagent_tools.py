@@ -13,8 +13,13 @@ _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
 
 @pytest.mark.asyncio
-async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
-    """allowed_env_keys from ExecToolConfig must be forwarded to the subagent's ExecTool."""
+async def test_subagent_never_registers_exec_tool(tmp_path):
+    """Subagents must NEVER receive an ExecTool, even if exec_config asks for it.
+
+    Hard-disabled per `.trellis/tasks/archive/2026-05/05-11-security-tools-as-tools/prd.md` §D4:
+    all shell access for security workflows MUST go through SkillTool. Operator
+    misconfiguration must NOT be able to leak ``exec`` back to the LLM.
+    """
     from secbot.agent.subagent import SubagentManager, SubagentStatus
     from secbot.bus.queue import MessageBus
     from secbot.config.schema import ExecToolConfig
@@ -27,14 +32,16 @@ async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
         workspace=tmp_path,
         bus=bus,
         max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-        exec_config=ExecToolConfig(allowed_env_keys=["GOPATH", "JAVA_HOME"]),
+        # Even with enable=True (which used to register ExecTool), the
+        # subagent tool registry must contain no ``exec`` entry.
+        exec_config=ExecToolConfig(enable=True, allowed_env_keys=["GOPATH"]),
     )
     mgr._announce_result = AsyncMock()
 
     async def fake_run(spec):
-        exec_tool = spec.tools.get("exec")
-        assert exec_tool is not None
-        assert exec_tool.allowed_env_keys == ["GOPATH", "JAVA_HOME"]
+        assert spec.tools.get("exec") is None, (
+            "ExecTool leaked into subagent — security workflows must use SkillTool only"
+        )
         return SimpleNamespace(
             stop_reason="done",
             final_content="done",
@@ -576,3 +583,111 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
 
     # Spec system_prompt must be prepended to the subagent system message.
     assert spec.system_prompt.strip().split("\n", 1)[0] in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_injects_blackboard_into_system_prompt(tmp_path):
+    """_run_subagent must inject current blackboard entries into the system prompt."""
+    from secbot.agent.blackboard import BlackboardRegistry
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.bus.queue import MessageBus
+
+    registry = BlackboardRegistry()
+    board = await registry.get_or_create("chat-1")
+    await board.write("asset_discovery", "[finding] 80,443 open on 10.0.0.1")
+    await board.write("port_scan", "[milestone] sweep complete")
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        blackboard_registry=registry,
+    )
+    mgr._announce_result = AsyncMock()
+
+    captured: dict = {}
+
+    async def fake_run(run_spec):
+        captured["system_prompt"] = run_spec.initial_messages[0]["content"]
+        return SimpleNamespace(
+            stop_reason="done", final_content="done", error=None, tool_events=[]
+        )
+
+    mgr.runner.run = AsyncMock(side_effect=fake_run)
+
+    status = SubagentStatus(
+        task_id="sub-y",
+        label="label",
+        task_description="scan",
+        started_at=time.monotonic(),
+    )
+    await mgr._run_subagent(
+        "sub-y",
+        "scan targets",
+        "label",
+        {"channel": "test", "chat_id": "chat-1"},
+        status,
+    )
+
+    prompt = captured["system_prompt"]
+    assert "Shared Blackboard (findings from previous agents)" in prompt
+    assert "[asset_discovery]" in prompt
+    assert "[finding] 80,443 open on 10.0.0.1" in prompt
+    assert "[port_scan]" in prompt
+    assert "[milestone] sweep complete" in prompt
+
+
+@pytest.mark.asyncio
+async def test_subagent_injects_empty_blackboard_placeholder(tmp_path):
+    """When the blackboard is empty, a placeholder should still be injected."""
+    from secbot.agent.blackboard import BlackboardRegistry
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.bus.queue import MessageBus
+
+    registry = BlackboardRegistry()
+    # Do NOT write anything — board stays empty.
+    _ = await registry.get_or_create("chat-2")
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        blackboard_registry=registry,
+    )
+    mgr._announce_result = AsyncMock()
+
+    captured: dict = {}
+
+    async def fake_run(run_spec):
+        captured["system_prompt"] = run_spec.initial_messages[0]["content"]
+        return SimpleNamespace(
+            stop_reason="done", final_content="done", error=None, tool_events=[]
+        )
+
+    mgr.runner.run = AsyncMock(side_effect=fake_run)
+
+    status = SubagentStatus(
+        task_id="sub-z",
+        label="label",
+        task_description="scan",
+        started_at=time.monotonic(),
+    )
+    await mgr._run_subagent(
+        "sub-z",
+        "scan targets",
+        "label",
+        {"channel": "test", "chat_id": "chat-2"},
+        status,
+    )
+
+    prompt = captured["system_prompt"]
+    assert "Shared Blackboard" in prompt
+    assert "currently empty" in prompt

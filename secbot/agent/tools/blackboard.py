@@ -48,7 +48,18 @@ class BlackboardWriteTool(Tool):
             "scanned')\n"
             "Tags are optional — the blackboard accepts any free text. Keep "
             "each note short (one or two sentences). Do NOT dump raw tool "
-            "output here; use your own summary_json for structured results."
+            "output here; use your own summary_json for structured results.\n\n"
+            "CRITICAL writing rules:\n"
+            "1. You MUST analyse the tool result first and extract only "
+            "decision-relevant findings. Do NOT paste raw HTTP responses, "
+            "scanner stdout, full JSON/XML, or command echo.\n"
+            "2. Each entry must be YOUR own summary and judgement — one to two "
+            "sentences covering only the key fact (e.g. open port, service type, "
+            "critical vulnerability).\n"
+            "3. If the same information was already written to the blackboard "
+            "by you or a peer agent, do NOT repeat it.\n"
+            "4. Before writing, ask yourself: 'Will this help the orchestrator "
+            "or the next agent make a better decision?' If not, skip it."
         )
 
     @property

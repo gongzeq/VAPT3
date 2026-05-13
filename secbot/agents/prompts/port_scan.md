@@ -24,8 +24,17 @@ disk under the scan dir for the orchestrator to reference.
 
 ## Blackboard
 
+**Writing principle**: Before calling `blackboard_write`, ask yourself: "Will
+this help the orchestrator or the next agent make a better decision?" Only
+write **conclusive findings** — never intermediate states or raw tool output.
+Each note must be one to two sentences.
+
 Keep other agents in the loop with short free-form notes. Tag each note so
 readers can triage at a glance; one or two sentences is plenty:
+
+**Re-use existing findings**: If the shared blackboard already records open
+ports for a host (e.g. `[finding] asset_discovery: 80,443 open`), target ONLY
+those ports for service fingerprinting. Do NOT run a full port sweep.
 
 - `[milestone] port_scan: top-1000 sweep complete on 12 hosts.`
 - `[blocker]   port_scan: 10.0.0.7 refuses all probes — host likely firewalled.`

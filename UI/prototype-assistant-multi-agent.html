@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="secbot">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Secbot · 智能助手 · 多智能体协作</title>
+<style>
+  /* === Tokens mirrored from webui/src/globals.css [data-theme="secbot"] === */
+  :root[data-theme="secbot"] {
+    --background: 230 20% 5%;
+    --foreground: 220 10% 92%;
+    --card: 230 18% 9%;
+    --card-foreground: 220 10% 92%;
+    --popover: 230 16% 12%;
+    --border: 230 12% 18%;
+    --border-subtle: 230 14% 14%;
+    --primary: 210 100% 56%;
+    --primary-foreground: 230 20% 5%;
+    --muted: 222 28% 14%;
+    --muted-foreground: 210 16% 65%;
+    --accent: 222 28% 14%;
+    --destructive: 0 100% 65%;
+    --text-primary: 220 10% 92%;
+    --text-secondary: 220 7% 64%;
+
+    --sev-critical: 0 100% 65%;
+    --sev-high: 22 100% 62%;
+    --sev-medium: 48 96% 53%;
+    --sev-low: 203 100% 62%;
+    --sev-info: 220 7% 64%;
+
+    --ocean-300: 210 100% 72%;
+    --ocean-500: 210 100% 56%;
+    --ocean-700: 210 92% 38%;
+    --cyan-glow: 189 94% 56%;
+
+    --alert-warning: 38 95% 56%;
+    --alert-success: 152 70% 45%;
+    --alert-info: 210 100% 56%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+    --gradient-subtle: linear-gradient(180deg, hsl(230 20% 5%), hsl(230 18% 9%));
+    --gradient-card: linear-gradient(140deg, hsl(222 47% 11% / 0.95), hsl(210 32% 14% / 0.85));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.30);
+
+    --radius: 0.4375rem;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  html { overflow: hidden; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(1200px 600px at 10% 0%, hsl(var(--ocean-500) / 0.08), transparent 60%),
+      radial-gradient(900px 500px at 100% 100%, hsl(var(--cyan-glow) / 0.05), transparent 60%),
+      var(--gradient-subtle);
+    -webkit-font-smoothing: antialiased;
+  }
+  :lang(zh) { line-height: 1.8; }
+
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  code, pre, .mono { font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace; }
+
+  /* ======================= Shell 布局 ======================= */
+  .shell {
+    display: flex;
+    width: 100%;
+    height: 100vh;
+    gap: 1.5rem;        /* Shell gap-6 */
+    padding: 1.5rem;    /* Shell p-6 */
+    overflow: hidden;
+  }
+  .card-surface {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;       /* rounded-2xl */
+    border: 1px solid hsl(var(--border));
+    background: var(--gradient-card);
+  }
+
+  .sidebar { width: 272px; flex-shrink: 0; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .rail { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; }
+
+  /* ======================= Sidebar ======================= */
+  .sb {
+    display: flex; flex-direction: column; height: 100%;
+  }
+  .sb-head {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid hsl(var(--border-subtle));
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600; font-size: 14px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--gradient-primary);
+    display: flex; align-items: center; justify-content: center;
+    color: hsl(var(--primary-foreground));
+    font-weight: 700; font-size: 14px;
+    box-shadow: var(--shadow-glow);
+  }
+  .brand .name-b { background: var(--gradient-primary); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sb-toggle {
+    margin-left: auto;
+    width: 28px; height: 28px; border-radius: 6px;
+    color: hsl(var(--muted-foreground));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sb-toggle:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+
+  .new-chat {
+    margin: 10px 14px 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: hsl(var(--primary) / 0.12);
+    border: 1px solid hsl(var(--primary) / 0.28);
+    color: hsl(var(--ocean-300));
+    font-size: 13px; font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+    transition: all 0.2s;
+  }
+  .new-chat:hover { background: hsl(var(--primary) / 0.18); transform: translateY(-1px); box-shadow: var(--shadow-elegant); }
+
+  .sb-group { padding: 6px 10px; overflow-y: auto; }
+  .sb-group-title {
+    padding: 10px 8px 6px;
+    font-size: 10px;
+    color: hsl(var(--text-secondary));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .sb-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 3px;
+    font-size: 13px;
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .sb-item:hover { background: hsl(var(--accent) / 0.5); }
+  .sb-item.active { background: hsl(var(--accent)); border-color: hsl(var(--border)); }
+  .sb-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .sb-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-item .time { font-size: 10px; color: hsl(var(--text-secondary)); flex-shrink: 0; }
+
+  /* Agent list */
+  .agent-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .agent-row:hover { background: hsl(var(--accent) / 0.4); }
+  .agent-row .avatar {
+    width: 28px; height: 28px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .av-orc  { background: var(--gradient-primary); color: hsl(var(--primary-foreground)); box-shadow: 0 0 10px hsl(var(--primary) / 0.4); }
+  .av-ast  { background: linear-gradient(135deg, hsl(152 70% 45%), hsl(152 60% 30%)); color: #fff; }
+  .av-port { background: linear-gradient(135deg, hsl(260 70% 62%), hsl(260 60% 40%)); color: #fff; }
+  .av-vuln { background: linear-gradient(135deg, hsl(22 100% 62%), hsl(22 90% 42%)); color: #fff; }
+  .av-weak { background: linear-gradient(135deg, hsl(48 96% 53%), hsl(35 90% 40%)); color: #fff; }
+  .av-rep  { background: linear-gradient(135deg, hsl(203 100% 62%), hsl(210 92% 38%)); color: #fff; }
+
+  .agent-row .body { flex: 1; min-width: 0; }
+  .agent-row .name { font-size: 13px; font-weight: 500; }
+  .agent-row .desc { font-size: 11px; color: hsl(var(--text-secondary)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .chip-status {
+    font-size: 10px; padding: 2px 7px; border-radius: 999px;
+    font-weight: 500; white-space: nowrap;
+  }
+  .st-run  { background: hsl(var(--alert-success) / 0.15); color: hsl(var(--alert-success)); border: 1px solid hsl(var(--alert-success) / 0.4); }
+  .st-wait { background: hsl(var(--alert-warning) / 0.15); color: hsl(var(--alert-warning)); }
+  .st-idle { background: hsl(var(--muted)); color: hsl(var(--text-secondary)); }
+  .st-off  { background: hsl(var(--destructive) / 0.12); color: hsl(var(--destructive)); }
+
+  /* ======================= Main / ThreadShell ======================= */
+  .thread-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid hsl(var(--border-subtle));
+    display: flex; align-items: center; gap: 12px;
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(12px);
+  }
+  .thread-title {
+    font-size: 15px; font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .thread-title .task-id { color: hsl(var(--text-secondary)); font-weight: 400; font-size: 12px; }
+  .thread-head .spacer { flex: 1; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .chip-primary { background: hsl(var(--primary) / 0.12); color: hsl(var(--ocean-300)); border-color: hsl(var(--primary) / 0.3); }
+  .chip-success { background: hsl(var(--alert-success) / 0.15); color: hsl(var(--alert-success)); border-color: hsl(var(--alert-success) / 0.35); }
+  .chip-muted { background: hsl(var(--muted)); color: hsl(var(--text-secondary)); }
+  .chip .pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: hsl(var(--muted-foreground));
+  }
+  .icon-btn:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+
+  /* Messages */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px 20px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .msg { display: flex; gap: 12px; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg .bubble-avatar {
+    width: 32px; height: 32px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .msg.user .bubble-avatar { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+  .msg .content { max-width: 78%; min-width: 0; }
+  .msg.user .content { text-align: right; }
+  .msg .meta {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: hsl(var(--text-secondary));
+    margin-bottom: 6px;
+  }
+  .msg.user .meta { justify-content: flex-end; }
+  .msg .meta .tag { font-weight: 600; color: hsl(var(--foreground)); font-size: 12px; }
+  .msg .meta .dot-sep { opacity: 0.5; }
+
+  .bubble {
+    display: inline-block;
+    text-align: left;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    font-size: 14px;
+    line-height: 1.7;
+    color: hsl(var(--foreground));
+  }
+  .msg.user .bubble {
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+    border-color: transparent;
+  }
+  .msg.orc .bubble { border-left: 2px solid hsl(var(--primary)); }
+  .bubble code {
+    background: hsl(var(--muted)); padding: 1px 6px; border-radius: 4px;
+    font-size: 12.5px;
+    color: hsl(var(--ocean-300));
+  }
+  .msg.user .bubble code { background: hsl(0 0% 0% / 0.15); color: hsl(var(--primary-foreground)); }
+
+  /* Think block (思维链) */
+  .think {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: hsl(var(--primary) / 0.05);
+    border: 1px dashed hsl(var(--primary) / 0.3);
+    border-radius: 10px;
+    color: hsl(var(--text-secondary));
+    font-size: 13px;
+    font-style: italic;
+    line-height: 1.75;
+  }
+  .think .tlabel {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-style: normal;
+    font-size: 10px; font-weight: 600;
+    color: hsl(var(--ocean-300));
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  /* Plan card */
+  .card-block {
+    margin-top: 10px;
+    border-radius: 12px;
+    border: 1px solid hsl(var(--primary) / 0.3);
+    background: linear-gradient(140deg, hsl(var(--primary) / 0.06), hsl(var(--cyan-glow) / 0.03));
+    overflow: hidden;
+  }
+  .cb-head {
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700;
+    color: hsl(var(--ocean-300));
+    text-transform: uppercase; letter-spacing: 0.08em;
+    border-bottom: 1px solid hsl(var(--primary) / 0.2);
+  }
+  .cb-head .tool-badge {
+    font-family: "SF Mono", monospace;
+    font-size: 10px;
+    background: hsl(var(--primary) / 0.15);
+    padding: 1px 7px; border-radius: 4px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .plan-steps { list-style: none; counter-reset: step; padding: 6px 0; }
+  .plan-steps li {
+    counter-increment: step;
+    padding: 10px 14px 10px 44px;
+    position: relative;
+    border-bottom: 1px dashed hsl(var(--border-subtle));
+    font-size: 13.5px;
+  }
+  .plan-steps li:last-child { border-bottom: none; }
+  .plan-steps li::before {
+    content: counter(step);
+    position: absolute; left: 14px; top: 12px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: hsl(var(--primary) / 0.15);
+    color: hsl(var(--ocean-300));
+    font-weight: 700; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid hsl(var(--primary) / 0.4);
+  }
+  .plan-steps li .sub {
+    display: block; font-size: 12px; color: hsl(var(--text-secondary));
+    margin-top: 3px;
+  }
+
+  /* Delegate card */
+  .delegate {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: hsl(260 70% 62% / 0.06);
+    border: 1px solid hsl(260 70% 62% / 0.28);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .delegate-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: hsl(260 70% 62% / 0.15);
+    color: hsl(260 80% 72%);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .delegate .info { flex: 1; min-width: 0; }
+  .delegate .info .h { font-size: 13px; font-weight: 500; }
+  .delegate .info .h b { color: hsl(260 80% 72%); font-family: "SF Mono", monospace; font-weight: 700; font-size: 12px; }
+  .delegate .info .d { font-size: 11.5px; color: hsl(var(--text-secondary)); margin-top: 3px; }
+  .delegate .arrow { color: hsl(var(--text-secondary)); font-size: 16px; }
+  .delegate .tgt {
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: hsl(var(--muted));
+    font-size: 12px; font-weight: 500;
+  }
+
+  /* Tool call (collapsible) */
+  .tool-call {
+    margin-top: 8px;
+    border-radius: 10px;
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    overflow: hidden;
+    font-size: 12.5px;
+  }
+  .tc-head {
+    padding: 9px 12px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .tc-head:hover { background: hsl(var(--accent) / 0.6); }
+  .tc-arrow { color: hsl(var(--muted-foreground)); font-size: 10px; transition: transform 0.2s; }
+  .tool-call.open .tc-arrow { transform: rotate(90deg); }
+  .tc-name {
+    color: hsl(var(--ocean-300));
+    font-family: "SF Mono", monospace;
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .tc-args {
+    color: hsl(var(--text-secondary));
+    font-family: "SF Mono", monospace;
+    font-size: 11.5px;
+    flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tc-status {
+    font-size: 10px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .tc-ok   { background: hsl(var(--alert-success) / 0.15); color: hsl(var(--alert-success)); }
+  .tc-run  { background: hsl(var(--alert-warning) / 0.15); color: hsl(var(--alert-warning)); }
+  .tc-crit { background: hsl(var(--sev-critical) / 0.15); color: hsl(var(--sev-critical)); }
+  .tc-body {
+    display: none;
+    border-top: 1px solid hsl(var(--border-subtle));
+    padding: 10px 12px;
+    background: hsl(var(--background) / 0.5);
+    font-family: "SF Mono", monospace;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: hsl(var(--foreground));
+    white-space: pre-wrap;
+    max-height: 220px;
+    overflow: auto;
+  }
+  .tool-call.open .tc-body { display: block; }
+  .tc-body .k { color: hsl(var(--text-secondary)); }
+  .tc-body .v { color: hsl(var(--foreground)); }
+  .tc-body .sev { color: hsl(var(--sev-critical)); font-weight: 600; }
+
+  /* Approval card */
+  .approval {
+    margin-top: 10px;
+    border-radius: 12px;
+    background: linear-gradient(140deg, hsl(var(--destructive) / 0.08), hsl(var(--sev-high) / 0.04));
+    border: 1px solid hsl(var(--destructive) / 0.35);
+    overflow: hidden;
+  }
+  .ap-head {
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700;
+    color: hsl(var(--destructive));
+    text-transform: uppercase; letter-spacing: 0.08em;
+    border-bottom: 1px solid hsl(var(--destructive) / 0.25);
+  }
+  .ap-body { padding: 12px 14px; font-size: 13.5px; }
+  .ap-detail {
+    margin-top: 8px;
+    font-family: "SF Mono", monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    color: hsl(var(--text-secondary));
+    background: hsl(var(--background) / 0.6);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid hsl(var(--border-subtle));
+  }
+  .ap-actions { padding: 0 14px 14px; display: flex; gap: 8px; }
+  .btn {
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    font-size: 12.5px; font-weight: 500;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: hsl(var(--accent)); border-color: hsl(var(--primary) / 0.4); }
+  .btn-approve {
+    background: hsl(var(--alert-success)); color: #fff; border-color: transparent;
+  }
+  .btn-approve:hover { background: hsl(var(--alert-success) / 0.9); }
+  .btn-deny {
+    background: hsl(var(--destructive)); color: #fff; border-color: transparent;
+  }
+  .btn-deny:hover { background: hsl(var(--destructive) / 0.9); }
+
+  /* Composer */
+  .composer-wrap {
+    padding: 12px 20px 20px;
+    background: transparent;
+  }
+  .composer {
+    max-width: 64rem; margin: 0 auto;
+    border-radius: 1.5rem;          /* rounded-3xl */
+    background: hsl(var(--muted) / 0.6);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 0 0 hsl(0 0% 0% / 0.2), var(--shadow-elegant);
+    transition: all 0.2s;
+  }
+  .composer:focus-within {
+    background: hsl(var(--muted));
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1), var(--shadow-glow);
+  }
+  .composer textarea {
+    width: 100%;
+    min-height: 56px; max-height: 180px;
+    resize: none; border: none; outline: none;
+    background: transparent;
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    padding: 16px 20px 8px;
+    font-family: inherit;
+    line-height: 1.6;
+  }
+  .composer textarea::placeholder { color: hsl(var(--text-secondary)); }
+  .composer-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 10px 8px 14px;
+  }
+  .composer-hint {
+    font-size: 11px;
+    color: hsl(var(--text-secondary) / 0.8);
+  }
+  .send-btn {
+    width: 36px; height: 36px; border-radius: 999px;
+    background: var(--gradient-primary);
+    color: hsl(var(--primary-foreground));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-elegant);
+    transition: transform 0.15s;
+  }
+  .send-btn:hover { transform: scale(1.05); }
+
+  /* ======================= Right Rail ======================= */
+  .rail-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid hsl(var(--border-subtle));
+    display: flex; align-items: center; gap: 10px;
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(12px);
+  }
+  .rail-title { font-size: 13px; font-weight: 600; }
+  .rail-tabs {
+    margin-left: auto;
+    display: flex; gap: 2px;
+    background: hsl(var(--muted));
+    padding: 3px;
+    border-radius: 8px;
+  }
+  .rail-tab {
+    padding: 4px 10px;
+    font-size: 11px; font-weight: 500;
+    color: hsl(var(--text-secondary));
+    border-radius: 6px;
+  }
+  .rail-tab.active {
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 1px 0 hsl(0 0% 0% / 0.2);
+  }
+  .rail-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .rail-section-title {
+    font-size: 10px;
+    color: hsl(var(--text-secondary));
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin: 8px 2px 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rail-section-title .live {
+    margin-left: auto;
+    color: hsl(var(--alert-success));
+    text-transform: none; letter-spacing: 0;
+    font-size: 10px; font-weight: 500;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .rail-section-title .live::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: hsl(var(--alert-success));
+    box-shadow: 0 0 6px hsl(var(--alert-success));
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+
+  .bb {
+    border-radius: 10px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    border-left-width: 3px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .bb:hover { transform: translateY(-1px); box-shadow: var(--shadow-elegant); }
+  /* Kind-based coloring: milestone / blocker / finding / progress */
+  .bb.k-milestone { border-left-color: hsl(var(--primary)); }
+  .bb.k-blocker   {
+    border-left-color: hsl(var(--sev-critical));
+    background: hsl(var(--sev-critical) / 0.06);
+  }
+  .bb.k-finding   { border-left-color: hsl(var(--sev-high)); }
+  .bb.k-progress  {
+    border-left-color: hsl(var(--text-secondary));
+    background: hsl(var(--muted) / 0.4);
+  }
+  /* Severity-based tint within findings (optional accent) */
+  .bb.k-finding.sev-critical { border-left-color: hsl(var(--sev-critical)); }
+  .bb.k-finding.sev-medium   { border-left-color: hsl(var(--sev-medium)); }
+  /* Legacy key-based colors (kept for backward compat) */
+  .bb.k-asset { border-left-color: hsl(var(--alert-success)); }
+  .bb.k-port  { border-left-color: hsl(260 70% 62%); }
+  .bb.k-vuln  { border-left-color: hsl(var(--sev-critical)); }
+  .bb.k-weak  { border-left-color: hsl(var(--alert-warning)); }
+  .bb.k-plan  { border-left-color: hsl(var(--primary)); }
+  .bb-head {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: hsl(var(--text-secondary));
+    margin-bottom: 5px;
+  }
+  /* Prefix chip: [milestone] / [blocker] / [finding] / [progress] */
+  .bb-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 7px; border-radius: 6px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    border: 1px solid transparent;
+  }
+  .bb-tag.t-milestone {
+    background: hsl(var(--primary) / 0.14);
+    color: hsl(var(--ocean-300));
+    border-color: hsl(var(--primary) / 0.3);
+  }
+  .bb-tag.t-blocker {
+    background: hsl(var(--sev-critical) / 0.18);
+    color: hsl(var(--sev-critical));
+    border-color: hsl(var(--sev-critical) / 0.35);
+    animation: pulseBlocker 2.2s ease-in-out infinite;
+  }
+  @keyframes pulseBlocker {
+    0%, 100% { box-shadow: 0 0 0 hsl(var(--sev-critical) / 0); }
+    50%      { box-shadow: 0 0 10px hsl(var(--sev-critical) / 0.45); }
+  }
+  .bb-tag.t-finding {
+    background: hsl(var(--sev-high) / 0.14);
+    color: hsl(var(--sev-high));
+    border-color: hsl(var(--sev-high) / 0.3);
+  }
+  .bb-tag.t-progress {
+    background: hsl(var(--muted));
+    color: hsl(var(--text-secondary));
+    border-color: hsl(var(--border));
+  }
+  .bb-key {
+    font-family: "SF Mono", monospace;
+    font-size: 11.5px; font-weight: 600;
+    color: hsl(var(--text-secondary));
+  }
+  .bb-author { margin-left: auto; font-size: 10px; }
+  .bb-content {
+    font-family: "SF Mono", monospace;
+    font-size: 11px; line-height: 1.55;
+    color: hsl(var(--foreground));
+    overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
+  }
+  .bb-meta {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px;
+    font-size: 10px; color: hsl(var(--text-secondary));
+  }
+  .bb-meta .badge-sev {
+    padding: 1px 6px; border-radius: 4px;
+    font-weight: 700; font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .sev-critical { background: hsl(var(--sev-critical) / 0.15); color: hsl(var(--sev-critical)); }
+  .sev-high { background: hsl(var(--sev-high) / 0.15); color: hsl(var(--sev-high)); }
+  .sev-medium { background: hsl(var(--sev-medium) / 0.15); color: hsl(var(--sev-medium)); }
+
+  .trace {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed hsl(var(--border-subtle));
+    font-size: 12px;
+  }
+  .trace:last-child { border-bottom: none; }
+  .trace .tdot {
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .trace .tmain { flex: 1; min-width: 0; }
+  .trace .ttool {
+    font-family: "SF Mono", monospace;
+    color: hsl(var(--ocean-300));
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .trace .tby { font-size: 10.5px; color: hsl(var(--text-secondary)); margin-top: 2px; }
+  .trace .ttime { font-size: 10px; color: hsl(var(--text-secondary)); white-space: nowrap; }
+
+  /* Scrollbar — webui/.scrollbar-thin */
+  .scroll { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent; }
+  .scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scroll::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.4); border-radius: 9999px; }
+  .scroll::-webkit-scrollbar-track { background: transparent; }
+
+  /* utils */
+  .ic { width: 14px; height: 14px; stroke-width: 1.8; }
+  .ic-16 { width: 16px; height: 16px; stroke-width: 1.8; }
+  .ic-20 { width: 20px; height: 20px; stroke-width: 1.8; }
+</style>
+</head>
+<body>
+  <div class="shell">
+
+    <!-- ============== SIDEBAR ============== -->
+    <aside class="sidebar card-surface">
+      <div class="sb">
+        <div class="sb-head">
+          <div class="brand">
+            <div class="brand-mark">S</div>
+            <span class="name-b">Secbot</span>
+          </div>
+          <button class="sb-toggle" title="收起">
+            <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 3v18M21 12H9M15 6l-6 6 6 6"/></svg>
+          </button>
+        </div>
+
+        <button class="new-chat">
+          <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
+          新建扫描对话
+        </button>
+
+        <div class="sb-group scroll" style="flex:1;">
+
+          <div class="sb-group-title">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            最近对话
+          </div>
+          <div class="sb-item active">
+            <span class="dot" style="background: hsl(var(--alert-success)); box-shadow: 0 0 6px hsl(var(--alert-success));"></span>
+            <span class="title">扫描 target.example.com</span>
+            <span class="time">进行中</span>
+          </div>
+          <div class="sb-item">
+            <span class="dot" style="background: hsl(var(--muted-foreground));"></span>
+            <span class="title">CVE-2024-21888 溯源</span>
+            <span class="time">昨天</span>
+          </div>
+          <div class="sb-item">
+            <span class="dot" style="background: hsl(var(--muted-foreground));"></span>
+            <span class="title">生产环境渗透演练</span>
+            <span class="time">5/8</span>
+          </div>
+          <div class="sb-item">
+            <span class="dot" style="background: hsl(var(--muted-foreground));"></span>
+            <span class="title">内网横向移动分析</span>
+            <span class="time">5/6</span>
+          </div>
+
+          <div class="sb-group-title" style="margin-top:14px;">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>
+            智能体 <span style="margin-left:auto;font-size:9px;color:hsl(var(--text-secondary));letter-spacing:0;text-transform:none;">主 + 5 子</span>
+          </div>
+
+          <div class="agent-row" style="background:hsl(var(--primary) / 0.08); border-color: hsl(var(--primary) / 0.3);">
+            <div class="avatar av-orc">OR</div>
+            <div class="body">
+              <div class="name">Orchestrator</div>
+              <div class="desc">主编排 · 4 工具白名单</div>
+            </div>
+            <span class="chip-status st-run"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:currentColor;margin-right:3px;"></span>运行</span>
+          </div>
+
+          <div class="agent-row">
+            <div class="avatar av-ast">AD</div>
+            <div class="body">
+              <div class="name">Asset Discovery</div>
+              <div class="desc">httpx · ffuf · nuclei</div>
+            </div>
+            <span class="chip-status st-run">运行</span>
+          </div>
+          <div class="agent-row">
+            <div class="avatar av-port">PS</div>
+            <div class="body">
+              <div class="name">Port Scan</div>
+              <div class="desc">nmap 服务指纹</div>
+            </div>
+            <span class="chip-status st-run">运行</span>
+          </div>
+          <div class="agent-row">
+            <div class="avatar av-vuln">VS</div>
+            <div class="body">
+              <div class="name">Vuln Scan</div>
+              <div class="desc">sqlmap · nuclei</div>
+            </div>
+            <span class="chip-status st-wait">等待</span>
+          </div>
+          <div class="agent-row">
+            <div class="avatar av-weak">WP</div>
+            <div class="body">
+              <div class="name">Weak Password</div>
+              <div class="desc">hydra 弱口令</div>
+            </div>
+            <span class="chip-status st-idle">空闲</span>
+          </div>
+          <div class="agent-row" style="opacity:0.6;">
+            <div class="avatar av-rep">RP</div>
+            <div class="body">
+              <div class="name">Report</div>
+              <div class="desc">report-html 生成</div>
+            </div>
+            <span class="chip-status st-off">离线</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============== MAIN (ThreadShell) ============== -->
+    <main class="main card-surface">
+      <!-- 顶部 -->
+      <header class="thread-head">
+        <button class="icon-btn" title="切换侧栏">
+          <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <div class="thread-title">
+          扫描 <code style="background: hsl(var(--muted)); padding: 1px 6px; border-radius: 4px; font-size: 13px;">target.example.com</code>
+          <span class="task-id">· scan-20260511-01</span>
+        </div>
+        <div class="spacer"></div>
+        <span class="chip chip-success"><span class="pulse"></span>流式中</span>
+        <span class="chip chip-primary">迭代 7/20</span>
+        <span class="chip chip-muted">Token 24.3k</span>
+        <button class="icon-btn" title="切换右侧工作台">
+          <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>
+        </button>
+      </header>
+
+      <!-- 消息流 -->
+      <div class="messages scroll" id="messages">
+
+        <!-- 用户 -->
+        <div class="msg user">
+          <div class="bubble-avatar">你</div>
+          <div class="content">
+            <div class="meta"><span class="dot-sep">·</span> 10:23:04</div>
+            <div class="bubble">请对 <code>target.example.com</code> 做一次完整安全扫描：资产发现 + 端口 + 漏洞 + 弱口令，完成后输出 HTML 报告。</div>
+          </div>
+        </div>
+
+        <!-- Orchestrator: 思维链 + write_plan -->
+        <div class="msg orc">
+          <div class="bubble-avatar av-orc">OR</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag">Orchestrator</span>
+              <span class="dot-sep">·</span>
+              主编排
+              <span class="dot-sep">·</span>
+              10:23:05
+            </div>
+            <div class="bubble">
+              收到。目标确认为 <code>target.example.com</code>，我将拆成 5 个阶段并行/串行派发。
+
+              <div class="think">
+                <div class="tlabel">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                  REASONING
+                </div>
+                单域名资产 + 端口扫描可并行（独立信息源）。漏洞扫描依赖 assets + ports 黑板条目，可等到 Web 相关端口（80/443/8080）就位即启动，不必等全部端口完成。弱口令属高危操作，需走 <code>request_approval</code> 人工审批。Report 收尾。
+              </div>
+
+              <div class="card-block">
+                <div class="cb-head">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  阶段计划
+                  <span class="tool-badge">write_plan</span>
+                </div>
+                <ol class="plan-steps">
+                  <li>资产发现与子域枚举
+                    <span class="sub">Asset Discovery 并行 · 写入 blackboard <code style="font-size:11px;">key=assets</code></span>
+                  </li>
+                  <li>端口与服务指纹识别
+                    <span class="sub">Port Scan 并行 · 写入 blackboard <code style="font-size:11px;">key=ports</code></span>
+                  </li>
+                  <li>Web 漏洞扫描（依赖 1 + 2 部分结果）
+                    <span class="sub">Vuln Scan 读黑板 · 写入 <code style="font-size:11px;">key=vulns</code></span>
+                  </li>
+                  <li>弱口令爆破（条件 + 审批）
+                    <span class="sub">当存在 22/21/3306 端口时触发 · request_approval</span>
+                  </li>
+                  <li>HTML 报告生成
+                    <span class="sub">Report Agent 汇总黑板全部条目</span>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Orchestrator: delegate_task x2 -->
+        <div class="msg orc">
+          <div class="bubble-avatar av-orc">OR</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag">Orchestrator</span>
+              <span class="dot-sep">·</span>
+              10:23:06
+            </div>
+            <div class="bubble" style="padding:10px 14px;">
+              <div class="delegate">
+                <div class="delegate-icon">
+                  <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 8l4 4-4 4M3 12h18"/></svg>
+                </div>
+                <div class="info">
+                  <div class="h"><b>delegate_task</b> · 派发资产发现</div>
+                  <div class="d">task: "枚举子域名并探测 HTTP 服务" · timeout 300s</div>
+                </div>
+                <span class="arrow">→</span>
+                <span class="tgt">Asset Discovery</span>
+              </div>
+              <div class="delegate">
+                <div class="delegate-icon">
+                  <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 8l4 4-4 4M3 12h18"/></svg>
+                </div>
+                <div class="info">
+                  <div class="h"><b>delegate_task</b> · 派发端口扫描</div>
+                  <div class="d">task: "TCP 全端口 + 服务指纹" · timeout 600s</div>
+                </div>
+                <span class="arrow">→</span>
+                <span class="tgt">Port Scan</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Asset Discovery: tool calls -->
+        <div class="msg">
+          <div class="bubble-avatar av-ast">AD</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag" style="color:hsl(var(--alert-success));">Asset Discovery</span>
+              <span class="dot-sep">·</span> subagent
+              <span class="dot-sep">·</span> 10:23:08
+            </div>
+            <div class="bubble">
+              接受任务。先用 <code>httpx</code> 探活，再用 <code>ffuf</code> 做目录 fuzz，最后写入黑板。
+
+              <div class="tool-call open">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">httpx_probe</span>
+                  <span class="tc-args">{ url: "https://target.example.com", follow_redirects: true }</span>
+                  <span class="tc-status tc-ok">✓ 成功 184ms</span>
+                </div>
+                <div class="tc-body"><span class="k">status_code:</span> <span class="v">200</span>
+<span class="k">title:</span>       <span class="v">"Example Portal"</span>
+<span class="k">tech:</span>        <span class="v">["nginx/1.22", "Vue.js", "Cloudflare"]</span>
+<span class="k">server:</span>      <span class="v">"nginx"</span>
+<span class="k">content_len:</span> <span class="v">12843</span></div>
+              </div>
+
+              <div class="tool-call">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">ffuf_dir_fuzz</span>
+                  <span class="tc-args">{ url: "https://target.example.com/FUZZ", wordlist: "common.txt" }</span>
+                  <span class="tc-status tc-ok">✓ 23 条</span>
+                </div>
+                <div class="tc-body"><span class="k">discovered:</span>
+  <span class="v">/admin</span>   [403]   (1.2KB)
+  <span class="v">/api</span>     [200]   (342B)
+  <span class="v">/login</span>   [200]   (2.1KB)
+  <span class="v">/static</span>  [200]   (index)
+  <span class="v">/backup</span>  [301]   → /backup/
+  ... (+18 更多)</div>
+              </div>
+
+              <div class="tool-call">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">write_blackboard</span>
+                  <span class="tc-args">{ key: "assets", author: "asset_discovery" }</span>
+                  <span class="tc-status tc-ok">✓ 已写入</span>
+                </div>
+                <div class="tc-body"><span class="k">key:</span>     <span class="v">"assets"</span>
+<span class="k">entries:</span> <span class="v">24 (1 host + 23 paths)</span>
+<span class="k">ts:</span>      <span class="v">10:23:12</span></div>
+              </div>
+
+              ✅ 资产发现阶段完成。发现 <b>1 个主域 + 23 个有效路径</b>，关键路径 <code>/admin</code>、<code>/api</code>、<code>/backup</code>，条目已写入黑板。
+            </div>
+          </div>
+        </div>
+
+        <!-- Port Scan -->
+        <div class="msg">
+          <div class="bubble-avatar av-port">PS</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag" style="color:hsl(260 80% 72%);">Port Scan</span>
+              <span class="dot-sep">·</span> subagent
+              <span class="dot-sep">·</span> 10:23:14
+            </div>
+            <div class="bubble">
+              <div class="tool-call">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">nmap_service_fingerprint</span>
+                  <span class="tc-args">{ target: "target.example.com", ports: "1-65535", timing: "T4" }</span>
+                  <span class="tc-status tc-run"><span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:3px;animation:pulse 1.6s infinite;"></span>运行中 46%</span>
+                </div>
+                <div class="tc-body"><span class="k">command:</span>  <span class="v">nmap -sV -sC -T4 -p 1-65535 target.example.com</span>
+<span class="k">progress:</span> <span class="v">46% · 发现 8 个开放端口</span>
+<span class="k">elapsed:</span>  <span class="v">124s</span></div>
+              </div>
+              扫描进行中，已发现 <b>8 个开放端口</b>（22, 80, 443, 3306, 6379, 8080, 8443, 27017）。<code>3306</code> 和 <code>6379/27017</code> 可能触发后续弱口令/未授权检查。
+            </div>
+          </div>
+        </div>
+
+        <!-- Orchestrator: read_blackboard + reasoning -->
+        <div class="msg orc">
+          <div class="bubble-avatar av-orc">OR</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag">Orchestrator</span>
+              <span class="dot-sep">·</span>
+              10:25:42
+            </div>
+            <div class="bubble">
+              Web 端口已就位，我先读黑板评估是否可以提前启动漏洞扫描。
+
+              <div class="tool-call open">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">read_blackboard</span>
+                  <span class="tc-args">{ keys: ["assets", "ports"] }</span>
+                  <span class="tc-status tc-ok">✓ 2 条</span>
+                </div>
+                <div class="tc-body"><span class="k">assets:</span> <span class="v">24 项（主域 + 23 路径）· by asset_discovery · 10:23:12</span>
+<span class="k">ports:</span>  <span class="v">8/? 端口 · by port_scan (partial) · 10:25:40</span>
+<span class="k">vulns:</span>  <span class="v">(未写入)</span></div>
+              </div>
+
+              <div class="think">
+                <div class="tlabel">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                  REASONING
+                </div>
+                已有 4 个 Web 端口 + 23 个路径，Web 漏洞扫描可提前。MySQL 3306 弱口令须审批。Redis/MongoDB 未授权风险可让 Vuln Scan 一并覆盖。
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Orchestrator: delegate Vuln Scan + request_approval -->
+        <div class="msg orc">
+          <div class="bubble-avatar av-orc">OR</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag">Orchestrator</span>
+              <span class="dot-sep">·</span>
+              10:25:43
+            </div>
+            <div class="bubble" style="padding:10px 14px;">
+              <div class="delegate">
+                <div class="delegate-icon">
+                  <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 8l4 4-4 4M3 12h18"/></svg>
+                </div>
+                <div class="info">
+                  <div class="h"><b>delegate_task</b> · 提前启动漏洞扫描</div>
+                  <div class="d">task: "Web 注入/未授权/命令执行检测，覆盖 /api /admin /backup"</div>
+                </div>
+                <span class="arrow">→</span>
+                <span class="tgt">Vuln Scan</span>
+              </div>
+
+              <div class="approval">
+                <div class="ap-head">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                  高风险操作
+                  <span class="tool-badge" style="background:hsl(var(--destructive) / 0.15);color:hsl(var(--destructive));">request_approval</span>
+                </div>
+                <div class="ap-body">
+                  是否允许 <b>Weak Password Agent</b> 对以下服务进行弱口令爆破？
+                  <div class="ap-detail">targets:
+  - ssh://target.example.com:22     (rockyou-top500.txt)
+  - mysql://target.example.com:3306 (top1000.txt)
+estimated_requests: ~1500
+timeout: 600s
+audit_tag: scan-20260511-01</div>
+                </div>
+                <div class="ap-actions">
+                  <button class="btn btn-approve" onclick="approve(this)">
+                    <svg class="ic" style="vertical-align:-2px;margin-right:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                    Approve
+                  </button>
+                  <button class="btn btn-deny">
+                    <svg class="ic" style="vertical-align:-2px;margin-right:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    Deny
+                  </button>
+                  <button class="btn">仅允许 SSH</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vuln Scan 报告高危漏洞 -->
+        <div class="msg">
+          <div class="bubble-avatar av-vuln">VS</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag" style="color:hsl(var(--sev-high));">Vuln Scan</span>
+              <span class="dot-sep">·</span> subagent
+              <span class="dot-sep">·</span> 10:26:33
+            </div>
+            <div class="bubble" style="border-left:2px solid hsl(var(--sev-high));">
+              <div class="tool-call open">
+                <div class="tc-head" onclick="toggleTool(this)">
+                  <span class="tc-arrow">▶</span>
+                  <span class="tc-name">sqlmap_detect</span>
+                  <span class="tc-args">{ url: "/api/user?id=1", level: 2, risk: 1 }</span>
+                  <span class="tc-status tc-crit">× CRITICAL</span>
+                </div>
+                <div class="tc-body"><span class="k">vulnerable:</span>      <span class="v">true</span>
+<span class="k">injection_type:</span>  <span class="v">time-based blind</span>
+<span class="k">payload:</span>         <span class="v">id=1 AND (SELECT 1 FROM (SELECT(SLEEP(5)))a)--</span>
+<span class="k">dbms:</span>            <span class="v">MySQL >= 5.0.12</span>
+<span class="k">severity:</span>        <span class="sev">CRITICAL (CVSS 9.8)</span>
+<span class="k">recommendation:</span>  <span class="v">parameterise query, enforce least-privilege DB user</span></div>
+              </div>
+
+              发现 <b style="color:hsl(var(--sev-critical));">严重漏洞</b>：<code>/api/user?id=</code> 存在 MySQL 时间盲注（CVSS 9.8）。条目已写入黑板 <code>key=vulns</code>，建议优先修复。
+            </div>
+          </div>
+        </div>
+
+        <!-- Orchestrator 总结当前 -->
+        <div class="msg orc">
+          <div class="bubble-avatar av-orc">OR</div>
+          <div class="content">
+            <div class="meta">
+              <span class="tag">Orchestrator</span>
+              <span class="dot-sep">·</span>
+              10:26:35
+            </div>
+            <div class="bubble">
+              当前进度：黑板 assets=24、ports=8/? (54% 剩余)、vulns=1 CRITICAL、pending_approvals=1。弱口令审批已提交等待用户确认，Port Scan 收尾后将派发 Report Agent 收卷。
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Composer -->
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea rows="1" placeholder="向 Orchestrator 追加指令：跳过弱口令阶段 / 增加子域字典 / 立即生成中期报告…"></textarea>
+          <div class="composer-footer">
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行 · 主编排仅 4 工具白名单</span>
+            <button class="send-btn" title="发送">
+              <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ============== RIGHT RAIL ============== -->
+    <aside class="rail card-surface">
+      <div class="rail-head">
+        <svg class="ic-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:hsl(var(--ocean-300));"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+        <span class="rail-title">协作工作台</span>
+        <div class="rail-tabs">
+          <button class="rail-tab active" onclick="switchTab(this, 'bb')">Blackboard</button>
+          <button class="rail-tab" onclick="switchTab(this, 'trace')">Trace</button>
+        </div>
+      </div>
+
+      <div class="rail-body scroll" id="tab-bb">
+        <div class="rail-section-title">
+          共享黑板
+          <span style="color:hsl(var(--foreground));font-weight:600;font-size:10px;background:hsl(var(--muted));padding:1px 6px;border-radius:8px;letter-spacing:0;">6 条</span>
+          <span class="live">LIVE</span>
+        </div>
+        <div style="font-size:10.5px;color:hsl(var(--text-secondary));margin:-4px 0 10px;line-height:1.55;">
+          子 agent 自由文本写入，以前缀自动分类：
+          <span class="bb-tag t-milestone" style="animation:none;">milestone</span>
+          <span class="bb-tag t-blocker" style="animation:none;">blocker</span>
+          <span class="bb-tag t-finding" style="animation:none;">finding</span>
+          <span class="bb-tag t-progress" style="animation:none;">progress</span>
+        </div>
+
+        <!-- 阻断点：红色高亮 + 呼吸动效，等待用户手动解除 -->
+        <div class="bb k-blocker">
+          <div class="bb-head">
+            <span class="bb-tag t-blocker">blocker</span>
+            <span class="bb-key">weak_password</span>
+            <span class="bb-author">10:25:44</span>
+          </div>
+          <div class="bb-content">用户未批准 ssh:22 与 mysql:3306 的口令爆破，暂时无法推进，等待批准或跳过。</div>
+        </div>
+
+        <!-- 高严重度发现：sev-critical 左边线 -->
+        <div class="bb k-finding sev-critical">
+          <div class="bb-head">
+            <span class="bb-tag t-finding">finding</span>
+            <span class="bb-key">vuln_scan</span>
+            <span class="bb-author">10:26:33</span>
+          </div>
+          <div class="bb-content">CRITICAL SQLi — http://target.example.com/api/user?id= （time-based, MySQL），sqlmap-dump 需人工确认。</div>
+          <div class="bb-meta">
+            <span class="badge-sev sev-critical">CRITICAL</span>
+            <span>· 详情在 vuln_scan.summary_json</span>
+          </div>
+        </div>
+
+        <!-- 里程碑：海蓝左边线 -->
+        <div class="bb k-milestone">
+          <div class="bb-head">
+            <span class="bb-tag t-milestone">milestone</span>
+            <span class="bb-key">port_scan</span>
+            <span class="bb-author">10:25:40</span>
+          </div>
+          <div class="bb-content">top-1000 端口扫描完成，开放端口：22/ssh、80/http、443/https、3306/mysql、6379/redis、8080、8443、27017/mongo。</div>
+        </div>
+
+        <!-- 发现：sev-high 左边线（默认） -->
+        <div class="bb k-finding">
+          <div class="bb-head">
+            <span class="bb-tag t-finding">finding</span>
+            <span class="bb-key">asset_discovery</span>
+            <span class="bb-author">10:23:12</span>
+          </div>
+          <div class="bb-content">主站 target.example.com；发现后台 /admin、API 前缀 /api/v2、备份目录 /backup，技术栈 nginx/1.22 + Vue，Cloudflare 前置。</div>
+        </div>
+
+        <!-- 进度：灰色底色，不抓眼球 -->
+        <div class="bb k-progress">
+          <div class="bb-head">
+            <span class="bb-tag t-progress">progress</span>
+            <span class="bb-key">port_scan</span>
+            <span class="bb-author">10:25:10</span>
+          </div>
+          <div class="bb-content">2/12 主机完成，ETA ~3min。</div>
+        </div>
+
+        <!-- 里程碑：orchestrator 的计划公告 -->
+        <div class="bb k-milestone">
+          <div class="bb-head">
+            <span class="bb-tag t-milestone">milestone</span>
+            <span class="bb-key">orchestrator</span>
+            <span class="bb-author">10:23:05</span>
+          </div>
+          <div class="bb-content">计划 5 阶段 · 当前 2/5：资产发现 → 端口扫描 → 漏洞扫描 → 弱口令（待批）→ 报告。</div>
+        </div>
+      </div>
+
+      <div class="rail-body scroll" id="tab-trace" style="display:none;">
+        <div class="rail-section-title">
+          工具调用时间线
+          <span style="color:hsl(var(--foreground));font-weight:600;font-size:10px;background:hsl(var(--muted));padding:1px 6px;border-radius:8px;letter-spacing:0;">9</span>
+          <span class="live">LIVE</span>
+        </div>
+
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--primary));"></span>
+          <div class="tmain">
+            <div><span class="ttool">write_plan</span></div>
+            <div class="tby">by orchestrator · 5 阶段</div>
+          </div>
+          <span class="ttime">10:23:05</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--primary));"></span>
+          <div class="tmain">
+            <div><span class="ttool">delegate_task</span> → asset_discovery</div>
+            <div class="tby">by orchestrator</div>
+          </div>
+          <span class="ttime">10:23:06</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--primary));"></span>
+          <div class="tmain">
+            <div><span class="ttool">delegate_task</span> → port_scan</div>
+            <div class="tby">by orchestrator</div>
+          </div>
+          <span class="ttime">10:23:06</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--alert-success));"></span>
+          <div class="tmain">
+            <div><span class="ttool">httpx_probe</span></div>
+            <div class="tby">by asset_discovery · 200 OK</div>
+          </div>
+          <span class="ttime">10:23:08</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--alert-success));"></span>
+          <div class="tmain">
+            <div><span class="ttool">ffuf_dir_fuzz</span></div>
+            <div class="tby">by asset_discovery · 23 paths</div>
+          </div>
+          <span class="ttime">10:23:10</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(260 70% 62%);"></span>
+          <div class="tmain">
+            <div><span class="ttool">nmap_service_fingerprint</span></div>
+            <div class="tby">by port_scan · running 46%</div>
+          </div>
+          <span class="ttime">10:23:14</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--primary));"></span>
+          <div class="tmain">
+            <div><span class="ttool">read_blackboard</span></div>
+            <div class="tby">by orchestrator</div>
+          </div>
+          <span class="ttime">10:25:42</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--destructive));"></span>
+          <div class="tmain">
+            <div><span class="ttool">request_approval</span> · 弱口令</div>
+            <div class="tby">by orchestrator · awaiting</div>
+          </div>
+          <span class="ttime">10:25:44</span>
+        </div>
+        <div class="trace">
+          <span class="tdot" style="background:hsl(var(--sev-critical));"></span>
+          <div class="tmain">
+            <div><span class="ttool">sqlmap_detect</span> · <span style="color:hsl(var(--sev-critical));">CRITICAL</span></div>
+            <div class="tby">by vuln_scan · CVSS 9.8</div>
+          </div>
+          <span class="ttime">10:26:33</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+  function toggleTool(el) { el.parentElement.classList.toggle('open'); }
+
+  function switchTab(btn, target) {
+    btn.parentElement.querySelectorAll('.rail-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-bb').style.display = target === 'bb' ? 'block' : 'none';
+    document.getElementById('tab-trace').style.display = target === 'trace' ? 'block' : 'none';
+  }
+
+  function approve(btn) {
+    const box = btn.closest('.approval');
+    box.innerHTML = `
+      <div class="ap-head" style="color: hsl(var(--alert-success)); border-color: hsl(var(--alert-success) / 0.3);">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+        已批准 · 10:25:58
+      </div>
+      <div class="ap-body" style="color: hsl(var(--text-secondary));">
+        Weak Password Agent 将被派发到 ssh:22 和 mysql:3306
+      </div>`;
+    box.style.background = 'linear-gradient(140deg, hsl(var(--alert-success) / 0.08), hsl(var(--primary) / 0.04))';
+    box.style.borderColor = 'hsl(var(--alert-success) / 0.35)';
+  }
+
+  // 滚到底
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+
+  // Composer 自适应高度
+  document.querySelector('.composer textarea').addEventListener('input', e => {
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 180) + 'px';
+  });
+</script>
+</body>
+</html>

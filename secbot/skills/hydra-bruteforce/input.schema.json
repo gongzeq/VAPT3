@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["target", "service", "users", "passwords"],
+  "required": ["target", "service"],
   "properties": {
     "target": {"type": "string", "minLength": 1, "maxLength": 128},
     "service": {
@@ -26,6 +26,16 @@
       "maxItems": 500
     },
     "tasks": {"type": "integer", "minimum": 1, "maximum": 16, "default": 4},
-    "form": {"type": "string", "maxLength": 256}
+    "form": {"type": "string", "maxLength": 256},
+    "user_dict": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional user dictionary filename under secbot/resource/fuzzDicts/. Glob that directory first with the glob tool and pick ONE filename that matches the target service — do NOT guess."
+    },
+    "pass_dict": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional password dictionary filename under secbot/resource/fuzzDicts/. Glob that directory first with the glob tool and pick ONE filename that matches the target service — do NOT guess."
+    }
   }
 }

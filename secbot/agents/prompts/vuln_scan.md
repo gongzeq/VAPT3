@@ -42,6 +42,11 @@ to 512 chars before returning.
 
 ## Blackboard
 
+**Writing principle**: Before calling `blackboard_write`, ask yourself: "Will
+this help the orchestrator or the next agent make a better decision?" Only
+write **conclusive findings** — never intermediate states or raw tool output.
+Each note must be one to two sentences.
+
 Announce notable state on the shared blackboard so the orchestrator (and
 peer agents) can adapt. Keep each note to one sentence and prefix with a
 tag:

@@ -134,6 +134,40 @@ async def test_build_confirmation_payload_shape():
     assert payload["args"] == {"target": "10.0.0.5", "service": "ssh"}
 
 
+async def test_critical_skill_approved_once_per_conversation(tmp_path: Path):
+    """Once a skill is approved in a conversation, subsequent calls pass through."""
+    calls = []
+
+    async def _run(args, ctx):
+        calls.append(args)
+        return SkillResult(summary={"ok": True})
+
+    confirm_calls = []
+
+    async def _confirm(payload):
+        confirm_calls.append(payload["skill"])
+        return True
+
+    gate = HighRiskGate()
+    meta = _make_meta("hydra-bruteforce", "critical")
+    ctx = _ctx(tmp_path, _confirm)
+
+    # First call — should prompt.
+    res1 = await gate.guard(meta, {"target": "1.2.3.4"}, ctx, _run)
+    assert res1.summary == {"ok": True}
+    assert confirm_calls == ["hydra-bruteforce"]
+
+    # Second call — same skill, should *not* prompt again.
+    res2 = await gate.guard(meta, {"target": "5.6.7.8"}, ctx, _run)
+    assert res2.summary == {"ok": True}
+    assert confirm_calls == ["hydra-bruteforce"]  # no extra confirm
+    assert calls == [{"target": "1.2.3.4"}, {"target": "5.6.7.8"}]
+
+    # Audit trail: only one request + one approve for the first call.
+    actions = [e["action"] for e in gate.audit.entries]
+    assert actions == ["confirm_request", "confirm_approve"]
+
+
 def test_audit_logger_rejects_unknown_action():
     al = AuditLogger()
     with pytest.raises(ValueError):

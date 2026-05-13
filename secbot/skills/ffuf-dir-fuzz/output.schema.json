@@ -14,11 +14,19 @@
           "input": {"type": "string"},
           "status": {"type": "integer"},
           "length": {"type": "integer"},
-          "words": {"type": "integer"}
+          "words": {"type": "integer"},
+          "lines": {"type": "integer"},
+          "duration_ms": {"type": "integer"},
+          "content_type": {"type": "string"},
+          "redirect_location": {"type": "string"},
+          "host": {"type": "string"}
         }
       }
     },
+    "total_hits": {"type": "integer"},
+    "command_line": {"type": "string"},
     "elapsed_sec": {"type": "number"},
+    "parse_error": {"type": "string"},
     "error": {"type": "string"},
     "cancelled": {"type": "boolean"}
   }

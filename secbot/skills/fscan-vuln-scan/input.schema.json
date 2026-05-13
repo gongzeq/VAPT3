@@ -15,6 +15,16 @@
       "maxLength": 128,
       "pattern": "^[\\d,\\-]+$",
       "default": "80,443,8080,8443"
+    },
+    "user_dict": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional user dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). Glob that directory first with the glob tool and pick ONE filename matching the service — do NOT guess."
+    },
+    "pass_dict": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional password dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). Glob that directory first with the glob tool and pick ONE filename matching the service — do NOT guess."
     }
   }
 }

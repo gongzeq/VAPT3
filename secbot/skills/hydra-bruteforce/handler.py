@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from secbot.skills._shared.resource import resolve_resource
 from secbot.skills._shared.runner import execute
 from secbot.skills.types import InvalidSkillArg, SkillContext, SkillResult
 
@@ -93,10 +94,34 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     target: str = args["target"]
     service: str = args["service"]
     port: int | None = args.get("port")
-    users: list[str] = list(args["users"])
-    passwords: list[str] = list(args["passwords"])
+    users: list[str] = list(args.get("users", []))
+    passwords: list[str] = list(args.get("passwords", []))
     tasks: int = int(args.get("tasks", 4))
     form: str | None = args.get("form")
+    user_dict: str | None = args.get("user_dict")
+    pass_dict: str | None = args.get("pass_dict")
+
+    # Load optional wordlists from .secbot/resource/fuzzDicts/
+    if user_dict:
+        p = resolve_resource(ctx, "fuzzDicts", user_dict)
+        if p is None:
+            raise InvalidSkillArg(f"user_dict not found in fuzzDicts: {user_dict}")
+        users.extend(p.read_text(encoding="utf-8").splitlines())
+
+    if pass_dict:
+        p = resolve_resource(ctx, "fuzzDicts", pass_dict)
+        if p is None:
+            raise InvalidSkillArg(f"pass_dict not found in fuzzDicts: {pass_dict}")
+        passwords.extend(p.read_text(encoding="utf-8").splitlines())
+
+    # Deduplicate and strip empty lines
+    users = list(dict.fromkeys(u.strip() for u in users if u.strip()))
+    passwords = list(dict.fromkeys(p.strip() for p in passwords if p.strip()))
+
+    if not users:
+        raise InvalidSkillArg("users list is empty (no explicit users or user_dict)")
+    if not passwords:
+        raise InvalidSkillArg("passwords list is empty (no explicit passwords or pass_dict)")
 
     _validate(target, users, passwords)
 

@@ -27,6 +27,10 @@ _HARD_RULES = (
     "- You MUST respect the natural ordering: asset_discovery \u2192 port_scan \u2192 "
     "vuln_scan \u2192 (weak_password | pentest) \u2192 report. Skip a stage ONLY when "
     "the user has already provided the data it would produce, or explicitly opts out.",
+    "- Before delegating to the next expert agent, you MUST call `read_blackboard` "
+    "to check for findings already recorded by peer agents. Pass discovered facts "
+    "(e.g. known open ports, services) in the `task` parameter so the next agent "
+    "does not repeat work.",
     "- After the final scan stage succeeds (or the user opts out of remaining stages), "
     "you MUST call the `report` expert to materialise an HTML deliverable via the "
     "`report-html` skill. Do NOT end the task without a report unless the user "
@@ -43,6 +47,8 @@ _WORKING_STYLE = (
     "- After each tool result, decide: continue / replan / request approval / answer.",
     "- Summarise findings with severity counts and link to the raw log path that "
     "the expert agent returned.",
+    "- Use `[finding]` and `[milestone]` entries from the blackboard to refine the "
+    "next `task` description. Do not ask an agent to discover what is already known.",
     "- When the scan pipeline is done, finish by delegating to the `report` expert with "
     "`{\"scan_id\": <current scan id>}` and surface the returned `report_path` "
     "to the user.",

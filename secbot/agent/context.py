@@ -33,8 +33,19 @@ class ContextBuilder:
         self,
         skill_names: list[str] | None = None,
         channel: str | None = None,
+        is_orchestrator: bool = False,
+        agent_registry: Any = None,
     ) -> str:
-        """Build the system prompt from identity, bootstrap files, memory, and skills."""
+        """Build the system prompt from identity, bootstrap files, memory, and skills.
+
+        When ``is_orchestrator=True`` **and** ``agent_registry`` is supplied, the
+        locked orchestrator prompt (role + hard rules + expert-agent table +
+        working style) is rendered in place of the generic secbot prompt.
+        ``skills_summary`` is intentionally omitted for the orchestrator since
+        its tool surface is only ``delegate_task / read_blackboard /
+        write_plan / request_approval`` — listing skills there would mislead the
+        LLM into synthesising shell commands it has no tool to run.
+        """
         parts = [self._get_identity(channel=channel)]
 
         bootstrap = self._load_bootstrap_files()
@@ -45,15 +56,23 @@ class ContextBuilder:
         if memory and not self._is_template_content(self.memory.read_memory(), "memory/MEMORY.md"):
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
-        if always_skills:
-            always_content = self.skills.load_skills_for_context(always_skills)
-            if always_content:
-                parts.append(f"# Active Skills\n\n{always_content}")
+        if is_orchestrator and agent_registry is not None:
+            # Inject the locked orchestrator prompt (role + hard rules +
+            # expert-agent table + working style). Skip ``always_skills`` and
+            # ``skills_summary`` — orchestrator never calls skill tools directly.
+            from secbot.agents.orchestrator import render_orchestrator_prompt
 
-        skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
-        if skills_summary:
-            parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
+            parts.append(render_orchestrator_prompt(agent_registry))
+        else:
+            always_skills = self.skills.get_always_skills()
+            if always_skills:
+                always_content = self.skills.load_skills_for_context(always_skills)
+                if always_content:
+                    parts.append(f"# Active Skills\n\n{always_content}")
+
+            skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
+            if skills_summary:
+                parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
 
         entries = self.memory.read_unprocessed_history(since_cursor=self.memory.get_last_dream_cursor())
         if entries:
@@ -141,6 +160,8 @@ class ContextBuilder:
         current_role: str = "user",
         session_summary: str | None = None,
         sender_id: str | None = None,
+        is_orchestrator: bool = False,
+        agent_registry: Any = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         runtime_ctx = self._build_runtime_context(channel, chat_id, self.timezone, session_summary=session_summary, sender_id=sender_id)
@@ -153,7 +174,15 @@ class ContextBuilder:
         else:
             merged = [{"type": "text", "text": runtime_ctx}] + user_content
         messages = [
-            {"role": "system", "content": self.build_system_prompt(skill_names, channel=channel)},
+            {
+                "role": "system",
+                "content": self.build_system_prompt(
+                    skill_names,
+                    channel=channel,
+                    is_orchestrator=is_orchestrator,
+                    agent_registry=agent_registry,
+                ),
+            },
             *history,
         ]
         if messages[-1].get("role") == current_role:

@@ -7,12 +7,14 @@ and emits structured findings + cmdb writes.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared import NetworkPolicy, run_command
+from secbot.skills._shared.resource import resolve_resource
 from secbot.skills.types import (
     InvalidSkillArg,
     SkillBinaryMissing,
@@ -29,11 +31,17 @@ _TARGET_RE = re.compile(
 )
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9,_\-]*$")
 _SEVERITY_ALLOWED = {"medium,high,critical", "high,critical", "critical"}
+# Template path must be a relative POSIX-style path under poc/: disallow ``..``,
+# leading ``/``, and any character class that could be used for traversal.
+_TEMPLATE_PATH_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_./\-]*$")
 
 _MAX_FINDINGS = 1000
+_MAX_TEMPLATES = 32
 
 
-def _validate(targets: list[str], severity: str, tags: str) -> None:
+def _validate(
+    targets: list[str], severity: str, tags: str, templates: list[str]
+) -> None:
     if not targets:
         raise InvalidSkillArg("targets must not be empty")
     if len(targets) > 256:
@@ -45,6 +53,11 @@ def _validate(targets: list[str], severity: str, tags: str) -> None:
         raise InvalidSkillArg(f"invalid severity: {severity!r}")
     if not _TAGS_RE.match(tags):
         raise InvalidSkillArg(f"invalid tags: {tags!r}")
+    if len(templates) > _MAX_TEMPLATES:
+        raise InvalidSkillArg(f"templates exceeds {_MAX_TEMPLATES}")
+    for tpl in templates:
+        if not isinstance(tpl, str) or not _TEMPLATE_PATH_RE.match(tpl) or ".." in tpl:
+            raise InvalidSkillArg(f"invalid template path: {tpl!r}")
 
 
 def _parse(raw_log: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -99,8 +112,9 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     targets: list[str] = list(args["targets"])
     severity: str = args.get("severity", "medium,high,critical")
     tags: str = args.get("tags", "cve,exposure,misconfig")
+    templates: list[str] = list(args.get("templates", []))
 
-    _validate(targets, severity, tags)
+    _validate(targets, severity, tags, templates)
 
     raw_log = ctx.raw_log_dir / "nuclei.jsonl"
     targets_file = ctx.scan_dir / "nuclei-targets.txt"
@@ -118,6 +132,22 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         "-disable-update-check",
         "-o", str(raw_log),
     ]
+
+    # Load POC from secbot/resource/poc/ ONLY when the LLM explicitly nominates
+    # individual template files or subdirectories. The directory as a whole is
+    # never auto-included because it can contain hundreds of unrelated POCs;
+    # the LLM is expected to glob ``secbot/resource/poc/**/*.yaml`` first and
+    # pass the matching entries via ``templates``.
+    for tpl in templates:
+        resolved = resolve_resource(ctx, "poc", tpl)
+        if resolved is None:
+            raise InvalidSkillArg(f"template not found in poc/: {tpl}")
+        cli_args += ["-t", str(resolved)]
+
+    # Also include built-in templates if they exist
+    builtin_templates = Path(os.path.expanduser("~")) / ".nuclei-templates"
+    if builtin_templates.exists():
+        cli_args += ["-t", str(builtin_templates)]
 
     try:
         result = await run_command(

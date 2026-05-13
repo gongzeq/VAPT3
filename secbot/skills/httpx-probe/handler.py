@@ -75,7 +75,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     targets_file.write_text("\n".join(targets) + "\n", encoding="utf-8")
 
     cli: list[str] = [
-        "-l", str(targets_file),
+        str(targets_file),
         "-json",
         "-silent",
         "-no-color",

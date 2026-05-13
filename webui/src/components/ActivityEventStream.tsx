@@ -223,7 +223,10 @@ function ActivityEventStreamView({
                       </p>
                     )}
                     {ev.step && (
-                      <p className="mt-0.5 text-[11px] font-mono text-muted-foreground/70">
+                      <p
+                        className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground/70"
+                        title={ev.step}
+                      >
                         {ev.step}
                         {typeof ev.duration_ms === "number" && (
                           <> · {ev.duration_ms}ms</>

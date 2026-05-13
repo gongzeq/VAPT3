@@ -92,13 +92,19 @@ class HighRiskDenied(Exception):
 
 @dataclass
 class HighRiskGate:
-    """Stateful gate that audits every confirmation and honours a timeout."""
+    """Stateful gate that audits every confirmation and honours a timeout.
+
+    One ``HighRiskGate`` instance is shared per conversation (scan).  Once a
+    skill has been approved it is remembered so that subsequent calls to the
+    *same* skill within the same conversation do not re-prompt the user.
+    """
 
     audit: AuditLogger = field(default_factory=AuditLogger)
     timeout_sec: int = DEFAULT_CONFIRM_TIMEOUT_SEC
     summary_fn: Optional[
         Callable[[SkillMetadata, Mapping[str, Any]], str]
     ] = None
+    _approved_skills: set[str] = field(default_factory=set, repr=False)
 
     async def guard(
         self,
@@ -109,6 +115,10 @@ class HighRiskGate:
     ) -> SkillResult:
         """Maybe prompt the user, then call ``run`` (or short-circuit)."""
         if not meta.is_critical():
+            return await run(args, ctx)
+
+        # Already approved in this conversation — pass through silently.
+        if meta.name in self._approved_skills:
             return await run(args, ctx)
 
         summary = (
@@ -134,5 +144,6 @@ class HighRiskGate:
             self.audit.emit(ctx.scan_id, meta.name, "confirm_deny")
             return SkillResult(summary={"user_denied": True, "reason": "denied"})
 
+        self._approved_skills.add(meta.name)
         self.audit.emit(ctx.scan_id, meta.name, "confirm_approve")
         return await run(args, ctx)

@@ -645,7 +645,7 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
           <div className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{payload.task_id}</span>
             <span className="ml-1">
-              {payload.phase} (迭代 {payload.iteration})
+              {payload.phase}
             </span>
           </div>
         </div>

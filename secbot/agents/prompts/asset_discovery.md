@@ -28,6 +28,11 @@ list to the first 200 entries; the orchestrator will paginate via the CMDB.
 
 ## Blackboard
 
+**Writing principle**: Before calling `blackboard_write`, ask yourself: "Will
+this help the orchestrator or the next agent make a better decision?" Only
+write **conclusive findings** — never intermediate states or raw tool output.
+Each note must be one to two sentences.
+
 The shared blackboard is a free-form scratchpad other agents read between
 turns. Use it to expose state that the orchestrator needs to route the next
 step. Prefer one short sentence per write; pick whichever tag fits:

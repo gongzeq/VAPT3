@@ -19,7 +19,6 @@ from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteToo
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
-from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
 from secbot.bus.events import InboundMessage
@@ -444,17 +443,13 @@ class SubagentManager:
             tools.register(AskUserTool())
             tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=label))
             tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
-            if self.exec_config.enable:
-                tools.register(ExecTool(
-                    working_dir=str(self.workspace),
-                    timeout=self.exec_config.timeout,
-                    restrict_to_workspace=self.restrict_to_workspace,
-                    sandbox=self.exec_config.sandbox,
-                    path_append=self.exec_config.path_append,
-                    allowed_env_keys=self.exec_config.allowed_env_keys,
-                    allow_patterns=self.exec_config.allow_patterns,
-                    deny_patterns=self.exec_config.deny_patterns,
-                ))
+            # Hard-disabled: subagents must NEVER receive ExecTool. All shell
+            # access for security workflows MUST go through SkillTool (sandbox
+            # + argv parsing + risk gate). This block was previously gated on
+            # ``self.exec_config.enable`` but operator misconfiguration kept
+            # leaking ``exec`` back to the LLM, so the registration is now
+            # removed unconditionally. Do NOT re-enable without an explicit
+            # PRD update — see .trellis/tasks/archive/2026-05/05-11-security-tools-as-tools/prd.md §D4.
             if self.web_config.enable:
                 tools.register(
                     WebSearchTool(
@@ -499,6 +494,11 @@ class SubagentManager:
                 confirm=parent_confirm,
             )
             system_prompt = self._build_subagent_prompt(spec=spec)
+            # Inject current blackboard findings so the subagent sees peer
+            # state without having to call read_blackboard on its first turn.
+            bb_context = await self._format_blackboard_context(resolved_blackboard)
+            if bb_context:
+                system_prompt = f"{system_prompt.rstrip()}\n\n{bb_context}\n"
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task},
@@ -684,6 +684,32 @@ class SubagentManager:
         if spec is None:
             return base
         return f"{spec.system_prompt.rstrip()}\n\n{base}"
+
+    @staticmethod
+    async def _format_blackboard_context(blackboard: Blackboard, max_chars: int = 1500) -> str:
+        """Format blackboard entries for injection into a subagent system prompt."""
+        entries = await blackboard.read_all()
+        if not entries:
+            return (
+                "## Shared Blackboard\n\n"
+                "The shared blackboard is currently empty. "
+                "You are the first agent — record your findings for peers that follow."
+            )
+        lines = ["## Shared Blackboard (findings from previous agents)\n"]
+        for e in entries:
+            lines.append(f"[{e.agent_name}] {e.id}: {e.text}")
+        text = "\n".join(lines)
+        if len(text) > max_chars:
+            kept: list[str] = []
+            count = 0
+            for line in lines:
+                if count + len(line) + 1 > max_chars:
+                    break
+                kept.append(line)
+                count += len(line) + 1
+            kept.append("... (truncated)")
+            text = "\n".join(kept)
+        return text
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

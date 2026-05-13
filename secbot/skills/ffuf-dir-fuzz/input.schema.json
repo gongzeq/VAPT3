@@ -1,26 +1,106 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["url", "wordlist"],
   "additionalProperties": false,
+  "oneOf": [
+    {"required": ["url", "wordlist"]},
+    {"required": ["raw_request", "wordlist"]}
+  ],
   "properties": {
     "url": {
       "type": "string",
-      "pattern": "^https?://[A-Za-z0-9._\\-:/]+FUZZ[A-Za-z0-9._\\-/]*$",
-      "maxLength": 512
+      "pattern": "^https?://[A-Za-z0-9._\\-:/?=&%]+FUZZ[A-Za-z0-9._\\-:/?=&%]*$",
+      "maxLength": 512,
+      "description": "Target URL. MUST contain the literal string 'FUZZ' where fuzzing should happen."
+    },
+    "raw_request": {
+      "type": "string",
+      "maxLength": 65536,
+      "description": "Full raw HTTP request (headers + blank line + body). MUST contain 'FUZZ' where fuzzing happens."
+    },
+    "request_proto": {
+      "type": "string",
+      "enum": ["http", "https"],
+      "default": "https",
+      "description": "Protocol used when raw_request is set (ffuf's -request-proto)."
+    },
+    "method": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{3,10}$",
+      "default": "GET",
+      "description": "HTTP method. Ignored when raw_request is set."
+    },
+    "body": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Request body (-d). URL-encoded POST bodies often contain '&' and must be sent via raw_request instead."
     },
     "wordlist": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1, "maxLength": 128},
+      "items": {"type": "string", "minLength": 1, "maxLength": 256},
       "minItems": 1,
-      "maxItems": 5000
+      "maxItems": 50000,
+      "description": "Inline wordlist. Materialised under <scan_dir>/ffuf/dir/wordlist.txt."
     },
     "extensions": {
       "type": "array",
       "items": {"type": "string", "pattern": "^\\.[A-Za-z0-9]{1,10}$"},
-      "maxItems": 10
+      "maxItems": 32,
+      "description": "File extensions to append, e.g. ['.php', '.bak']. URL mode only."
     },
-    "threads": {"type": "integer", "minimum": 1, "maximum": 100, "default": 40},
-    "match_codes": {"type": "string", "pattern": "^[0-9,\\-]{1,64}$", "default": "200,204,301,302,307,401,403"}
+    "threads": {"type": "integer", "minimum": 1, "maximum": 200, "default": 40},
+    "rate": {"type": "integer", "minimum": 0, "maximum": 500000},
+    "delay": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+)?(?:-[0-9]+(?:\\.[0-9]+)?)?$",
+      "description": "Delay between requests in seconds. 'X' for fixed, 'X-Y' for random range."
+    },
+    "max_time_sec": {"type": "integer", "minimum": 1, "maximum": 7200},
+    "max_time_job_sec": {"type": "integer", "minimum": 1, "maximum": 3600},
+    "recursion": {"type": "boolean", "default": false},
+    "recursion_depth": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2},
+    "auto_calibrate": {"type": "boolean", "default": true},
+    "auto_calibrate_per_host": {"type": "boolean", "default": false},
+    "auto_calibrate_strings": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 128},
+      "maxItems": 8
+    },
+    "match_codes":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$", "default": "200,204,301,302,307,401,403,405"},
+    "match_sizes":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_words":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_lines":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_regex":  {"type": "string", "maxLength": 256},
+    "filter_codes": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_sizes": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_words": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_lines": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_regex": {"type": "string", "maxLength": 256},
+    "headers": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 1024},
+      "maxItems": 32,
+      "description": "Extra headers, each formatted as 'Name: Value'."
+    },
+    "cookies": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 512},
+      "maxItems": 32,
+      "description": "Cookie segments, each 'name=value'."
+    },
+    "proxy": {
+      "type": "string",
+      "pattern": "^(?:https?|socks5)://[A-Za-z0-9._\\-:/]+$",
+      "maxLength": 256
+    },
+    "replay_proxy": {
+      "type": "string",
+      "pattern": "^(?:https?|socks5)://[A-Za-z0-9._\\-:/]+$",
+      "maxLength": 256
+    },
+    "follow_redirects": {"type": "boolean", "default": false},
+    "ignore_body": {"type": "boolean", "default": false},
+    "stop_on_error": {"type": "boolean", "default": false},
+    "timeout_sec": {"type": "integer", "minimum": 10, "maximum": 7200, "default": 600}
   }
 }

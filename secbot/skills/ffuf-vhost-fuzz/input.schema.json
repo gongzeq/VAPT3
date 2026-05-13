@@ -1,26 +1,87 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["url", "host_template", "wordlist"],
   "additionalProperties": false,
+  "oneOf": [
+    {"required": ["url", "host_template", "wordlist"]},
+    {"required": ["raw_request", "wordlist"]}
+  ],
   "properties": {
     "url": {
       "type": "string",
-      "pattern": "^https?://[A-Za-z0-9._\\-:/]+$",
+      "pattern": "^https?://[A-Za-z0-9._\\-:/?=&%]+$",
       "maxLength": 256
     },
     "host_template": {
       "type": "string",
       "pattern": "^[A-Za-z0-9._\\-]*FUZZ[A-Za-z0-9._\\-]*$",
-      "maxLength": 256
+      "maxLength": 256,
+      "description": "Template for the Host header value (must contain 'FUZZ')."
+    },
+    "raw_request": {
+      "type": "string",
+      "maxLength": 65536,
+      "description": "Full raw HTTP request with 'Host: ...FUZZ...' (and 'FUZZ' marker) embedded."
+    },
+    "request_proto": {
+      "type": "string",
+      "enum": ["http", "https"],
+      "default": "https"
     },
     "wordlist": {
       "type": "array",
       "items": {"type": "string", "minLength": 1, "maxLength": 64},
       "minItems": 1,
-      "maxItems": 5000
+      "maxItems": 50000
     },
-    "threads": {"type": "integer", "minimum": 1, "maximum": 100, "default": 40},
-    "filter_size": {"type": "string", "pattern": "^[0-9,\\-]{0,128}$"}
+    "threads": {"type": "integer", "minimum": 1, "maximum": 200, "default": 40},
+    "rate": {"type": "integer", "minimum": 0, "maximum": 500000},
+    "delay": {
+      "type": "string",
+      "pattern": "^[0-9]+(?:\\.[0-9]+)?(?:-[0-9]+(?:\\.[0-9]+)?)?$"
+    },
+    "max_time_sec": {"type": "integer", "minimum": 1, "maximum": 7200},
+    "max_time_job_sec": {"type": "integer", "minimum": 1, "maximum": 3600},
+    "auto_calibrate": {"type": "boolean", "default": true},
+    "auto_calibrate_per_host": {"type": "boolean", "default": false},
+    "auto_calibrate_strings": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 128},
+      "maxItems": 8
+    },
+    "match_codes":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_sizes":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_words":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_lines":  {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "match_regex":  {"type": "string", "maxLength": 256},
+    "filter_codes": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_sizes": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_words": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_lines": {"type": "string", "pattern": "^[0-9,\\-]{1,128}$"},
+    "filter_regex": {"type": "string", "maxLength": 256},
+    "headers": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 1024},
+      "maxItems": 32
+    },
+    "cookies": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 512},
+      "maxItems": 32
+    },
+    "proxy": {
+      "type": "string",
+      "pattern": "^(?:https?|socks5)://[A-Za-z0-9._\\-:/]+$",
+      "maxLength": 256
+    },
+    "replay_proxy": {
+      "type": "string",
+      "pattern": "^(?:https?|socks5)://[A-Za-z0-9._\\-:/]+$",
+      "maxLength": 256
+    },
+    "follow_redirects": {"type": "boolean", "default": false},
+    "ignore_body": {"type": "boolean", "default": false},
+    "stop_on_error": {"type": "boolean", "default": false},
+    "timeout_sec": {"type": "integer", "minimum": 10, "maximum": 7200, "default": 600}
   }
 }

@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared import NetworkPolicy, run_command
+from secbot.skills._shared.resource import resolve_resource
 from secbot.skills._shared.runner import validate_portspec, validate_target
 from secbot.skills.types import (
+    InvalidSkillArg,
     SkillBinaryMissing,
     SkillCancelled,
     SkillContext,
@@ -75,16 +77,36 @@ def _parse(raw_log: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     target = args["target"]
     ports = args.get("ports", "80,443,8080,8443")
+    user_dict = args.get("user_dict")
+    pass_dict = args.get("pass_dict")
     validate_target(target)
     validate_portspec(ports)
 
     raw_log = ctx.raw_log_dir / "fscan-vuln-scan.log"
     started = time.monotonic()
 
+    cli = ["-h", target, "-p", ports, "-o", str(raw_log)]
+
+    # Enable brute-force when wordlists are provided; otherwise keep POC-only.
+    if not user_dict and not pass_dict:
+        cli.append("-nobr")
+
+    if user_dict:
+        p = resolve_resource(ctx, "fuzzDicts", user_dict)
+        if p is None:
+            raise InvalidSkillArg(f"user_dict not found in fuzzDicts: {user_dict}")
+        cli += ["-userf", str(p)]
+
+    if pass_dict:
+        p = resolve_resource(ctx, "fuzzDicts", pass_dict)
+        if p is None:
+            raise InvalidSkillArg(f"pass_dict not found in fuzzDicts: {pass_dict}")
+        cli += ["-pwdf", str(p)]
+
     try:
         result = await run_command(
             binary="fscan",
-            args=["-h", target, "-p", ports, "-nobr", "-o", str(raw_log)],
+            args=cli,
             timeout_sec=900,
             network=NetworkPolicy.REQUIRED,
             capture="discard",

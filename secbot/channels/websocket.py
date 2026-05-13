@@ -1829,8 +1829,13 @@ class WebSocketChannel(BaseChannel):
             # ``agent`` is the logical source; keep the forward-compat
             # contract — EventBuffer.publish() logs unknown sources but
             # still stores the row.
-            message_bits = [agent, step, category]
-            message = " · ".join(bit for bit in message_bits if bit)
+            if category == "tool_call":
+                message = f"调用 {agent}"
+            elif category == "tool_result":
+                message = f"{agent} 完成"
+            else:
+                message_bits = [agent, step, category]
+                message = " · ".join(bit for bit in message_bits if bit)
             get_event_buffer().publish(
                 level=level,
                 source=agent,

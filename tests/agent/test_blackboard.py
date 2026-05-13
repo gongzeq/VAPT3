@@ -244,3 +244,48 @@ async def test_registry_concurrent_get_or_create_is_singleton() -> None:
     )
     first = boards[0]
     assert all(b is first for b in boards)
+
+
+# ---------------------------------------------------------------------------
+# Blackboard context injection for subagents
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_format_blackboard_context_empty_board() -> None:
+    """Empty board should produce a helpful placeholder."""
+    from secbot.agent.subagent import SubagentManager
+
+    bb = Blackboard()
+    ctx = await SubagentManager._format_blackboard_context(bb)
+    assert "currently empty" in ctx
+    assert "Shared Blackboard" in ctx
+
+
+@pytest.mark.asyncio
+async def test_format_blackboard_context_with_entries() -> None:
+    """Entries should be formatted with agent name, id and text."""
+    from secbot.agent.subagent import SubagentManager
+
+    bb = Blackboard()
+    await bb.write("asset_discovery", "[finding] 80,443 open on 10.0.0.1")
+    await bb.write("port_scan", "[milestone] sweep complete")
+    ctx = await SubagentManager._format_blackboard_context(bb)
+    assert "Shared Blackboard (findings from previous agents)" in ctx
+    assert "[asset_discovery]" in ctx
+    assert "[finding] 80,443 open on 10.0.0.1" in ctx
+    assert "[port_scan]" in ctx
+    assert "[milestone] sweep complete" in ctx
+
+
+@pytest.mark.asyncio
+async def test_format_blackboard_context_truncates_long_content() -> None:
+    """Content beyond max_chars should be truncated at line boundary."""
+    from secbot.agent.subagent import SubagentManager
+
+    bb = Blackboard()
+    for i in range(50):
+        await bb.write("agent", f"line-{i}: " + "x" * 100)
+    ctx = await SubagentManager._format_blackboard_context(bb, max_chars=300)
+    assert "... (truncated)" in ctx
+    assert len(ctx) <= 350  # some headroom for the truncation marker

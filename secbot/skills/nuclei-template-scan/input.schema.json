@@ -25,6 +25,17 @@
       "maxLength": 256,
       "pattern": "^[a-zA-Z0-9,_\\-]*$",
       "default": "cve,exposure,misconfig"
+    },
+    "templates": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_./\\-]*$"
+      },
+      "description": "Optional list of POC template paths under secbot/resource/poc/. Each item is a relative file (e.g. 'cve/2023/CVE-2023-1234.yaml') or subdirectory (e.g. 'cve/2023'). The LLM MUST glob secbot/resource/poc/**/*.yaml first and pass only the entries that match the target profile — do NOT enumerate the entire directory."
     }
   }
 }

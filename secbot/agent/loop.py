@@ -39,7 +39,9 @@ from secbot.agent.tools.plan import WritePlanTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.self import MyTool
-from secbot.agent.tools.shell import ExecTool
+# NOTE: ExecTool intentionally not imported here. ExecTool is hard-disabled —
+# all shell access for security workflows MUST go through SkillTool. See
+# _register_operational_tools and subagent.py for the matching policy.
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
@@ -601,19 +603,10 @@ class AgentLoop:
         for cls in (GlobTool, GrepTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
         self.tools.register(NotebookEditTool(workspace=self.workspace, allowed_dir=allowed_dir))
-        if self.exec_config.enable:
-            self.tools.register(
-                ExecTool(
-                    working_dir=str(self.workspace),
-                    timeout=self.exec_config.timeout,
-                    restrict_to_workspace=self.restrict_to_workspace,
-                    sandbox=self.exec_config.sandbox,
-                    path_append=self.exec_config.path_append,
-                    allowed_env_keys=self.exec_config.allowed_env_keys,
-                    allow_patterns=self.exec_config.allow_patterns,
-                    deny_patterns=self.exec_config.deny_patterns,
-                )
-            )
+        # Hard-disabled: ExecTool is never registered, even on non-orchestrator
+        # operational loops. All shell access MUST go through SkillTool. See
+        # subagent.py for the matching block and .trellis/tasks/archive/2026-05/
+        # 05-11-security-tools-as-tools/prd.md §D4.
         if self.web_config.enable:
             self.tools.register(
                 WebSearchTool(
@@ -1284,6 +1277,8 @@ class AgentLoop:
                 session_summary=pending,
                 current_role=current_role,
                 sender_id=msg.sender_id,
+                is_orchestrator=self.is_orchestrator,
+                agent_registry=self._agent_registry,
             )
             final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
                 messages, session=session, channel=channel, chat_id=chat_id,
@@ -1374,7 +1369,11 @@ class AgentLoop:
         if pending_ask:
             pending_ask_id, pending_ask_tool = pending_ask
             initial_messages = ask_user_tool_result_messages(
-                self.context.build_system_prompt(channel=msg.channel),
+                self.context.build_system_prompt(
+                    channel=msg.channel,
+                    is_orchestrator=self.is_orchestrator,
+                    agent_registry=self._agent_registry,
+                ),
                 history,
                 pending_ask_id,
                 msg.content,
@@ -1389,6 +1388,8 @@ class AgentLoop:
                 channel=msg.channel,
                 chat_id=self._runtime_chat_id(msg),
                 sender_id=msg.sender_id,
+                is_orchestrator=self.is_orchestrator,
+                agent_registry=self._agent_registry,
             )
 
         async def _bus_progress(

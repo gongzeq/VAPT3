@@ -44,17 +44,6 @@ import { cn } from "@/lib/utils";
  * deliberately excluded to avoid an embedded-script XSS surface. */
 const ACCEPT_ATTR = "image/png,image/jpeg,image/webp,image/gif";
 
-/** Orchestrator's 4-tool whitelist. Hardcoded per
- * `.trellis/tasks/05-12-multi-agent-obs-composer/prd.md` D1 — matches the
- * server contract delivered in `05-12-orchestrator-tool-whitelist` and does
- * not need a runtime API round-trip. */
-const ORCHESTRATOR_TOOL_WHITELIST = [
-  "delegate_task",
-  "read_blackboard",
-  "write_plan",
-  "request_approval",
-] as const;
-
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -97,6 +86,7 @@ export function ThreadComposer({
   placeholder,
   isStreaming = false,
   variant = "thread",
+  modelLabel,
   slashCommands = [],
 }: ThreadComposerProps) {
   const { t } = useTranslation();
@@ -419,7 +409,12 @@ export function ThreadComposer({
             ))}
           </div>
         ) : null}
-        <ToolWhitelistHint />
+        {modelLabel ? (
+          <div className="flex items-center gap-1.5 px-3 pt-2 text-xs">
+            <Sparkles className="h-3 w-3 flex-none text-gradient" aria-hidden />
+            <code className="font-mono text-gradient font-semibold">{modelLabel}</code>
+          </div>
+        ) : null}
         <textarea
           ref={textareaRef}
           value={value}
@@ -526,28 +521,6 @@ interface SlashCommandPaletteProps {
   isHero: boolean;
   onHover: (index: number) => void;
   onChoose: (command: SlashCommand) => void;
-}
-
-function ToolWhitelistHint() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-3 pt-2 text-xs leading-4 text-muted-foreground">
-      <Sparkles className="h-3 w-3 flex-none" aria-hidden />
-      <span className="flex-none">
-        {t("thread.composer.toolHintLabel", { defaultValue: "可用工具：" })}
-      </span>
-      {ORCHESTRATOR_TOOL_WHITELIST.map((name, idx) => (
-        <span key={name} className="flex items-center gap-x-1.5">
-          {idx > 0 ? (
-            <span aria-hidden className="text-muted-foreground/50">
-              ·
-            </span>
-          ) : null}
-          <code className="font-mono text-muted-foreground/90">{name}</code>
-        </span>
-      ))}
-    </div>
-  );
 }
 
 function SlashCommandPalette({

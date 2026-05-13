@@ -28,6 +28,11 @@ summary if the orchestrator marked the channel as `redacted`.
 
 ## Blackboard
 
+**Writing principle**: Before calling `blackboard_write`, ask yourself: "Will
+this help the orchestrator or the next agent make a better decision?" Only
+write **conclusive findings** — never intermediate states or raw tool output.
+Each note must be one to two sentences.
+
 Share state with the orchestrator through short, tagged notes. Do NOT write
 passwords to the blackboard — it is visible to other agents and the UI.
 

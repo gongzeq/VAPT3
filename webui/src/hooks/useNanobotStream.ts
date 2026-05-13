@@ -390,7 +390,7 @@ export function useNanobotStream(
             case "subagent_spawned":
               return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
             case "subagent_status":
-              return `⏳ 子智能体「${payload.task_id}」状态: ${payload.phase ?? "unknown"} (迭代 ${payload.iteration ?? 0})`;
+              return `⏳ 子智能体「${payload.task_id}」状态: ${payload.phase ?? "unknown"}`;
             case "subagent_done":
               return payload.status === "ok"
                 ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`

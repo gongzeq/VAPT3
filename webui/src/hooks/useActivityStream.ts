@@ -90,6 +90,13 @@ function deriveWsId(frame: ActivityEventFrame): string {
 }
 
 function messageFromFrame(frame: ActivityEventFrame): string {
+  const cat = frame.category ?? "tool_call";
+  if (cat === "tool_call") {
+    return `调用 ${frame.agent ?? "tool"}`;
+  }
+  if (cat === "tool_result") {
+    return `${frame.agent ?? "tool"} 完成`;
+  }
   const bits = [frame.agent, frame.step, frame.category].filter(Boolean);
   if (bits.length === 0) return "";
   return bits.join(" · ");
