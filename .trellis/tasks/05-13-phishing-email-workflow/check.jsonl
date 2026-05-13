@@ -1,0 +1,15 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Forbidden patterns + code standards the workflow template, executors, and dashboard handlers must honor"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify step3 defensive output and Lua-side add_score=0 fallback align with uniform error shapes"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify per-step structured logs include required fields (run_id, step_id, content_hash, cache_hit, duration_ms)"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "kind=script args + sandbox usage must pass existing safety validators (no raw shell, no eval)"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Guardrail MUST still trigger inside workflow steps — confirm template cannot bypass"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Verify workflow run-event frames follow existing ws schema"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "Verify all /api/dashboard/phishing/* endpoints honor read-only, actor_id scoping, dense-trend, no-data-wrapper rules"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify SQLite reads against detection_results follow project query/connection conventions"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Confirm WorkflowRun status vocabulary surfaced to dashboard matches existing lifecycle"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend nav map — verify cross-layer references (route, theme, component, viz)"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "海蓝 tokens / severity palette applied consistently on summary card and detail page"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "AlertDialog for destructive actions; reuse Card/KPI patterns; no raw confirm()"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Only recharts permitted for sparkline/trend/pie (no d3 freestyle)"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/api-spec.md", "reason": "Verify WorkflowTemplate registration + /_templates response strictly conform to parent task contract"}
+{"file": ".trellis/tasks/05-13-phishing-email-workflow/prd.md", "reason": "Acceptance criteria, step3 stdout contract, Redis key rule — quality gate checklist"}

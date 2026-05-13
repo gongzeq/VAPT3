@@ -1,0 +1,20 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec navigation entry — locate workflow/dashboard/error layers"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Two-layer topology — phishing workflow runs inside Workflow runtime, dashboard endpoints sit on existing API surface"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where to place secbot/workflow/templates.py and dashboard router additions"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Defensive step3 must conform to project-wide error semantics; LLM/workflow failures translate to add_score=0 fallback"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Per-step structured logs for phishing workflow runs (sender hash / score / cache_hit fields)"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Workflow run events streamed to WebUI must follow existing ws frame schema"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Reuse pending/running/success/failed status vocabulary for WorkflowRun states surfaced in dashboard"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "Authoritative contract for /api/dashboard/* endpoints — new /api/dashboard/phishing/{summary,stats,history,trend,top-senders,health} must follow shape & no-cache rules"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SQLite read patterns for detection_results table queries (history/stats/trend)"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Script-kind step args validation conventions (no shell, sandbox entry)"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Guardrail must still fire inside workflow steps — no bypass via template"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entry — route/theme/component/viz layer map"}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Shell/Navbar/route conventions — DashboardPage card + /dashboard/phishing detail view"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "海蓝 primary + severity palette for phishing/suspicious/normal chips and link-status badges"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Card/KPI/Table/AlertDialog patterns for L1 summary card and L2 detail page"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Whitelist: recharts for sparkline/trend/pie; no custom d3 freestyle"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/api-spec.md", "reason": "Authoritative REST contract — WorkflowTemplate shape, /_templates response, /run sync semantics this task depends on"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/dev-guide.md", "reason": "Executor blueprint (script/llm), template resolver, runner sync mode — guides step1/step2/step3 wiring"}
+{"file": ".trellis/tasks/05-13-phishing-email-workflow/prd.md", "reason": "This task's requirements R1–R6, ADR, acceptance criteria, step3 stdout contract"}
+{"file": ".trellis/tasks/05-13-phishing-email-workflow/prototype.html", "reason": "Reference visual prototype for L1 summary card on DashboardPage and L2 detail page"}
