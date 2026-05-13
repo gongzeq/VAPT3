@@ -59,7 +59,7 @@ _HANDLER_MODULE_CACHE: dict[str, Any] = {}
 
 _scan_id_var: ContextVar[str] = ContextVar("skill_scan_id", default="adhoc")
 _scan_dir_var: ContextVar[Optional[Path]] = ContextVar("skill_scan_dir", default=None)
-_confirm_var: ContextVar[Optional[Callable[[str], Awaitable[bool]]]] = ContextVar(
+_confirm_var: ContextVar[Optional[Callable[[Mapping[str, Any]], Awaitable[bool]]]] = ContextVar(
     "skill_confirm", default=None
 )
 _progress_var: ContextVar[Optional[Callable[[float, str], Awaitable[None]]]] = ContextVar(
@@ -71,7 +71,7 @@ def bind_skill_context(
     *,
     scan_id: str,
     scan_dir: Path,
-    confirm: Callable[[str], Awaitable[bool]] | None = None,
+    confirm: Callable[[Mapping[str, Any]], Awaitable[bool]] | None = None,
     progress: Callable[[float, str], Awaitable[None]] | None = None,
 ) -> None:
     """Bind per-turn skill context so every SkillTool.execute sees fresh values."""
@@ -79,6 +79,17 @@ def bind_skill_context(
     _scan_dir_var.set(scan_dir)
     _confirm_var.set(confirm)
     _progress_var.set(progress)
+
+
+def current_skill_confirm() -> Callable[[Mapping[str, Any]], Awaitable[bool]] | None:
+    """Return the active high-risk confirm callback, if any.
+
+    Subagents rebind ``scan_id``/``scan_dir`` per task but must preserve the
+    parent loop's confirm callback so critical skills inside the subagent
+    still block on the WebUI dialog. Callers read the current value via this
+    helper and pass it back into :func:`bind_skill_context`.
+    """
+    return _confirm_var.get()
 
 
 def _current_scan_dir(default_workspace: Path) -> Path:

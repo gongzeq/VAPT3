@@ -37,7 +37,7 @@ These are owned by the backend but bind the frontend wire format. Any UI change 
 1. **No raw hex / rgb in component code.** Always reference Tailwind semantic class or `hsl(var(--token))`. New tokens go in [theme-tokens.md](./theme-tokens.md) first, then `globals.css`.
 2. **No new chart / graph library.** If the requirement is not covered by react-flow or recharts, open a spec PR before adding the dependency.
 3. **Tool-call rendering goes through `assistant-ui` `toolUI` registry.** Skill-specific renderers must register by skill name; do not branch inside a single mega-component.
-4. **Destructive actions use shadcn `<AlertDialog destructive>` with the structure in [component-patterns.md §3](./component-patterns.md#3-destructive-confirmation-dialog).** No custom modal for destructive flows.
+4. **Destructive actions use shadcn `<AlertDialog destructive>` with the structure in [component-patterns.md §3](./component-patterns.md#3-destructive-confirmation-dialog), OR the inline `.approval` card variant per [§3.3](./component-patterns.md#33-inline-approval-variant) for sub-agent high-risk confirmations.** Both variants MUST satisfy anti-misclick constraints. No other custom modal for destructive flows.
 
 ---
 

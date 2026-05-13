@@ -802,7 +802,11 @@ describe("ThreadShell", () => {
       "Run nmap?",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    // Approve button is armed after a 300ms anti-misclick cooldown (PRD §B.8).
+    const approveBtn = screen.getByRole("button", { name: "Approve" });
+    await waitFor(() => expect(approveBtn).not.toBeDisabled());
+
+    fireEvent.click(approveBtn);
 
     expect(client.sendMessage).toHaveBeenCalledWith("chat-a", "Approve", undefined);
   });

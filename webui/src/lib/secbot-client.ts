@@ -223,6 +223,16 @@ export class SecbotClient {
     this.queueSend({ type: "stop", chat_id: chatId });
   }
 
+  /** Send a ``scan.user_reply`` frame (approve/deny a high-risk confirmation).
+   *
+   * The backend's ``_dispatch_envelope`` matches this to the pending Future
+   * registered by ``surface_confirm``, unblocking the awaiting skill. */
+  sendUserReply(askId: string, decision: "approve" | "deny", reason?: string): void {
+    const frame: Outbound = { type: "scan.user_reply", ask_id: askId, decision };
+    if (reason) (frame as { reason?: string }).reason = reason;
+    this.queueSend(frame);
+  }
+
   // -- internals ---------------------------------------------------------
 
   private setStatus(status: ConnectionStatus): void {

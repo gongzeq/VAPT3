@@ -206,7 +206,7 @@ Rules:
 
 #### Mirror contract with WS
 
-Every non-throttled `broadcast_activity_event` frame (see §3.5) mirrors itself into the `EventBuffer` with:
+Every non-throttled `broadcast_activity_event` frame (see §3.7) mirrors itself into the `EventBuffer` with:
 - `source = agent`
 - `level = "ok"` when `category == "tool_result"`, else `"info"`
 - `message = " · ".join([agent, step, category])`
@@ -298,7 +298,92 @@ Rules:
 
 Emitted by `secbot/agent/blackboard.py::Blackboard.write()` whenever an entry is committed. The payload carries an optional `kind` auto-extracted from the leading `[tag]` prefix; see [blackboard-registry.md](./blackboard-registry.md) for the contract.
 
-### 3.5 `activity_event`
+### 3.5 `agent_event.thought`
+
+> Added 2026-05-13. Origin: PRD `05-11-frontend-agent-display-gap` §G1–G3. Emitter: `secbot/agent/loop.py` `before_iteration`.
+
+Surfaces each LLM reasoning step to the chat thread (inline collapsible card). **No throttling** — frequency is low (one frame per loop iteration; high iteration counts already have their own backpressure).
+
+```json
+{
+  "event": "agent_event",
+  "chat_id": "0e1b…c8",
+  "type": "thought",
+  "payload": {
+    "type":    "thought",
+    "agent":   "orchestrator|<subagent-name>",
+    "content": "<free-form reasoning text>"
+  },
+  "timestamp": "…"
+}
+```
+
+Rules:
+- `agent` is the logical registry key (same as `agent_status.agent_name`). Never the display name.
+- `content` MAY be empty string for a pure "starting iteration N" marker; UI MUST collapse consecutive same-agent empty thoughts.
+- Emitted regardless of `context.streamed_content` (unlike legacy `_on_progress`). Replaces the `tool_hint / progress` path for reasoning.
+
+### 3.6 `agent_event.subagent_spawned` / `.subagent_status` / `.subagent_done`
+
+> Added 2026-05-13. Origin: PRD `05-11-frontend-agent-display-gap` §G4–G7. Emitters: `secbot/agent/subagent.py::SubagentManager.spawn`, `SubagentManager._on_checkpoint`, `SubagentManager._announce_result`.
+
+Three-variant lifecycle triplet for one spawned expert agent. **No throttling** on `spawned` / `done`; `status` frames SHOULD be coalesced server-side on phase change (not every iteration).
+
+```json
+// subagent_spawned — fired once, immediately after spawn()
+{
+  "event": "agent_event",
+  "chat_id": "…",
+  "type": "subagent_spawned",
+  "payload": {
+    "type":             "subagent_spawned",
+    "task_id":          "task-<uuid4>",
+    "label":            "vuln_scan",
+    "task_description": "Scan 10.0.0.0/24 for CVE-2024-*"
+  },
+  "timestamp": "…"
+}
+```
+
+```json
+// subagent_status — phase / iteration transition; may carry recent tool_events
+{
+  "event": "agent_event", "chat_id": "…",
+  "type": "subagent_status",
+  "payload": {
+    "type":        "subagent_status",
+    "task_id":     "task-…",
+    "phase":       "planning|executing|waiting|reporting",
+    "iteration":   3,
+    "tool_events": [ /* optional; last-N brief tool_call summaries */ ]
+  },
+  "timestamp": "…"
+}
+```
+
+```json
+// subagent_done — terminal; status distinguishes success vs error
+{
+  "event": "agent_event", "chat_id": "…",
+  "type": "subagent_done",
+  "payload": {
+    "type":    "subagent_done",
+    "task_id": "task-…",
+    "label":   "vuln_scan",
+    "status":  "ok|error",
+    "result":  "<summary or error message>"
+  },
+  "timestamp": "…"
+}
+```
+
+Rules:
+- `task_id` is the **invariant** across the three frames — UI groups by `task_id`, not by `label`.
+- `spawned` MUST precede the first `status`; `done` MUST be the last frame for that `task_id` in the stream.
+- `label` is the agent registry key (matches `/api/agents` row); frontends that don't recognise it render a generic "sub-agent" label and continue.
+- `_announce_result` publishes `subagent_done` **and** the legacy message-bus "result" frame for back-compat; consumers MUST dedupe by `task_id`.
+
+### 3.7 `activity_event`
 
 > Added 2026-05-13. Origin: PRD `05-12-multi-agent-obs-trace` §B7. Emitter: `secbot/channels/websocket.py::WebSocketChannel.broadcast_activity_event`.
 

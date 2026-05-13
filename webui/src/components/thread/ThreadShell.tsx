@@ -74,6 +74,8 @@ export function ThreadShell({
           variant: message.promptKind === "approval" || message.toolName === "request_approval"
             ? ("approval" as const)
             : ("question" as const),
+          askId: message.askId,
+          detail: message.approvalDetail,
         };
       }
       if (message.role === "assistant") return null;
@@ -171,7 +173,18 @@ export function ThreadShell({
           question={pendingAsk.question}
           buttons={pendingAsk.buttons}
           variant={pendingAsk.variant}
-          onAnswer={send}
+          detail={pendingAsk.detail}
+          onAnswer={(answer) => {
+            if (pendingAsk.askId) {
+              // High-risk confirmation: route via scan.user_reply frame.
+              const decision = answer.toLowerCase().includes("approve")
+                ? "approve" as const
+                : "deny" as const;
+              client.sendUserReply(pendingAsk.askId, decision);
+            } else {
+              send(answer);
+            }
+          }}
         />
       ) : null}
       {session ? (

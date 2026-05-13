@@ -8,13 +8,22 @@ interface AskUserPromptProps {
   question: string;
   buttons: string[][];
   variant?: "question" | "approval";
+  /** Pre-formatted detail block shown above buttons (approval variant).
+   * Typically displays tool name + args summary from the high_risk_confirm
+   * payload for user review before approve/deny. */
+  detail?: string;
   onAnswer: (answer: string) => void;
 }
+
+/** Cooldown (ms) before the Approve button becomes clickable — prevents
+ * accidental confirmation of destructive actions (spec §F4 / PRD B.8). */
+const APPROVE_DELAY_MS = 300;
 
 export function AskUserPrompt({
   question,
   buttons,
   variant = "question",
+  detail,
   onAnswer,
 }: AskUserPromptProps) {
   const [customOpen, setCustomOpen] = useState(false);
@@ -23,6 +32,15 @@ export function AskUserPrompt({
   const options = buttons.flat().filter(Boolean);
   const isApproval = variant === "approval";
   const Icon = isApproval ? ShieldAlert : MessageSquareText;
+
+  // 300ms arm delay for the "Approve" button so users don't reflexively click.
+  const [armed, setArmed] = useState(!isApproval);
+  useEffect(() => {
+    if (!isApproval) { setArmed(true); return; }
+    setArmed(false);
+    const timer = setTimeout(() => setArmed(true), APPROVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isApproval]);
 
   useEffect(() => {
     if (customOpen) {
@@ -62,22 +80,33 @@ export function AskUserPrompt({
         </p>
       </div>
 
+      {isApproval && detail ? (
+        <pre className="mb-2 max-h-40 overflow-auto rounded-md border border-destructive/20 bg-muted/50 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+          {detail}
+        </pre>
+      ) : null}
+
       <div className="grid gap-1.5 sm:grid-cols-2">
-        {options.map((option) => (
-          <Button
-            key={option}
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onAnswer(option)}
-            className={cn(
-              "justify-start rounded-[10px] px-3 text-left",
-              isApproval && option.toLowerCase().includes("approve") && "border-destructive/40 text-destructive hover:bg-destructive/10",
-            )}
-          >
-            <span className="truncate">{option}</span>
-          </Button>
-        ))}
+        {options.map((option) => {
+          const isApproveBtn = isApproval && option.toLowerCase().includes("approve");
+          const isDenyBtn = isApproval && option.toLowerCase().includes("deny");
+          return (
+            <Button
+              key={option}
+              type="button"
+              variant={isDenyBtn ? "destructive" : "outline"}
+              size="sm"
+              disabled={isApproveBtn && !armed}
+              onClick={() => onAnswer(option)}
+              className={cn(
+                "justify-start rounded-[10px] px-3 text-left",
+                isApproveBtn && "border-green-500/50 text-green-600 hover:bg-green-500/10",
+              )}
+            >
+              <span className="truncate">{option}</span>
+            </Button>
+          );
+        })}
         <Button
           type="button"
           variant="ghost"

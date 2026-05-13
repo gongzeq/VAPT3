@@ -7,9 +7,26 @@ import { randomId } from "@/lib/utils";
 import type {
   InboundEvent,
   OutboundMedia,
+  ToolCallStatus,
   UIImage,
   UIMessage,
 } from "@/lib/types";
+
+/** Generate a human-readable content string for a tool_call event card. */
+function toolCallContent(toolName: string, status: ToolCallStatus, reason?: string): string {
+  switch (status) {
+    case "running":
+      return `⚙️ ${toolName} 执行中…`;
+    case "critical":
+      return `⚠️ ${toolName} 高风险，等待审批…`;
+    case "ok":
+      return `✅ ${toolName} 已完成`;
+    case "error":
+      return reason
+        ? `❌ ${toolName} 失败: ${reason}`
+        : `❌ ${toolName} 失败`;
+  }
+}
 
 interface StreamBuffer {
   /** ID of the assistant message currently receiving deltas. */
@@ -273,6 +290,97 @@ export function useNanobotStream(
         // ``payload``. Merge them back into a single ``AgentEventPayload``
         // so downstream switches have a single source of truth.
         const payload = { ...ev.payload, type: ev.type };
+
+        // ── tool_call merge logic (F2) ─────────────────────────────────
+        // Terminal statuses ("ok" / "error") carry a ``tool_call_id`` that
+        // matches an earlier "running" / "critical" frame. Instead of
+        // appending a new row, we update the existing message in-place so
+        // the card can transition (spinner→checkmark / spinner→error).
+        if (payload.type === "tool_call") {
+          const tcId = payload.tool_call_id;
+          const status = (payload.status ?? payload.tool_status ?? "running") as ToolCallStatus;
+          // Normalise tool_status onto the payload for downstream renderers.
+          payload.tool_status = status;
+
+          if (status === "ok" || status === "error") {
+            // Try to find the matching running/critical row and merge.
+            setMessages((prev) => {
+              const idx = tcId
+                ? prev.findIndex(
+                    (m) =>
+                      m.agentEvent?.type === "tool_call" &&
+                      m.agentEvent?.tool_call_id === tcId,
+                  )
+                : -1;
+              if (idx !== -1) {
+                const existing = prev[idx];
+                const merged = {
+                  ...existing,
+                  content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
+                  agentEvent: { ...existing.agentEvent!, ...payload, tool_status: status },
+                };
+                return [...prev.slice(0, idx), merged, ...prev.slice(idx + 1)];
+              }
+              // No matching running frame (late joiner) — append as-is.
+              return [
+                ...prev,
+                {
+                  id: randomId(),
+                  role: "assistant" as const,
+                  kind: "agent_event" as const,
+                  content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
+                  agentEvent: payload,
+                  createdAt: Date.now(),
+                },
+              ];
+            });
+            return;
+          }
+
+          // running / critical — always append a new card.
+          const content = toolCallContent(payload.tool_name ?? "", status);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: randomId(),
+              role: "assistant",
+              kind: "agent_event",
+              content,
+              agentEvent: payload,
+              createdAt: Date.now(),
+            },
+          ]);
+          return;
+        }
+
+        // ── high_risk_confirm → inline approval card (F5) ─────────────
+        // Convert the backend's confirmation payload into an assistant
+        // message with buttons so ThreadShell renders it as AskUserPrompt
+        // with variant="approval". The ask_id is stashed so the answer
+        // routes via ``client.sendUserReply`` (not a regular message).
+        if (payload.type === "high_risk_confirm") {
+          const skill = payload.skill ?? payload.tool_name ?? "unknown";
+          const summary = payload.summary_for_user ?? `⦁安全确认：${skill} 将执行高风险操作`;
+          const detail = payload.tool_args
+            ? JSON.stringify(payload.tool_args, null, 2)
+            : undefined;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: randomId(),
+              role: "assistant",
+              content: summary,
+              toolName: "request_approval",
+              promptKind: "approval",
+              buttons: [["Approve", "Deny"]],
+              askId: payload.ask_id,
+              approvalDetail: detail,
+              createdAt: Date.now(),
+            },
+          ]);
+          return;
+        }
+
         const content = (() => {
           switch (payload.type) {
             case "thought":

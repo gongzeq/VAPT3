@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb, ListChecks } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb, ListChecks, Loader2, ShieldAlert, CircleCheck, CircleX, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
 import { cn } from "@/lib/utils";
-import type { AgentEventPayload, UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
+import type { AgentEventPayload, ToolCallStatus, UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: UIMessage;
@@ -451,6 +451,111 @@ interface AgentEventCardProps {
   animClass: string;
 }
 
+// ── ToolCallCard (F3) ─────────────────────────────────────────────────
+// Renders a compact inline card for a sub-agent tool execution.
+// Status colours per spec component-patterns.md §2:
+//   running → primary, critical → amber, ok → green, error → red,
+//   user_denied → --sev-info (灰蓝; spec A.3 在 PRD 05-12-multi-agent-obs-tool-call 锁定).
+// The ``denied`` key is a render-only variant of ``error``: it is only
+// produced when backend signals ``reason === "user_denied"`` / timeout, and
+// does NOT belong to the ``ToolCallStatus`` wire enum.
+
+type ToolCardVariant = ToolCallStatus | "denied";
+
+const TOOL_STATUS_STYLE: Record<ToolCardVariant, { border: string; bg: string; icon: string; text: string }> = {
+  running: { border: "border-primary/30", bg: "bg-primary/5", icon: "text-primary", text: "text-primary" },
+  critical: { border: "border-amber-500/40", bg: "bg-amber-500/5", icon: "text-amber-500", text: "text-amber-500" },
+  ok: { border: "border-green-500/30", bg: "bg-green-500/5", icon: "text-green-500", text: "text-green-500" },
+  error: { border: "border-red-500/30", bg: "bg-red-500/5", icon: "text-red-500", text: "text-red-500/90" },
+  denied: {
+    border: "border-[hsl(var(--sev-info)/0.35)]",
+    bg: "bg-[hsl(var(--sev-info)/0.08)]",
+    icon: "text-[hsl(var(--sev-info))]",
+    text: "text-[hsl(var(--sev-info))]",
+  },
+};
+
+function toolCallIcon(variant: ToolCardVariant) {
+  switch (variant) {
+    case "running":
+      return <Loader2 className={cn("h-3.5 w-3.5 shrink-0 animate-spin", TOOL_STATUS_STYLE.running.icon)} aria-hidden />;
+    case "critical":
+      return <ShieldAlert className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.critical.icon)} aria-hidden />;
+    case "ok":
+      return <CircleCheck className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.ok.icon)} aria-hidden />;
+    case "denied":
+      return <CircleX className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.denied.icon)} aria-hidden />;
+    case "error":
+      return <CircleX className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.error.icon)} aria-hidden />;
+  }
+}
+
+/** Reason strings that map ``status=error`` onto the neutral info palette.
+ * Backend emits ``user_denied`` on explicit deny and ``timeout`` on the 120s
+ * auto-deny path (see subagent._classify_terminal). */
+const DENIED_REASONS = new Set(["user_denied", "timeout"]);
+
+function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
+  const status: ToolCallStatus = payload.tool_status ?? "running";
+  const variant: ToolCardVariant =
+    status === "error" && payload.reason && DENIED_REASONS.has(payload.reason)
+      ? "denied"
+      : status;
+  const style = TOOL_STATUS_STYLE[variant];
+  const [argsOpen, setArgsOpen] = useState(false);
+  const hasArgs = payload.tool_args && Object.keys(payload.tool_args).length > 0;
+
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2 rounded-lg border px-3 py-2",
+        style.border,
+        style.bg,
+        animClass,
+      )}
+    >
+      {toolCallIcon(variant)}
+      <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          <Wrench className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden />
+          <span className="font-medium text-foreground">{payload.tool_name ?? "tool"}</span>
+          {payload.agent_name ? (
+            <span className="text-[10px] text-muted-foreground/70">({payload.agent_name})</span>
+          ) : null}
+          {payload.duration_ms != null ? (
+            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
+              {payload.duration_ms < 1000
+                ? `${payload.duration_ms}ms`
+                : `${(payload.duration_ms / 1000).toFixed(1)}s`}
+            </span>
+          ) : null}
+        </div>
+        {status === "error" && payload.reason ? (
+          <p className={cn("mt-0.5 text-[11px]", style.text)}>{payload.reason}</p>
+        ) : null}
+        {hasArgs ? (
+          <button
+            type="button"
+            onClick={() => setArgsOpen((v) => !v)}
+            className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+          >
+            <ChevronRight
+              className={cn("h-2.5 w-2.5 transition-transform duration-150", argsOpen && "rotate-90")}
+              aria-hidden
+            />
+            <span>参数</span>
+          </button>
+        ) : null}
+        {argsOpen && hasArgs ? (
+          <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/60 px-2 py-1 font-mono text-[10px] leading-relaxed text-muted-foreground/80">
+            {JSON.stringify(payload.tool_args, null, 2)}
+          </pre>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
   const [open, setOpen] = useState(false);
 
@@ -562,6 +667,8 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
           </div>
         </div>
       );
+    case "tool_call":
+      return <ToolCallCard payload={payload} animClass={animClass} />;
     case "blackboard_entry":
       return (
         <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>

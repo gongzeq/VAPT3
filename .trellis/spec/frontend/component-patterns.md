@@ -71,6 +71,22 @@ When the user cancels, the runtime MUST inject a synthetic `tool_result` back to
 
 This keeps the orchestrator from re-issuing the same tool_call without acknowledgement.
 
+### 3.3 Inline Approval Variant
+
+> Added 2026-05-11. Origin: PRD `05-12-multi-agent-obs-tool-call` §B decision + `UI/prototype-assistant-multi-agent.html` L1080–L1107.
+
+When the approval context is conversational (e.g. a sub-agent surfacing a high-risk skill result inside the chat thread), the confirmation dialog MAY render as an **inline `.approval` card** embedded within the assistant message bubble, instead of a full-screen `<AlertDialog>`. This is the only permitted deviation from §3 "use AlertDialog".
+
+Inline approval MUST satisfy the following anti-misclick constraints (in lieu of the §3.1 "1 second hover" on the AlertDialog confirm button):
+
+1. **Deny is default-highlighted** — visual weight on the safe action.
+2. **Approve has a 300 ms interaction delay** — the button renders immediately but `pointer-events: none` for 300 ms after mount, preventing reflexive clicks.
+3. The card MUST include a `detail` pre-formatted block showing the operation summary / tool args so the user has context before deciding.
+
+Status colour for the card border follows §2: `denied` → `--sev-info`.
+
+Scope: this variant is permitted ONLY for `high_risk_confirm` events emitted by sub-agents. Top-level destructive actions (e.g. server data deletion, scan target change) MUST still use `<AlertDialog destructive>` per §3.
+
 ---
 
 ## 4. Layout Patterns (informational; no rule)
@@ -86,7 +102,7 @@ Inherited from research §1 as recommended baselines. They are **not** binding c
 
 ## 5. Forbidden
 
-- ❌ Custom modals for destructive flows (use `<AlertDialog destructive>`).
+- ❌ Custom modals for destructive flows (use `<AlertDialog destructive>` OR the inline approval variant per §3.3, depending on context).
 - ❌ Branching renderer selection inside a single component (use `toolUI` registry).
 - ❌ Embedding raw scan logs inline in `<ToolCallCard>` (link out instead).
 - ❌ Adding a fourth top-level chat sub-component without amending §1.
