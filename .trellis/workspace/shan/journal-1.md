@@ -513,3 +513,36 @@ B7 /api/events chat_id+category filter & broadcast mirror; F9 useActivityStream/
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 05-11-frontend-agent-display-gap (P2 前端思维链/子智能体/黑板缺口)
+
+**Date**: 2026-05-13
+**Task**: 05-11-frontend-agent-display-gap (P2 前端思维链/子智能体/黑板缺口)
+**Branch**: `main`
+
+### Summary
+
+agent_event 统一广播协议（backend loop/subagent/blackboard 侧发送 thought + subagent lifecycle + blackboard_entry）；前端 MessageBubble 按 kind 渲染 Thought/Subagent/Blackboard/ToolCall 卡片；AskUserPrompt approval 变体（300ms armed + Deny 高亮 + detail 块）；tool_call 按 tool_call_id 合并状态；spec backend §3.5 thought + §3.6 subagent_{spawned,status,done} + frontend §3.3 Inline Approval Variant；thread-shell 单测同步到 armed 冷却期
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `06956e94` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
