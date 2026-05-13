@@ -1,0 +1,13 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Forbidden patterns + code standards the WorkflowRunner/API must honor"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Uniform error shapes — verify WorkflowRun.error conforms"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Ensure per-step structured logs emitted with required fields"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "kind=tool args must pass existing safety validators"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Guardrail MUST still trigger inside workflow steps — no eval/bypass"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Verify run-event frames follow existing ws schema"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend nav map — check layer cross-refs"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "海蓝 tokens / severity palette applied consistently"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "AlertDialog for destructive actions; no raw confirm()"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Only react-flow / recharts permitted (no d3 freestyle)"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/api-spec.md", "reason": "Authoritative REST contract — check all endpoints match"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/dev-guide.md", "reason": "Acceptance criteria + design decisions to verify"}

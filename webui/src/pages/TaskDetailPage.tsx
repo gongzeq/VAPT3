@@ -1,9 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import {
-  AlertTriangle,
   Calendar,
-  CheckCircle2,
   Clock,
   Globe,
   ShieldAlert,

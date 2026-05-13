@@ -58,12 +58,14 @@ class ChannelManager:
         session_manager: "SessionManager | None" = None,
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
+        workflow_api_port: int | None = None,
     ):
         self.config = config
         self.bus = bus
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
+        self._workflow_api_port = workflow_api_port
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
@@ -108,6 +110,8 @@ class ChannelManager:
                         kwargs["subagent_manager"] = self._subagent_manager
                     if self._agent_registry is not None:
                         kwargs["agent_registry"] = self._agent_registry
+                    if self._workflow_api_port is not None:
+                        kwargs["workflow_api_port"] = self._workflow_api_port
                 channel = cls(section, self.bus, **kwargs)
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key

@@ -34,6 +34,7 @@ __all__ = (
     "_FileSizeExceeded",
     "_save_base64_data_url",
     "create_app",
+    "create_workflow_app",
     "handle_chat_completions",
 )
 
@@ -379,7 +380,13 @@ async def handle_health(request: web.Request) -> web.Response:
 
 
 def create_app(
-    agent_loop, model_name: str = "secbot", request_timeout: float = 120.0
+    agent_loop,
+    model_name: str = "secbot",
+    request_timeout: float = 120.0,
+    *,
+    workflow_service: Any = None,
+    workflow_tool_registry: Any = None,
+    workflow_agent_registry: Any = None,
 ) -> web.Application:
     """Create the aiohttp application.
 
@@ -387,6 +394,13 @@ def create_app(
         agent_loop: An initialized AgentLoop instance.
         model_name: Model name reported in responses.
         request_timeout: Per-request timeout in seconds.
+        workflow_service: Optional :class:`secbot.workflow.WorkflowService`.
+            When provided, the ``/api/workflows*`` REST surface is wired
+            in (spec: ``.trellis/tasks/05-11-workflow-builder-ui/api-spec.md``).
+        workflow_tool_registry: Optional :class:`ToolRegistry` used by
+            ``GET /api/workflows/_tools`` to list kind=tool options.
+        workflow_agent_registry: Optional :class:`AgentRegistry` used by
+            ``GET /api/workflows/_agents`` to list kind=agent options.
     """
     app = web.Application(client_max_size=20 * 1024 * 1024)  # 20MB for base64 images
     app["agent_loop"] = agent_loop
@@ -397,4 +411,98 @@ def create_app(
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
     app.router.add_get("/health", handle_health)
+
+    if workflow_service is not None:
+        # Late import keeps the workflow module out of the hot path for
+        # callers that only need the OpenAI-compat surface.
+        from secbot.api.workflow_routes import register_routes
+
+        app["workflow_service"] = workflow_service
+        if workflow_tool_registry is not None:
+            app["workflow_tool_registry"] = workflow_tool_registry
+        if workflow_agent_registry is not None:
+            app["workflow_agent_registry"] = workflow_agent_registry
+        register_routes(app)
+
+    return app
+
+
+# ---------------------------------------------------------------------------
+# Standalone workflow sub-service (used by ``secbot gateway``)
+# ---------------------------------------------------------------------------
+
+
+@web.middleware
+async def _cors_middleware(request: web.Request, handler) -> web.StreamResponse:
+    """Permit cross-origin calls from the embedded WebUI (vite :5173 +
+    gateway :<port>), including the pre-flight ``OPTIONS`` request the
+    browser sends before POST/PUT/DELETE with ``application/json``.
+
+    The workflow sub-service is local to the machine and only reachable
+    through the gateway bind address, so ``Access-Control-Allow-Origin:
+    *`` is acceptable here.
+    """
+    if request.method == "OPTIONS":
+        resp = web.Response(status=204)
+    else:
+        try:
+            resp = await handler(request)
+        except web.HTTPException as exc:
+            resp = exc
+    # ``*`` origin (no credentials): sufficient because this sub-service is
+    # reachable only on the gateway bind host and issues no cookies.
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    )
+    resp.headers["Access-Control-Allow-Headers"] = (
+        "authorization, content-type, x-nanobot-auth"
+    )
+    # Chrome/Edge Private Network Access (PNA): when a page on a public
+    # origin (or a different localhost port) calls into a "private" host
+    # like 127.0.0.1:<port>, the browser adds ``Access-Control-Request-
+    # Private-Network: true`` to preflight and REQUIRES us to echo
+    # ``Access-Control-Allow-Private-Network: true`` back. Without it the
+    # fetch rejects with the opaque "Failed to fetch" at the network layer
+    # (no CORS error shown). Applies to both preflight and actual response.
+    # https://developer.chrome.com/blog/private-network-access-preflight
+    resp.headers["Access-Control-Allow-Private-Network"] = "true"
+    resp.headers["Access-Control-Max-Age"] = "600"
+    if isinstance(resp, web.HTTPException):
+        raise resp
+    return resp
+
+
+def create_workflow_app(
+    workflow_service: Any,
+    *,
+    tool_registry: Any = None,
+    agent_registry: Any = None,
+) -> web.Application:
+    """Build a standalone aiohttp app hosting ``/api/workflows/*``.
+
+    The gateway process runs this alongside the WebSocket channel —
+    ``websockets`` only speaks GET, so mutating verbs (POST/PUT/DELETE)
+    have to live on a dedicated aiohttp listener. The app also serves
+    CORS pre-flight requests so the WebUI (possibly on :5173 in dev or
+    on the same origin as the gateway static server) can reach it from
+    the browser.
+    """
+    from secbot.api.workflow_routes import register_routes
+
+    app = web.Application(
+        client_max_size=4 * 1024 * 1024,
+        middlewares=[_cors_middleware],
+    )
+    app["workflow_service"] = workflow_service
+    if tool_registry is not None:
+        app["workflow_tool_registry"] = tool_registry
+    if agent_registry is not None:
+        app["workflow_agent_registry"] = agent_registry
+
+    async def _health(_request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok", "surface": "workflow"})
+
+    app.router.add_get("/health", _health)
+    register_routes(app)
     return app

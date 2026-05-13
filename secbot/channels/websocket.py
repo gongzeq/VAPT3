@@ -497,6 +497,7 @@ class WebSocketChannel(BaseChannel):
         static_dist_path: Path | None = None,
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
+        workflow_api_port: int | None = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -525,6 +526,11 @@ class WebSocketChannel(BaseChannel):
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
+        # Port of the standalone aiohttp workflow sub-service started by
+        # ``secbot gateway`` — the WebUI reads this from the bootstrap
+        # payload so it knows where to send mutating workflow requests
+        # (``websockets`` only parses GET, so they can't live here).
+        self._workflow_api_port = workflow_api_port
         # Throttle state for WS broadcasts (per spec: 1 update / 1s per key).
         # Maps ``(event, scope)`` → monotonic timestamp of last emission.
         self._broadcast_last_emit: dict[tuple[str, str], float] = {}
@@ -850,6 +856,7 @@ class WebSocketChannel(BaseChannel):
                 "ws_path": self._expected_path(),
                 "expires_in": self.config.token_ttl_s,
                 "model_name": _read_webui_model_name(),
+                "workflow_api_port": self._workflow_api_port,
             }
         )
 

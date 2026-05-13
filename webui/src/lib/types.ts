@@ -65,6 +65,11 @@ export interface BootstrapResponse {
   ws_path: string;
   expires_in: number;
   model_name?: string | null;
+  /** Optional TCP port of the standalone aiohttp workflow sub-service
+   * (``/api/workflows/*``). When present the WebUI talks to it directly
+   * on that port; when absent the UI falls back to same-origin paths
+   * (legacy / test environments). */
+  workflow_api_port?: number | null;
 }
 
 export interface SettingsPayload {

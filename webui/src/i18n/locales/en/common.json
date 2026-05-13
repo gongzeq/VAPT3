@@ -213,7 +213,189 @@
     "dismiss": "Dismiss"
   },
   "nav": {
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "workflows": "Workflows"
+  },
+  "workflow": {
+    "listTitle": "Workflows",
+    "listSubtitle": "Chain tools / scripts / agents / LLM into repeatable runs",
+    "createNew": "New workflow",
+    "fromTemplate": "From template",
+    "search": "Search name / tag…",
+    "filterTag": "Tag",
+    "filterAll": "All",
+    "empty": "No workflows yet — create one or start from a template",
+    "loading": "Loading…",
+    "error": {
+      "load": "Load failed, try again",
+      "save": "Save failed",
+      "delete": "Delete failed",
+      "run": "Run failed",
+      "schedule": "Schedule update failed"
+    },
+    "stats": {
+      "running": "Running",
+      "scheduled": "Scheduled",
+      "failed24h": "Failed (24h)"
+    },
+    "card": {
+      "steps": "{{count}} steps",
+      "scheduled": "Scheduled",
+      "unscheduled": "Ad-hoc",
+      "updated": "Updated {{time}}",
+      "open": "Open",
+      "delete": "Delete"
+    },
+    "deleteDialog": {
+      "title": "Delete this workflow?",
+      "description": "This will detach its schedule and remove all run history. This cannot be undone.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    },
+    "tabs": {
+      "basic": "Basics",
+      "steps": "Steps",
+      "schedule": "Schedule",
+      "runs": "Runs"
+    },
+    "basic": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Daily asset sweep",
+      "description": "Description",
+      "descriptionPlaceholder": "What this workflow does",
+      "tags": "Tags",
+      "tagsPlaceholder": "Press enter to add",
+      "inputs": "Inputs",
+      "inputsHelp": "Reference inputs in step args via ${inputs.<name>}",
+      "addInput": "Add input",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "run": "Run now",
+      "inputNameLabel": "Name",
+      "inputLabelLabel": "Label",
+      "inputDescriptionLabel": "Description",
+      "inputTypeLabel": "Type",
+      "inputRequiredLabel": "Required",
+      "inputDefaultLabel": "Default",
+      "inputEnumLabel": "Enum values (comma separated)",
+      "removeInput": "Remove input"
+    },
+    "steps": {
+      "addStep": "Add step",
+      "pickKind": "Pick kind",
+      "kindTool": "Tool",
+      "kindScript": "Script",
+      "kindAgent": "Agent",
+      "kindLlm": "LLM",
+      "empty": "No steps yet — click above to add one",
+      "namePlaceholder": "Step name",
+      "refLabel": "Ref",
+      "conditionLabel": "Condition (leave blank to always run)",
+      "conditionPlaceholder": "e.g. steps.s1.result.errors > 0",
+      "conditionHelp": "Restricted expr; only inputs.* / steps.<id>.result.* / steps.<id>.status",
+      "onErrorLabel": "On error",
+      "onErrorStop": "Stop",
+      "onErrorContinue": "Continue",
+      "onErrorRetry": "Retry",
+      "retryLabel": "Retry",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "duplicate": "Duplicate",
+      "remove": "Remove",
+      "args": "Arguments"
+    },
+    "tool": {
+      "select": "Select tool",
+      "loading": "Loading tools…",
+      "empty": "No tools available"
+    },
+    "script": {
+      "ref": "Interpreter",
+      "refPython": "python",
+      "refShell": "shell",
+      "code": "Source",
+      "codePlaceholder": "# ${inputs.x} / ${steps.s1.result.y} interpolation supported",
+      "timeoutMs": "Timeout (ms)",
+      "stdin": "Standard input",
+      "envJson": "Env (JSON)"
+    },
+    "agent": {
+      "select": "Select agent",
+      "loading": "Loading agents…",
+      "empty": "No agents available"
+    },
+    "llm": {
+      "systemPrompt": "System prompt",
+      "userPrompt": "User prompt",
+      "temperature": "Temperature",
+      "maxTokens": "Max tokens",
+      "responseFormat": "Response format",
+      "formatText": "Plain text",
+      "formatJson": "JSON",
+      "providerHint": "Provider / model picked from global LLM config"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "enabled": "Enabled",
+      "kind": "Kind",
+      "kindCron": "Cron",
+      "kindEvery": "Every (ms)",
+      "kindAt": "Run once at",
+      "cronExpr": "Cron expression",
+      "cronHelp": "e.g. 0 9 * * * (daily 09:00)",
+      "tz": "Timezone",
+      "everyMs": "Interval (ms)",
+      "atMs": "Trigger at (ms timestamp)",
+      "inputs": "Inputs (used when the schedule fires)",
+      "save": "Save schedule",
+      "detach": "Detach",
+      "unsaved": "Unsaved",
+      "saved": "Saved",
+      "disabled": "Backend not ready"
+    },
+    "runs": {
+      "title": "Run history",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "empty": "No runs yet",
+      "status": {
+        "running": "Running",
+        "ok": "OK",
+        "error": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "trigger": {
+        "manual": "Manual",
+        "cron": "Cron",
+        "api": "API"
+      },
+      "startedAt": "Started",
+      "duration": "Duration",
+      "durationFmt": "{{seconds}} s",
+      "durationMsFmt": "{{ms}} ms",
+      "viewDetail": "View",
+      "stepsTitle": "Step results",
+      "step": {
+        "ok": "OK",
+        "error": "Failed",
+        "skipped": "Skipped",
+        "retried": "Retried"
+      }
+    },
+    "runDialog": {
+      "title": "Run workflow",
+      "description": "Fill inputs and trigger a manual run",
+      "submit": "Start",
+      "cancel": "Cancel",
+      "noInputs": "This workflow has no inputs — start straight away"
+    },
+    "templates": {
+      "title": "Start from a template",
+      "subtitle": "Pick a preset blueprint to scaffold a workflow",
+      "use": "Use template",
+      "empty": "No templates available"
+    }
   },
   "notifications": {
     "title": "Notifications",

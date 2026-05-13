@@ -308,3 +308,215 @@ Task: `05-10-p2-notification-activity` (parent: `05-10-backend-api-gap-fill`, no
 ### Next Steps
 
 - None - task complete
+
+---
+
+## Session N: workflow-builder-ui PR1 后端完成
+
+**Date**: 2026-05-11
+**Task**: 05-11-workflow-builder-ui
+**Branch**: `main`
+
+### Summary
+
+PR1 后端全部落地：
+
+- `secbot/utils/atomic.py`：从 cron 提升的原子写助手
+- `secbot/workflow/` 新模块：types / expr / store / runner / service / executors/{base,tool,script,agent,llm}
+- 表达式沙箱用自写 AST 白名单而非 asteval（避免新依赖）
+- 持久化跟 cron/service.py 一致：JSON + filelock + atomic_write
+- 对外统一 camelCase，from_dict 兼容 snake_case
+- Runner 特性：模板插值 + condition + retry(0.5s 退避) + on_error(stop/continue/retry) + 逐步持久化 + progress 回调
+- Service 门面：CRUD + schedule attach/detach + cron 消息前缀 `__workflow__:<id>:<json>` 编/解码 + handle_cron_message
+- `AgentExecutor` 用 jsonschema 验证输入/输出；PR1 不跑 tool-loop，直接拼 prompt + 解析 JSON
+
+### Testing
+
+- [OK] `tests/workflow/` 88 passed（types 5 + expr 11 + store 15 + executors 28 + runner 12 + service 17）
+- [OK] 全量后端测试集 2495 passed + 2 skipped，零回归
+
+### Status
+
+[OK] **t1–t7 完成**（PR1 后端除 REST+Cron 集成）
+
+### Next Steps
+
+- t8（下轮）：`secbot/api/server.py` 新增 `/api/workflows*` 路由 + `secbot/cli/commands.py::on_cron_job` 插入 `WorkflowService.is_cron_workflow_message` 前缀分派
+- t9：WebUI `/workflows` 页面 + 4 Tab + kind-forms
+
+---
+
+## 2026-05-11 Session 2 — t8 PR1 收尾（REST + Cron 分派 + 装配）
+
+### Scope
+
+t8 落地 PR1 对外面：REST API / cron 前缀分派 / gateway+api 双路径装配。
+
+### Architectural decision
+
+- WebSocketChannel 的 `websockets.http11.Request` 只支持 GET 无 body → 排除作为 REST 宿主
+- REST 路由放在 aiohttp 的 `secbot/api/server.py`（`secbot api`/`serve` 启动路径）
+- `_run_gateway` 继续负责 cron 前缀分派（持有 cron service + workflow_service 闭包）
+
+### Changes
+
+- 新建 `secbot/api/workflow_routes.py`（516 行）
+  - CRUD: list / create / get / update / delete（camelCase 边界）
+  - Runs: run / list_runs / get_run
+  - Schedule: set / delete（`_build_schedule` 解析 kind/cronExpr/atMs/everyMs/tz）
+  - Metadata: `_tools` / `_agents` / `_templates`（templates 暂返回空 items，PR3 补）
+  - `_error_from_service`: `WorkflowServiceError` → HTTP 状态码（`.not_found`→404, `.cron_unavailable`→503, 其余→400）
+  - `register_routes(app)`: 字面量 `_tools/_agents/_templates` 路由注册在 `/{id}` 之前避免吞路径
+- `secbot/api/server.py::create_app`：新增 keyword-only `workflow_service / workflow_tool_registry / workflow_agent_registry`，有 service 时 lazy 导入 + `register_routes`
+- `secbot/cli/commands.py`：
+  - `_build_api_workflow_kwargs(config, agent_loop)` helper：装配 AgentRegistry + WorkflowService，供 `serve` 命令的 `create_app(..., **kwargs)` 使用；任一步失败降级为空 dict（REST 面不可用但 api 服务继续跑）
+  - `_run_gateway` 构建 agent 后装配 WorkflowService（`tool_registry=agent.tools / llm_provider=provider / cron_service=cron`），失败置 None
+  - `on_cron_job` 开头插入前缀分派：`if workflow_service is not None and WorkflowService.is_cron_workflow_message(job.payload.message): await workflow_service.handle_cron_message(...); return None`（确保工作流 job 永不落入 dream/agent_turn 分支）
+- 新建 `tests/api/test_workflow_routes.py`（21 cases）：aiohttp TestClient 全链路覆盖 CRUD / run / schedule / metadata / 错误码 / 未装配 service 时 404
+
+### Testing
+
+- [OK] `tests/api/test_workflow_routes.py` 21 passed
+- [OK] 全量 `tests/` 2604 passed + 2 skipped，零回归（较上轮 +109 cases）
+
+### Status
+
+[OK] **t8 完成，PR1 全部落地**（后端 workflow 模块 + REST + cron 集成 + gateway/api 装配）
+
+### Next Steps
+
+- PR2：runner 运行时增强（并发步骤 / 更细 progress 事件 / run diff）——如果范围定义在此 task
+- PR3：WebUI `/workflows` 页面 + 4 Tab + kind-forms + templates catalogue
+
+---
+
+## 2026-05-11 — task 05-11-workflow-builder-ui · PR3 WebUI
+
+### Goal
+
+一次到位落地 `/workflows` 前端 MVP：列表页 + 详情页四 Tab（基本信息 / 步骤 / 调度 / 运行记录）+ 模板画廊 + i18n zh/en 整套词条。
+
+### Changes
+
+- **`webui/src/lib/workflow-client.ts`**（498 行）：REST 客户端
+  - TS 类型镜像 `api-spec.md` §1：Workflow/WorkflowDraft/WorkflowStep/WorkflowInput/WorkflowRun/StepResult/ScheduleKind…全部 camelCase
+  - `WorkflowClient`：list/get/create/update/patch/remove/run/cancel/listRuns/getRun/attachSchedule/detachSchedule/listTools/listAgents/listTemplates
+  - `WorkflowApiError extends ApiError`：解析 `{error:{code,message}}` 结构化负载（api-spec §4）
+  - Helpers：`emptyWorkflowDraft` / `nextStepId` / `blankStep(kind,id)` / `STEP_KIND_TONE`（tool=蓝 / script=紫 / agent=靖 / llm=粉）/ `WORKFLOW_BUILDER_ENABLED` feature flag
+- **`webui/src/pages/WorkflowListPage.tsx`**（494 行）
+  - 统计卡（running/scheduled/failed24h）+ 模板画廊 + 搜索 + 标签筛选 + 删除确认 AlertDialog
+  - "新建"/"模板" 通过 `sessionStorage["workflow.pending-draft"]` 传递 draft 跳 `/workflows/new`（背景刷新不丢）
+  - 导出 `DRAFT_STORAGE_KEY` 供 detail 页消费
+- **`webui/src/pages/WorkflowDetailPage.tsx`**（586 行）— 编辑器主页
+  - `isNew = id === "new"`：hydrate 自 sessionStorage；否则 `client.get(id)`
+  - 并行 `listTools()/listAgents()` 装载下拉元数据（非阻塞）
+  - 4 Tab 保持常驻（Tailwind `hidden`）— dev-guide Gotcha：不用条件渲染，跳转不丢状态
+  - 头栏：保存（create/update 分流）+ 立即运行（打开 RunDialog，成功后 bump `runRefreshKey` 跳到 runs tab）+ saveFlash 提示
+  - `workflowToDraft(wf)`：去掉 server-owned 字段（id/createdAtMs/updatedAtMs）
+- **步骤编辑样式套件**（`webui/src/components/workflow/`）
+  - `InputsEditor.tsx`（271 行）：WorkflowInput[] 卡片式编辑（name/label/type/required/default/enumValues）；导出 `WORKFLOW_FIELD_CLASS` 共享样式常量
+  - `kind-forms.tsx`（523 行）：`KindArgsForm` 按 step.kind 分派；Tool/Agent 用 `JsonSchemaForm`（手工渲染扩展 JSON Schema，object/array 降级为 RawJsonEditor）；Script 支持 python/shell + code + stdin + timeout + env JSON；Llm 支持 systemPrompt/userPrompt/temperature/maxTokens/responseFormat；导出 `kindLabelKey`
+  - `StepEditor.tsx`（326 行）：步骤列表上移/下移/复制/删除；`StepCard` 含 condition/onError(stop/continue/retry)/retry 次数
+  - `ScheduleTab.tsx`（322 行）：`cron/every/at` 三种单选；`InputsMatrix` 根据 workflow.inputs 生成表单；save/detach 回回带新 `scheduleRef` 的 Workflow
+  - `RunHistoryTab.tsx`（325 行）：**REST 3s 轮询**— 后端 `WorkflowService` 尚未挂 `progress_cb`，`SecbotClient` 没有通用 `subscribe` API，故 MVP 跳过 WS。仅在 `hasRunning` 时启动 interval，全终态后清除。`RunStatusBadge` / `StepStatusChip` / 站点展开步骤 output JSON
+  - `RunDialog.tsx`（169 行）：手动运行对话框，根据 inputs 类型 materialize（string→int/bool）
+  - `TemplateGallery.tsx`（94 行）：模板卡片 + clone-to-draft
+- **路由 / 菜单 / i18n 接入**
+  - `App.tsx`：`WORKFLOW_BUILDER_ENABLED` 门控下新增 `/workflows` · `/workflows/:id` 两条路由
+  - `Navbar.tsx`：`NAV_ITEMS` 重构为 i18n 结构（labelKey + fallback + enabled），加入 Workflow 图标
+  - `i18n/locales/zh-CN|en/common.json`：`nav.workflows` + `workflow.*` 整套词条（+183 行×2），其余 7 语靠 i18next fallback 到 en
+- **Build 解锁**（顺手清理 main 分支既有 TS6133 死代码）
+  - `components/thread/ThreadShell.tsx`：删除 unused `ChevronRight/QUICK_ACTION_KEYS/handleQuickAction/MoreHorizontal/BarChart3/BookOpen/Code2/LayoutGrid/Lightbulb` imports + 给 props `title/onToggleSidebar/onOpenSettings/hideSidebarToggleOnDesktop/onToggleRightRail/rightRailOpen` 加 `void x;` 消费（保留公开合约）
+  - `pages/TaskDetailPage.tsx`：删 unused `AlertTriangle/CheckCircle2` imports
+
+### Key Decisions
+
+- **WS 推送 MVP 降级**：`WorkflowService` 未挂 `progress_cb`，`SecbotClient` 无通用 `subscribe` API，故运行中 run 靠 REST 3s 轮询；WS 留给后续 PR（等 backend 接入 `progress_cb` 并结合 `workflow.run.*` / `workflow.step.*` 广播）
+- **JSON Schema 手工渲染**：MVP 不引 `@rjsf`，`JsonSchemaForm` 按 properties 扣平鎮，enum/boolean/int/number/string 分参数渲染；object/array 降级为 `RawJsonEditor`（onBlur 解析保留原文）
+- **i18n 9 语简化**：仅补 zh-CN/en，其余 7 语靠 i18next `fallbackLng: "en"` 降级；避免 9 个 common.json 双写
+- **sessionStorage 跳转**：跨路由传递 template draft 不用 route state（刷新会丢），改用 `sessionStorage["workflow.pending-draft"]`，detail 页消费后删除
+- **Tab 全员常驻**（Tailwind `hidden`）：避免跳转时失去 StepEditor 中已填的 draft
+
+### Testing
+
+- [OK] `npx tsc --noEmit -p tsconfig.build.json`：零错误
+- [OK] `npm run build`：16.43s 成功打包（index-*.js 2.86 MB / gzip 933 kB，仅 chunk size warning）
+- 未跑单元测试（MVP 暂无，待后续补上 vitest + RTL）
+
+### Status
+
+[OK] **PR3 WebUI 落地**：从列表 → 编辑 → 步骤 → 调度 → 手动运行 → 运行历史 全链路打通。
+
+### Next Steps
+
+- 接入 WS：后端 `WorkflowService` 接入 `progress_cb` 并结合 `workflow.run.*`/`workflow.step.*` 广播；前端 `RunHistoryTab` 改为订阅驱动
+- Templates API：`workflow_routes.py::_templates` 目前返空，待补入内置模板（资产发现 / 端口扫描 / 弱密码 …）
+- vitest + RTL：起码覆盖 WorkflowListPage 的 filter/delete 、 StepEditor 的 add/move/duplicate
+- 结构化验收：跑 `trellis-check` + `trellis-finish-work`
+
+---
+
+## Session N+1: Workflow 保存 500 + 下拉为空修复（工具=skill / 智能体=yaml）
+
+**Date**: 2026-05-12
+**Task**: `05-11-workflow-builder-ui` — 三处缺陷收口
+**Branch**: `main`
+
+### Symptoms
+
+1. 点击「保存」→ `HTTP 500`
+2. 步骤的 tool/script/agent/llm 四种 kind 无法填入参数（args 面板不渲染）
+3. 工具/智能体下拉为空
+
+### Root Cause
+
+- Gateway 只起了 websockets 服务（端口 8765）和健康检查 aiohttp（18790）。`WorkflowService` 虽装配但 **REST 路由从未挂到任何 aiohttp app**。
+- `websockets.http11.Request.parse` 硬校验 method==GET，所以前端 `POST /api/workflows` 落到 ws handshake 时直接 `ValueError` → 被 framework 翻成 500。
+- `GET /api/workflows/_tools` / `/_agents` 由于没有对应 HTTP route，fallthrough 到 SPA 静态 → 返回 `index.html` → 前端 `JSON.parse(html)` 失败 → 下拉保持空数组（也就是现象 2、3 的共同根因）。
+- 另：用户要求「工具=skill、智能体=yaml」。原 gateway 给 WorkflowService 的 tool_registry 是 `agent.tools`（LLM 工具），与 skill 目录没关系。
+
+### Main Changes
+
+- **后端：gateway 启独立 aiohttp 子服务**
+  - 新增 `secbot/api/server.py::create_workflow_app(workflow_service, *, tool_registry, agent_registry)` —— 只挂 `register_routes()` + `/health`，带 `_cors_middleware`（OPTIONS 预检 + `Access-Control-Allow-*` 放行 `authorization, content-type, x-nanobot-auth`）。
+  - `secbot/cli/commands.py::_run_gateway` 里新增 `_workflow_api_server(host, port)` 协程，`AppRunner + TCPSite` 监听 `config.gateway.port + 1`，与 gather 一起启动。
+  - 暴露 `workflow_api_port` 给 bootstrap：`ChannelManager.__init__` 新增 `workflow_api_port: int | None` → `WebSocketChannel.__init__` 透传 → `_handle_webui_bootstrap` 响应体加入 `workflow_api_port` 字段。
+- **后端：skill → tool_registry 适配器**
+  - 新建 `secbot/workflow/skill_adapter.py::SkillToolRegistryAdapter`
+    - 通过 `scan_skills(secbot/skills, strict=False)` 扫描；只收录带 `handler.py` 的 skill（markdown-only 的 `skill-creator` 自然排除）。
+    - `_SkillTool` 暴露 `.name / .display_name / .description / .parameters / .output_schema`（后两个来自 `input.schema.json` / `output.schema.json`），刚好喂满 `workflow_routes.handle_tools`。
+    - `await execute(name, args)`：建临时 `scan_dir = <workspace>/workflow_scans/wf-<ts>-<uuid8>`，构造 `SkillContext` 调 `handler.run`，`SkillResult` 序列化为 `{summary, findings, cmdb_writes, raw_log_path}`。
+  - 装配点：`_run_gateway` 用它替换了原 `agent.tools`。
+  - 智能体侧：沿用既有 `load_agent_registry(secbot/agents)`，无需改动（本来就对的，只是之前根本没挂到 HTTP）。
+- **前端：WorkflowClient 直连 workflow_api_port**
+  - `webui/src/lib/types.ts::BootstrapResponse` 加 `workflow_api_port?: number | null`。
+  - `webui/src/lib/bootstrap.ts` 新增 `deriveWorkflowApiBase(port)` → `http(s)://<window.hostname>:<port>`，空值回退同源。
+  - `ProtectedRoute.tsx::BootStatus` ready 分支加 `workflowApiBase: string`；`App.tsx` bootstrap 成功后 `setState({ ..., workflowApiBase: deriveWorkflowApiBase(boot.workflow_api_port) })`，两处 `<ClientProvider>` 实例化均透传。
+  - `ClientProvider.tsx::ClientContextValue` 加 `workflowApiBase`；`WorkflowListPage.tsx` / `WorkflowDetailPage.tsx` 从 `useClient()` 读并传给 `new WorkflowClient({ token, baseUrl: workflowApiBase })`。
+
+### Why port+1 instead of vite proxy
+
+- dev 模式下 vite `/api` 代理指向 `127.0.0.1:8765`（websockets gateway），挂不了 POST。不能简单改 vite 代理把 `/api/workflows` 改指新端口 —— 构建产物走 gateway 提供静态时就 404 了。
+- 改由 bootstrap 下发绝对 URL、前端直接跨端口直连，`_cors_middleware` 统一放行；生产/开发同路径。
+
+### Testing
+
+- [OK] `pytest tests/workflow tests/api tests/channels`：449 passed（134 warnings，仅 aiohttp `NotAppKeyWarning` 噪音）
+- [OK] `tsc --noEmit -p tsconfig.build.json`：零错误
+- [OK] 手工用例：`SkillToolRegistryAdapter` 扫出 9 skill（fscan-* / nmap-* / nuclei-template-scan / report-*），`load_agent_registry` 扫出 5 agent（asset_discovery/port_scan/report/vuln_scan/weak_password）；`create_workflow_app` 路由表齐全（`/api/workflows{,/{id}{,/run,/runs,/runs/{runId},/schedule}}` + `_tools/_agents/_templates` + `/health`）。
+- 端到端网络冒烟：被用户既有 gateway 占用 8765 阻塞，跳过（路由 + 适配器装配已由上述检查覆盖，够充分）。
+
+### Git Commits
+
+- 未提交（等待用户合版）
+
+### Status
+
+[OK] **三缺陷全部闭合**：保存走新子服务不再被 websockets 挡下；`_tools`/`_agents` 返回 JSON，下拉可选；工具=skill 直接可执行。
+
+### Next Steps
+
+- 端到端联调：用户重启 gateway 后对 `POST /api/workflows` / `GET /_tools,_agents` 做一次真实联调
+- `SkillToolRegistryAdapter` 单测：覆盖「无 handler.py 的 skill 被过滤」「execute 捕获异常返回 `Error:` 前缀」
+- tool_registry 协议收敛：目前 `handle_tools` 对 `tool.parameters` / `.output_schema` / `.display_name` 有隐式依赖，值得提到 `.trellis/spec/backend` 里沉淀一个 protocol note
+

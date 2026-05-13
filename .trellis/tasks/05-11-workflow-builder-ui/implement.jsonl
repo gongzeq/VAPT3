@@ -1,0 +1,18 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec entry point — navigate to tool/agent/websocket contracts"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Where to place new secbot/workflow/ module (models/runner/executors)"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Overall runtime topology — integrate WorkflowRunner alongside AgentLoop & CronService"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Contract the kind=agent executor must follow when invoking YAML subagents"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Args validation + schema conventions reused by kind=tool executor UI & backend"}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "High-risk tool guardrail must still fire inside workflow steps (no bypass)"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error types & retry semantics reused by WorkflowRunner.onError/retry"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Structured step-result logging format"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Stream workflow run events reuse existing ws frame schema"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Status vocabulary (pending/running/success/failed/cancelled) reused by WorkflowRun"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entry — theme/component/viz sub-spec map"}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Shell/Navbar/route conventions — add 4th menu '工作流'"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "海蓝 primary + severity palette for step/status chips"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Component reuse (AlertDialog for destructive, MessageBubble variants, toast)"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Whitelist: react-flow for step flow diagram, recharts for run stats"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/api-spec.md", "reason": "Authoritative REST + payload contract for CRUD/run/schedule/_tools/_agents/_providers"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/dev-guide.md", "reason": "Implementation blueprint — executors, template resolver, cron integration, React pages"}
+{"file": ".trellis/tasks/05-11-workflow-builder-ui/prototype.html", "reason": "Reference visual prototype for /workflows and /workflows/:id"}

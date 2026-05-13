@@ -1,13 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  BarChart3,
-  BookOpen,
-  ChevronRight,
-  Code2,
-  LayoutGrid,
-  Lightbulb,
-  MoreHorizontal,
-} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
@@ -42,14 +33,9 @@ function toModelBadgeLabel(modelName: string | null): string | null {
   return leaf || trimmed;
 }
 
-const QUICK_ACTION_KEYS = [
-  { key: "plan", icon: LayoutGrid, tone: "text-[#f25b8f]" },
-  { key: "analyze", icon: BarChart3, tone: "text-[#4f9de8]" },
-  { key: "brainstorm", icon: Lightbulb, tone: "text-[#53c59d]" },
-  { key: "code", icon: Code2, tone: "text-[#eba45d]" },
-  { key: "summarize", icon: BookOpen, tone: "text-[#a877e7]" },
-  { key: "more", icon: MoreHorizontal, tone: "text-muted-foreground/65" },
-] as const;
+// Quick-action definitions removed — no longer rendered by this
+// shell. Re-introduce alongside the UI if/when hero actions come back.
+
 
 export function ThreadShell({
   session,
@@ -62,6 +48,15 @@ export function ThreadShell({
   onToggleRightRail,
   rightRailOpen,
 }: ThreadShellProps) {
+  // Props kept for backwards-compat with callers; not yet consumed by
+  // this shell. Silence ``noUnusedParameters`` without altering the
+  // public interface.
+  void title;
+  void onToggleSidebar;
+  void onOpenSettings;
+  void hideSidebarToggleOnDesktop;
+  void onToggleRightRail;
+  void rightRailOpen;
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
@@ -179,16 +174,6 @@ export function ThreadShell({
     [booting, onCreateChat],
   );
 
-  const handleQuickAction = useCallback(
-    (prompt: string) => {
-      if (session) {
-        send(prompt);
-        return;
-      }
-      void handleWelcomeSend(prompt);
-    },
-    [handleWelcomeSend, send, session],
-  );
 
   const composer = (
     <>
