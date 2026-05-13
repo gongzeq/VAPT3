@@ -16,6 +16,7 @@ import {
   type StepKind,
   type StepOnError,
   type ToolMeta,
+  type WorkflowInput,
   type WorkflowStep,
 } from "@/lib/workflow-client";
 import {
@@ -31,6 +32,7 @@ export interface StepEditorProps {
   onChange: (next: WorkflowStep[]) => void;
   tools?: ToolMeta[];
   agents?: AgentMeta[];
+  inputs?: WorkflowInput[];
 }
 
 /**
@@ -40,7 +42,7 @@ export interface StepEditorProps {
  * (api-spec §1.3). Each card is self-contained; edits bubble up via
  * ``onChange`` replacing the parent's full ``steps`` array.
  */
-export function StepEditor({ steps, onChange, tools, agents }: StepEditorProps) {
+export function StepEditor({ steps, onChange, tools, agents, inputs }: StepEditorProps) {
   const { t } = useTranslation();
 
   function addStep(kind: StepKind) {
@@ -126,6 +128,8 @@ export function StepEditor({ steps, onChange, tools, agents }: StepEditorProps) 
               onDuplicate={() => duplicate(index)}
               tools={tools}
               agents={agents}
+              inputs={inputs}
+              previousSteps={steps.slice(0, index)}
             />
           ))}
         </ol>
@@ -147,6 +151,8 @@ interface StepCardProps {
   onDuplicate: () => void;
   tools?: ToolMeta[];
   agents?: AgentMeta[];
+  inputs?: WorkflowInput[];
+  previousSteps?: WorkflowStep[];
 }
 
 function StepCard({
@@ -160,6 +166,8 @@ function StepCard({
   onDuplicate,
   tools,
   agents,
+  inputs,
+  previousSteps,
 }: StepCardProps) {
   const { t } = useTranslation();
   const tone = STEP_KIND_TONE[step.kind];
@@ -286,6 +294,8 @@ function StepCard({
           onChange={onChange}
           tools={tools}
           agents={agents}
+          inputs={inputs}
+          previousSteps={previousSteps}
         />
       </div>
     </li>

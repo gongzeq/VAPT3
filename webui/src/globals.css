@@ -238,4 +238,34 @@
     background-color: hsl(var(--muted-foreground) / 0.4);
     border-radius: 9999px;
   }
+
+  /* Workflow flow-chart running animations (prototype §Detail header). */
+  @keyframes flow-x {
+    0% {
+      transform: translateX(-120%);
+    }
+    100% {
+      transform: translateX(260%);
+    }
+  }
+  .flow-progress-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 40%;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      hsl(var(--primary) / 0.9),
+      transparent
+    );
+    animation: flow-x 1.8s linear infinite;
+  }
+  .flow-node-running {
+    box-shadow:
+      0 0 0 6px hsl(var(--primary) / 0.12),
+      0 0 20px hsl(var(--primary) / 0.45);
+  }
 }

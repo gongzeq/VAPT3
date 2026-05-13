@@ -214,6 +214,31 @@
     "filterAll": "全部",
     "empty": "还没有工作流，先创建一个或从模板开始",
     "loading": "加载中…",
+    "filter": {
+      "statusTitle": "状态",
+      "statusAll": "全部",
+      "statusRunning": "运行中",
+      "statusScheduled": "已调度",
+      "statusDraft": "草稿",
+      "statusFailed": "失败",
+      "tagsTitle": "标签"
+    },
+    "badge": {
+      "scheduled": "SCHEDULED",
+      "draft": "DRAFT",
+      "running": "RUNNING"
+    },
+    "placeholders": {
+      "title": "可用占位符（点击复制）",
+      "copyHint": "点击复制到剪贴板",
+      "copied": "已复制"
+    },
+    "doc": {
+      "inputs": "入参",
+      "outputs": "出参",
+      "inputsEmpty": "无需要填写的入参",
+      "outputsEmpty": "未声明出参结构"
+    },
     "error": {
       "load": "加载失败，请稍后重试",
       "save": "保存失败",
@@ -224,7 +249,10 @@
     "stats": {
       "running": "运行中",
       "scheduled": "已调度",
-      "failed24h": "24h 失败"
+      "failed24h": "24h 失败",
+      "todayTitle": "今日态势",
+      "live": "实时",
+      "total": "全部"
     },
     "card": {
       "steps": "{{count}} 步",
@@ -232,7 +260,11 @@
       "unscheduled": "未调度",
       "updated": "更新于 {{time}}",
       "open": "打开",
-      "delete": "删除"
+      "delete": "删除",
+      "stepsLabel": "步骤",
+      "inputsLabel": "入参",
+      "scheduleLabel": "调度",
+      "updatedLabel": "更新"
     },
     "deleteDialog": {
       "title": "确认删除工作流？",
@@ -296,7 +328,8 @@
     "tool": {
       "select": "选择工具",
       "loading": "加载工具中…",
-      "empty": "没有可用工具"
+      "empty": "没有可用工具",
+      "docTitle": "工具说明"
     },
     "script": {
       "ref": "解释器",
@@ -311,17 +344,20 @@
     "agent": {
       "select": "选择智能体",
       "loading": "加载智能体中…",
-      "empty": "没有可用智能体"
+      "empty": "没有可用智能体",
+      "docTitle": "智能体说明"
     },
     "llm": {
       "systemPrompt": "System Prompt",
       "userPrompt": "User Prompt",
       "temperature": "温度",
       "maxTokens": "最大 tokens",
+      "maxTokensDefault": "（默认 {{value}}）",
       "responseFormat": "输出格式",
       "formatText": "纯文本",
       "formatJson": "JSON",
-      "providerHint": "Provider / 模型由全局 LLM 配置决定"
+      "providerHint": "Provider / 模型由全局 LLM 配置决定",
+      "reasoningWarning": "使用推理/reasoning 模型（o1 / o3 / Qwen3-Thinking 等）时，模型会先把 maxTokens 花在隐藏思维链上。若最终返回 content=\"\" 且 finishReason=length，说明 token 已用尽仍未输出答案——请调大 maxTokens 或改用非推理模型。"
     },
     "schedule": {
       "title": "调度",
@@ -383,6 +419,22 @@
       "subtitle": "选择一个预置模板，一键生成工作流",
       "use": "使用模板",
       "empty": "暂无模板"
+    },
+    "detail": {
+      "clone": "克隆",
+      "cancel": "终止",
+      "currentStep": "当前 Step",
+      "elapsed": "已用时",
+      "totalSteps": "总步骤",
+      "completed": "已完成",
+      "nextRun": "下次运行",
+      "flowTitle": "执行流程",
+      "idle": "待运行",
+      "runningHint": "执行中…",
+      "stepCounter": "Step {{current}} / {{total}}",
+      "legendDone": "完成",
+      "legendRunning": "进行中",
+      "legendPending": "待执行"
     }
   },
   "notifications": {

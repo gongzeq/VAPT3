@@ -267,6 +267,40 @@ async def test_llm_executor_propagates_provider_error():
     assert "llm_failed" in (result.error or "")
 
 
+async def test_llm_executor_truncated_empty_content_is_error():
+    # Reasoning models can burn every token on hidden thought and come
+    # back with finishReason=length + empty content. We must NOT report
+    # that as a successful step.
+    provider = FakeProvider(FakeLLMResponse("", finish_reason="length"))
+    execu = LlmExecutor(llm_provider=provider)
+    result = await execu.execute(
+        _step("llm"),
+        {"userPrompt": "ping", "maxTokens": 800},
+        _ctx(),
+    )
+    assert result.status == "error"
+    assert "llm_truncated" in (result.error or "")
+
+
+async def test_llm_executor_truncated_with_content_still_succeeds():
+    # When there *is* content, ``length`` just means the model would
+    # have written more; the visible portion is still useful — pass it
+    # through instead of hard-failing.
+    provider = FakeProvider(
+        FakeLLMResponse("partial output", finish_reason="length")
+    )
+    execu = LlmExecutor(llm_provider=provider)
+    result = await execu.execute(
+        _step("llm"),
+        {"userPrompt": "ping"},
+        _ctx(),
+    )
+    assert result.status == "ok"
+    assert result.output["content"] == "partial output"
+    assert result.output["finishReason"] == "length"
+
+
+
 @pytest.mark.parametrize(
     "bad",
     [

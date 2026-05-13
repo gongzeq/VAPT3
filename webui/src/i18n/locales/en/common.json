@@ -226,6 +226,31 @@
     "filterAll": "All",
     "empty": "No workflows yet — create one or start from a template",
     "loading": "Loading…",
+    "filter": {
+      "statusTitle": "Status",
+      "statusAll": "All",
+      "statusRunning": "Running",
+      "statusScheduled": "Scheduled",
+      "statusDraft": "Draft",
+      "statusFailed": "Failed",
+      "tagsTitle": "Tags"
+    },
+    "badge": {
+      "scheduled": "SCHEDULED",
+      "draft": "DRAFT",
+      "running": "RUNNING"
+    },
+    "placeholders": {
+      "title": "Available placeholders (click to copy)",
+      "copyHint": "Click to copy",
+      "copied": "Copied"
+    },
+    "doc": {
+      "inputs": "Inputs",
+      "outputs": "Outputs",
+      "inputsEmpty": "No inputs to fill",
+      "outputsEmpty": "Output shape not declared"
+    },
     "error": {
       "load": "Load failed, try again",
       "save": "Save failed",
@@ -236,7 +261,10 @@
     "stats": {
       "running": "Running",
       "scheduled": "Scheduled",
-      "failed24h": "Failed (24h)"
+      "failed24h": "Failed (24h)",
+      "todayTitle": "Today",
+      "live": "Live",
+      "total": "Total"
     },
     "card": {
       "steps": "{{count}} steps",
@@ -244,7 +272,11 @@
       "unscheduled": "Ad-hoc",
       "updated": "Updated {{time}}",
       "open": "Open",
-      "delete": "Delete"
+      "delete": "Delete",
+      "stepsLabel": "Steps",
+      "inputsLabel": "Inputs",
+      "scheduleLabel": "Schedule",
+      "updatedLabel": "Updated"
     },
     "deleteDialog": {
       "title": "Delete this workflow?",
@@ -308,7 +340,8 @@
     "tool": {
       "select": "Select tool",
       "loading": "Loading tools…",
-      "empty": "No tools available"
+      "empty": "No tools available",
+      "docTitle": "Tool reference"
     },
     "script": {
       "ref": "Interpreter",
@@ -323,17 +356,20 @@
     "agent": {
       "select": "Select agent",
       "loading": "Loading agents…",
-      "empty": "No agents available"
+      "empty": "No agents available",
+      "docTitle": "Agent reference"
     },
     "llm": {
       "systemPrompt": "System prompt",
       "userPrompt": "User prompt",
       "temperature": "Temperature",
       "maxTokens": "Max tokens",
+      "maxTokensDefault": "(default {{value}})",
       "responseFormat": "Response format",
       "formatText": "Plain text",
       "formatJson": "JSON",
-      "providerHint": "Provider / model picked from global LLM config"
+      "providerHint": "Provider / model picked from global LLM config",
+      "reasoningWarning": "Reasoning models (o1 / o3 / Qwen3-Thinking…) spend maxTokens on hidden thoughts first. If the result is content=\"\" with finishReason=length, the budget was exhausted before any answer was produced — raise maxTokens or switch to a non-reasoning model."
     },
     "schedule": {
       "title": "Schedule",
@@ -395,6 +431,22 @@
       "subtitle": "Pick a preset blueprint to scaffold a workflow",
       "use": "Use template",
       "empty": "No templates available"
+    },
+    "detail": {
+      "clone": "Clone",
+      "cancel": "Cancel",
+      "currentStep": "Current step",
+      "elapsed": "Elapsed",
+      "totalSteps": "Total steps",
+      "completed": "Completed",
+      "nextRun": "Next run",
+      "flowTitle": "Execution flow",
+      "idle": "Idle",
+      "runningHint": "Running…",
+      "stepCounter": "Step {{current}} / {{total}}",
+      "legendDone": "Done",
+      "legendRunning": "Running",
+      "legendPending": "Pending"
     }
   },
   "notifications": {

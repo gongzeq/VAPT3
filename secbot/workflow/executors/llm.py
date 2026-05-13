@@ -34,7 +34,7 @@ from typing import Any
 from secbot.workflow.executors.base import ExecutorError, StepContext, StepExecutor
 from secbot.workflow.types import WorkflowStep
 
-_DEFAULT_MAX_TOKENS = 800
+_DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_TEMPERATURE = 0.7
 
 
@@ -114,9 +114,29 @@ class LlmExecutor(StepExecutor):
             raise ExecutorError(f"workflow.executor.llm_failed: {err_msg}")
 
         content = getattr(resp, "content", None)
+        finish_reason = getattr(resp, "finish_reason", "stop")
+        # ``length`` means the model ran out of budget before producing
+        # any visible content — most commonly hit by reasoning models
+        # that spend the whole ``maxTokens`` on hidden chain-of-thought.
+        # Surface as a real failure so the step doesn't report "ok" with
+        # an empty payload (task 05-11-workflow-builder-ui / 2026-05-13).
+        if finish_reason == "length" and not (
+            isinstance(content, str) and content.strip()
+        ):
+            raise ExecutorError(
+                "workflow.executor.llm_truncated: "
+                f"content empty at finishReason=length "
+                f"(maxTokens={int(max_tokens)}) — increase maxTokens or "
+                "switch to a non-reasoning model"
+            )
+        if finish_reason == "content_filter":
+            raise ExecutorError(
+                "workflow.executor.llm_blocked: response filtered by provider"
+            )
+
         output: dict[str, Any] = {
             "content": content,
-            "finishReason": getattr(resp, "finish_reason", "stop"),
+            "finishReason": finish_reason,
             "usage": {
                 "promptTokens": int(resp.usage.get("prompt_tokens", 0))
                 if getattr(resp, "usage", None) else 0,
