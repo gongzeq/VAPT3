@@ -5,6 +5,7 @@ import { toMediaAttachment } from "@/lib/media";
 import type { StreamError } from "@/lib/secbot-client";
 import { randomId } from "@/lib/utils";
 import type {
+  AgentEventPayload,
   InboundEvent,
   OutboundMedia,
   ToolCallStatus,
@@ -26,6 +27,66 @@ function toolCallContent(toolName: string, status: ToolCallStatus, reason?: stri
         ? `❌ ${toolName} 失败: ${reason}`
         : `❌ ${toolName} 失败`;
   }
+}
+
+/** Merge a ``tool_call`` payload into the most recent assistant message from
+ * the same agent so it renders inside the bubble. Falls back to appending a
+ * new assistant row when no suitable host exists. */
+function mergeToolCall(
+  prev: UIMessage[],
+  payload: AgentEventPayload,
+  agent: string,
+): UIMessage[] {
+  const tcId = payload.tool_call_id;
+  const status = (payload.status ?? payload.tool_status ?? "running") as ToolCallStatus;
+  payload.tool_status = status;
+
+  // Terminal statuses — try to find the matching running/critical tool call
+  // inside an existing message and update it in-place.
+  if ((status === "ok" || status === "error") && tcId) {
+    const msgIdx = prev.findIndex((m) =>
+      m.toolCalls?.some((tc) => tc.tool_call_id === tcId),
+    );
+    if (msgIdx !== -1) {
+      const msg = prev[msgIdx];
+      const tcIdx = msg.toolCalls!.findIndex((tc) => tc.tool_call_id === tcId);
+      if (tcIdx !== -1) {
+        const updatedToolCalls = [...msg.toolCalls!];
+        updatedToolCalls[tcIdx] = { ...updatedToolCalls[tcIdx], ...payload, tool_status: status };
+        const updated: UIMessage = {
+          ...msg,
+          toolCalls: updatedToolCalls,
+          content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
+        };
+        return [...prev.slice(0, msgIdx), updated, ...prev.slice(msgIdx + 1)];
+      }
+    }
+  }
+
+  // Find the most recent assistant message from the same agent.
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const m = prev[i];
+    if (m.role === "assistant" && m.kind !== "trace" && m.agentName === agent) {
+      const updated: UIMessage = {
+        ...m,
+        toolCalls: [...(m.toolCalls || []), payload],
+      };
+      return [...prev.slice(0, i), updated, ...prev.slice(i + 1)];
+    }
+  }
+
+  // Fallback — no host message; append a slim assistant row.
+  return [
+    ...prev,
+    {
+      id: randomId(),
+      role: "assistant",
+      content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
+      agentName: agent,
+      toolCalls: [payload],
+      createdAt: Date.now(),
+    },
+  ];
 }
 
 interface StreamBuffer {
@@ -84,6 +145,9 @@ export function useNanobotStream(
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<StreamError | null>(null);
   const buffer = useRef<StreamBuffer | null>(null);
+  /** Most recent agent that emitted an ``agent_event`` or ``message``. Used
+   * to tag plain assistant turns so they inherit the correct avatar colour. */
+  const currentAgentRef = useRef<string>("orchestrator");
   /** Timer that defers ``isStreaming = false`` after ``stream_end``.
    *
    * When the model finishes a text segment and calls a tool, the server
@@ -122,6 +186,7 @@ export function useNanobotStream(
       setIsStreaming(false);
       setStreamError(null);
       buffer.current = null;
+      currentAgentRef.current = "orchestrator";
       if (streamEndTimerRef.current !== null) {
         clearTimeout(streamEndTimerRef.current);
         streamEndTimerRef.current = null;
@@ -181,6 +246,7 @@ export function useNanobotStream(
               content: "",
               isStreaming: true,
               createdAt: Date.now(),
+              agentName: currentAgentRef.current,
             },
           ]);
           setIsStreaming(true);
@@ -274,6 +340,7 @@ export function useNanobotStream(
               role: "assistant",
               content,
               createdAt: Date.now(),
+              agentName: currentAgentRef.current,
               ...(ev.buttons && ev.buttons.length > 0 ? { buttons: ev.buttons } : {}),
               ...(ev.tool_name ? { toolName: ev.tool_name } : {}),
               ...(ev.prompt_kind ? { promptKind: ev.prompt_kind } : {}),
@@ -291,65 +358,16 @@ export function useNanobotStream(
         // so downstream switches have a single source of truth.
         const payload = { ...ev.payload, type: ev.type };
 
+        // Infer the speaking agent from the payload and keep it live so
+        // subsequent plain ``delta`` / ``message`` turns inherit the label.
+        const inferredAgent = payload.agent_name || payload.agent || currentAgentRef.current;
+        currentAgentRef.current = inferredAgent;
+
         // ── tool_call merge logic (F2) ─────────────────────────────────
-        // Terminal statuses ("ok" / "error") carry a ``tool_call_id`` that
-        // matches an earlier "running" / "critical" frame. Instead of
-        // appending a new row, we update the existing message in-place so
-        // the card can transition (spinner→checkmark / spinner→error).
+        // Merge into the most recent assistant message from the same agent
+        // so the UI can render tool cards *inside* the bubble.
         if (payload.type === "tool_call") {
-          const tcId = payload.tool_call_id;
-          const status = (payload.status ?? payload.tool_status ?? "running") as ToolCallStatus;
-          // Normalise tool_status onto the payload for downstream renderers.
-          payload.tool_status = status;
-
-          if (status === "ok" || status === "error") {
-            // Try to find the matching running/critical row and merge.
-            setMessages((prev) => {
-              const idx = tcId
-                ? prev.findIndex(
-                    (m) =>
-                      m.agentEvent?.type === "tool_call" &&
-                      m.agentEvent?.tool_call_id === tcId,
-                  )
-                : -1;
-              if (idx !== -1) {
-                const existing = prev[idx];
-                const merged = {
-                  ...existing,
-                  content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
-                  agentEvent: { ...existing.agentEvent!, ...payload, tool_status: status },
-                };
-                return [...prev.slice(0, idx), merged, ...prev.slice(idx + 1)];
-              }
-              // No matching running frame (late joiner) — append as-is.
-              return [
-                ...prev,
-                {
-                  id: randomId(),
-                  role: "assistant" as const,
-                  kind: "agent_event" as const,
-                  content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
-                  agentEvent: payload,
-                  createdAt: Date.now(),
-                },
-              ];
-            });
-            return;
-          }
-
-          // running / critical — always append a new card.
-          const content = toolCallContent(payload.tool_name ?? "", status);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: randomId(),
-              role: "assistant",
-              kind: "agent_event",
-              content,
-              agentEvent: payload,
-              createdAt: Date.now(),
-            },
-          ]);
+          setMessages((prev) => mergeToolCall(prev, payload, inferredAgent));
           return;
         }
 
@@ -370,6 +388,7 @@ export function useNanobotStream(
               id: randomId(),
               role: "assistant",
               content: summary,
+              agentName: inferredAgent,
               toolName: "request_approval",
               promptKind: "approval",
               buttons: [["Approve", "Deny"]],
@@ -381,6 +400,11 @@ export function useNanobotStream(
           return;
         }
 
+        // 隐藏子智能体中间状态（工具调用过程）不在前端展示
+        if (payload.type === "subagent_status") {
+          return;
+        }
+
         const content = (() => {
           switch (payload.type) {
             case "thought":
@@ -389,8 +413,6 @@ export function useNanobotStream(
               return `编排计划：${payload.steps?.length ?? 0} 步`;
             case "subagent_spawned":
               return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
-            case "subagent_status":
-              return `⏳ 子智能体「${payload.task_id}」状态: ${payload.phase ?? "unknown"}`;
             case "subagent_done":
               return payload.status === "ok"
                 ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`
@@ -409,6 +431,7 @@ export function useNanobotStream(
             kind: "agent_event",
             content,
             agentEvent: payload,
+            agentName: inferredAgent,
             createdAt: Date.now(),
           },
         ]);

@@ -41,7 +41,7 @@ const STATUS_STYLE: Record<
 function AgentRow({ agent }: { agent: AgentRegistryRow }) {
   const { t } = useTranslation();
   const status: AgentRuntimeStatus = agent.status ?? "offline";
-  const style = STATUS_STYLE[status];
+  const style = STATUS_STYLE[status] ?? STATUS_STYLE.offline;
   const display = agent.display_name || agent.name;
   const i18nLabel = t(`sidebar.agents.status.${status}`, {
     defaultValue: style.label,

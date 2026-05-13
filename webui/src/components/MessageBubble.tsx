@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Sparkles, Bot, ClipboardList, Lightbulb, ListChecks, Loader2, ShieldAlert, CircleCheck, CircleX, Wrench } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, Bot, ClipboardList, Lightbulb, ListChecks } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { AgentAvatar, AgentMeta, resolveAgent } from "@/components/AgentAvatar";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,15 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   }
 
   if (message.kind === "agent_event" && message.agentEvent) {
-    return <AgentEventCard payload={message.agentEvent} animClass={baseAnim} />;
+    return (
+      <div className={cn("flex gap-3", baseAnim)}>
+        <AgentAvatar agentName={message.agentName} size="md" />
+        <div className="max-w-[80%] min-w-0 space-y-1.5">
+          <AgentMeta agentName={message.agentName} />
+          <AgentEventCard payload={message.agentEvent} />
+        </div>
+      </div>
+    );
   }
 
   if (message.role === "user") {
@@ -95,19 +104,37 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const empty = message.content.trim().length === 0;
   const media = message.media ?? [];
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
+  const agentInfo = resolveAgent(message.agentName);
   return (
     <div className={cn("flex gap-3", baseAnim)}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-primary">
-        <Sparkles className="h-4 w-4 text-white" />
-      </div>
-      <div className="max-w-[80%] space-y-3">
+      <AgentAvatar agentName={message.agentName} size="md" />
+      <div className="max-w-[80%] min-w-0 space-y-1.5">
+        <AgentMeta agentName={message.agentName} />
         {empty && message.isStreaming ? (
           <TypingDots />
         ) : (
           <>
-            <div className="rounded-2xl rounded-tl-sm border border-border/40 px-4 py-3 text-sm leading-relaxed">
+            <div
+              className={cn(
+                "rounded-2xl rounded-tl-sm border border-border/40 px-4 py-3 text-sm leading-relaxed",
+                "break-words whitespace-pre-wrap",
+              )}
+              style={
+                agentInfo.type === "subagent"
+                  ? { borderLeft: `2px solid ${agentInfo.accent}` }
+                  : undefined
+              }
+            >
               <MarkdownText>{message.content}</MarkdownText>
               {message.isStreaming && <StreamCursor />}
+              {/* Render nested tool calls inside the bubble */}
+              {message.toolCalls && message.toolCalls.length > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {message.toolCalls.map((tc, i) => (
+                    <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
+                  ))}
+                </div>
+              ) : null}
             </div>
             {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
             {showAssistantActions ? (
@@ -448,7 +475,7 @@ function TraceGroup({ message, animClass }: TraceGroupProps) {
 
 interface AgentEventCardProps {
   payload: AgentEventPayload;
-  animClass: string;
+  animClass?: string;
 }
 
 // ── ToolCallCard (F3) ─────────────────────────────────────────────────
@@ -475,26 +502,36 @@ const TOOL_STATUS_STYLE: Record<ToolCardVariant, { border: string; bg: string; i
   },
 };
 
-function toolCallIcon(variant: ToolCardVariant) {
-  switch (variant) {
-    case "running":
-      return <Loader2 className={cn("h-3.5 w-3.5 shrink-0 animate-spin", TOOL_STATUS_STYLE.running.icon)} aria-hidden />;
-    case "critical":
-      return <ShieldAlert className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.critical.icon)} aria-hidden />;
-    case "ok":
-      return <CircleCheck className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.ok.icon)} aria-hidden />;
-    case "denied":
-      return <CircleX className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.denied.icon)} aria-hidden />;
-    case "error":
-      return <CircleX className={cn("h-3.5 w-3.5 shrink-0", TOOL_STATUS_STYLE.error.icon)} aria-hidden />;
-  }
-}
-
 /** Reason strings that map ``status=error`` onto the neutral info palette.
  * Backend emits ``user_denied`` on explicit deny and ``timeout`` on the 120s
  * auto-deny path (see subagent._classify_terminal). */
 const DENIED_REASONS = new Set(["user_denied", "timeout"]);
 
+/** Compact status badge label for a tool call. */
+function toolStatusLabel(variant: ToolCardVariant, durationMs?: number, reason?: string): string {
+  const dur =
+    durationMs == null
+      ? ""
+      : durationMs < 1000
+        ? ` ${durationMs}ms`
+        : ` ${(durationMs / 1000).toFixed(1)}s`;
+  switch (variant) {
+    case "running":
+      return "运行中";
+    case "critical":
+      return "待审批";
+    case "ok":
+      return `✓ 成功${dur}`;
+    case "denied":
+      return `✕ 已拒绝${reason ? `: ${reason}` : ""}`;
+    case "error":
+      return `✕ 失败${reason ? `: ${reason}` : ""}`;
+  }
+}
+
+/** Collapsible tool-call card rendered *inside* an assistant bubble.
+ * Mirrors the prototype ``.tool-call`` visual with a foldable head and
+ * a monospace body. */
 function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
   const status: ToolCallStatus = payload.tool_status ?? "running";
   const variant: ToolCardVariant =
@@ -502,56 +539,75 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
       ? "denied"
       : status;
   const style = TOOL_STATUS_STYLE[variant];
-  const [argsOpen, setArgsOpen] = useState(false);
+  const [open, setOpen] = useState(variant !== "running");
   const hasArgs = payload.tool_args && Object.keys(payload.tool_args).length > 0;
+  const argsSummary = hasArgs
+    ? JSON.stringify(payload.tool_args).slice(0, 90)
+    : "";
 
   return (
     <div
       className={cn(
-        "flex items-start gap-2 rounded-lg border px-3 py-2",
+        "rounded-[10px] border bg-popover text-[12.5px] leading-snug overflow-hidden",
         style.border,
-        style.bg,
         animClass,
       )}
     >
-      {toolCallIcon(variant)}
-      <div className="min-w-0 flex-1 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <Wrench className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden />
-          <span className="font-medium text-foreground">{payload.tool_name ?? "tool"}</span>
-          {payload.agent_name ? (
-            <span className="text-[10px] text-muted-foreground/70">({payload.agent_name})</span>
+      {/* Foldable head */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex w-full items-center gap-2.5 px-3 py-2 text-left",
+          "transition-colors hover:bg-accent/40",
+        )}
+      >
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200",
+            open && "rotate-90",
+          )}
+          aria-hidden
+        />
+        <span className="shrink-0 font-mono font-semibold text-ocean-300">
+          {payload.tool_name ?? "tool"}
+        </span>
+        {argsSummary ? (
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/80">
+            {argsSummary}
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+            variant === "ok" && "bg-green-500/15 text-green-500",
+            variant === "running" && "bg-primary/15 text-primary",
+            variant === "critical" && "bg-amber-500/15 text-amber-500",
+            variant === "error" && "bg-red-500/15 text-red-500",
+            variant === "denied" && "bg-[hsl(var(--sev-info)/0.12)] text-[hsl(var(--sev-info))]",
+          )}
+        >
+          {toolStatusLabel(variant, payload.duration_ms, payload.reason)}
+        </span>
+      </button>
+
+      {/* Body */}
+      {open && (
+        <div className="border-t border-border-subtle/60 bg-background/50 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed">
+          {status === "error" && payload.reason && variant !== "denied" ? (
+            <p className={cn("mb-1.5 text-red-400", style.text)}>{payload.reason}</p>
           ) : null}
-          {payload.duration_ms != null ? (
-            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
-              {payload.duration_ms < 1000
-                ? `${payload.duration_ms}ms`
-                : `${(payload.duration_ms / 1000).toFixed(1)}s`}
-            </span>
-          ) : null}
+          {hasArgs ? (
+            <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words text-muted-foreground/90">
+              {JSON.stringify(payload.tool_args, null, 2)}
+            </pre>
+          ) : (
+            <span className="text-muted-foreground/60">无参数</span>
+          )}
         </div>
-        {status === "error" && payload.reason ? (
-          <p className={cn("mt-0.5 text-[11px]", style.text)}>{payload.reason}</p>
-        ) : null}
-        {hasArgs ? (
-          <button
-            type="button"
-            onClick={() => setArgsOpen((v) => !v)}
-            className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-          >
-            <ChevronRight
-              className={cn("h-2.5 w-2.5 transition-transform duration-150", argsOpen && "rotate-90")}
-              aria-hidden
-            />
-            <span>参数</span>
-          </button>
-        ) : null}
-        {argsOpen && hasArgs ? (
-          <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/60 px-2 py-1 font-mono text-[10px] leading-relaxed text-muted-foreground/80">
-            {JSON.stringify(payload.tool_args, null, 2)}
-          </pre>
-        ) : null}
-      </div>
+      )}
     </div>
   );
 }
@@ -639,17 +695,8 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
         </div>
       );
     case "subagent_status":
-      return (
-        <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>
-          <Bot className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-          <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{payload.task_id}</span>
-            <span className="ml-1">
-              {payload.phase}
-            </span>
-          </div>
-        </div>
-      );
+      // 子智能体中间状态（工具调用过程）不在前端展示
+      return null;
     case "subagent_done":
       return (
         <div className={cn("flex gap-2 rounded-lg border px-3 py-2", animClass,

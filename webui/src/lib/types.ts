@@ -179,6 +179,16 @@ export interface UIMessage {
   approvalDetail?: string;
   /** Agent event payload when kind is ``agent_event``. */
   agentEvent?: AgentEventPayload;
+  /** Normalised agent name (snake_case registry key) that produced this
+   * message. Inferred from the most recent ``agent_event`` frame so plain
+   * ``delta`` / ``message`` turns can still carry the correct avatar colour
+   * and meta label. */
+  agentName?: string;
+  /** Tool-call events that belong to this assistant turn.  The stream hook
+   * merges consecutive ``agent_event`` ``tool_call`` frames into the
+   * preceding assistant message from the same agent so the UI can render
+   * them inside the bubble rather than as detached cards. */
+  toolCalls?: AgentEventPayload[];
 }
 
 export interface ChatSummary {
