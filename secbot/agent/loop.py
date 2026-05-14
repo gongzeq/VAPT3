@@ -6,6 +6,7 @@ import asyncio
 import dataclasses
 import json
 import os
+import re
 import time
 from contextlib import AsyncExitStack, nullcontext, suppress
 from pathlib import Path
@@ -347,6 +348,38 @@ class _LoopHook(AgentHook):
         return self._loop._strip_think(content)
 
 
+def _extract_report_media(
+    all_msgs: list[dict[str, Any]], final_content: str
+) -> list[str]:
+    """Scan tool results and final content for report file paths.
+
+    Looks for ``report_path`` entries in JSON tool results and for
+    ``.html`` file paths mentioned in the assistant's final reply.
+    Only returns paths that actually exist on disk.
+    """
+    paths: set[str] = set()
+
+    # 1. Extract from tool result JSONs
+    for m in all_msgs:
+        if m.get("role") != "tool":
+            continue
+        content = m.get("content", "")
+        if not isinstance(content, str):
+            continue
+        for match in re.finditer(r'"report_path"\s*:\s*"([^"]+)"', content):
+            p = match.group(1)
+            if p and p != "null" and os.path.isfile(p):
+                paths.add(p)
+
+    # 2. Fallback: extract absolute .html paths from final content
+    for match in re.finditer(r"[\w/\\._-]+\.html", final_content):
+        p = match.group(0)
+        if os.path.isabs(p) and os.path.isfile(p):
+            paths.add(p)
+
+    return sorted(paths)
+
+
 class AgentLoop:
     """
     The agent loop is the core processing engine.
@@ -578,11 +611,14 @@ class AgentLoop:
         self._register_operational_tools()
 
     def _register_orchestrator_tools(self) -> None:
-        """Register the orchestrator's strict coordination-only tool surface."""
+        """Register the orchestrator's coordination + message tool surface."""
         self.tools.register(SpawnTool(manager=self.subagents))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         self.tools.register(RequestApprovalTool())
         self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))
+        self.tools.register(
+            MessageTool(send_callback=self.bus.publish_outbound, workspace=self.workspace)
+        )
 
     def _register_operational_tools(self) -> None:
         """Register the full operational tool surface for non-orchestrator loops."""
@@ -1490,10 +1526,15 @@ class AgentLoop:
         )
         if on_stream is not None and stop_reason not in {"ask_user", "error", "tool_error"}:
             meta["_streamed"] = True
+
+        # Auto-attach report files so the WebUI can render them as clickable
+        # download cards instead of plain-text paths.
+        report_media = _extract_report_media(all_msgs, final_content)
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,
             content=final_content,
+            media=report_media,
             metadata=meta,
             buttons=buttons,
         )

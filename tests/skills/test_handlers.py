@@ -94,6 +94,9 @@ async def test_fscan_asset_discovery_happy(make_ctx, fake_run_command):
     res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     assert "elapsed_sec" in res.summary
     assert res.summary["hosts_up"] == ["10.0.0.1", "10.0.0.12"]
+    assert len(res.cmdb_writes) == 2
+    assert all(w["table"] == "assets" for w in res.cmdb_writes)
+    assert {w["data"]["target"] for w in res.cmdb_writes} == {"10.0.0.1", "10.0.0.12"}
 
 
 async def test_fscan_asset_discovery_invalid_target(make_ctx):
@@ -154,6 +157,13 @@ async def test_fscan_port_scan_happy(make_ctx, fake_run_command):
     res = await mod.run({"target": "10.0.0.0/24", "ports": "1-65535"}, make_ctx())
     svcs = res.summary["services"]
     assert {(s["host"], s["port"]) for s in svcs} == {
+        ("10.0.0.1", 22),
+        ("10.0.0.1", 80),
+        ("10.0.0.7", 8080),
+    }
+    assert len(res.cmdb_writes) == 3
+    assert all(w["table"] == "services" for w in res.cmdb_writes)
+    assert {(w["data"]["target"], w["data"]["port"]) for w in res.cmdb_writes} == {
         ("10.0.0.1", 22),
         ("10.0.0.1", 80),
         ("10.0.0.7", 8080),

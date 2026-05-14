@@ -14,11 +14,39 @@ Supports four scopes via the ``action`` argument:
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import InvalidSkillArg, SkillContext, SkillResult
+from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
+
+
+def _resolve_sqlmap_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for sqlmap, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.sqlmap``.
+      2. ``sqlmap`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("sqlmap")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured sqlmap override not found: {override}. "
+                "Check tools.skillBinaries.sqlmap in your config."
+            )
+        return "python3", [override] + cli
+    if shutil.which("sqlmap"):
+        return "sqlmap", cli
+    raise SkillBinaryMissing(
+        "sqlmap not found on PATH. "
+        "Install sqlmap or set tools.skillBinaries.sqlmap in ~/.secbot/config.json"
+    )
 
 
 _LIST_RE = re.compile(r"^\[\*\]\s+(\S+)$", re.MULTILINE)
@@ -95,9 +123,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     if cookie:
         cli += ["--cookie", cookie]
 
+    binary, args = _resolve_sqlmap_binary(cli)
     return await execute(
-        binary="sqlmap",
-        args=cli,
+        binary=binary,
+        args=args,
         timeout_sec=1200,
         raw_log_name=f"sqlmap-dump-{action}.log",
         ctx=ctx,

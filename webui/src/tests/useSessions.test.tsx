@@ -170,6 +170,139 @@ describe("useSessions", () => {
     ]);
   });
 
+  it("recovers agentName from sender_id on historical assistant messages", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-agent",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "assistant",
+          content: "orchestrator reply",
+          timestamp: "2026-04-20T10:00:01Z",
+        },
+        {
+          role: "assistant",
+          content: "subagent result",
+          timestamp: "2026-04-20T10:00:02Z",
+          sender_id: "subagent",
+        },
+        {
+          role: "assistant",
+          content: "port scan done",
+          timestamp: "2026-04-20T10:00:03Z",
+          sender_id: "port_scan",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-agent"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const msgs = result.current.messages;
+    expect(msgs).toHaveLength(3);
+    expect(msgs[0].agentName).toBeUndefined();
+    expect(msgs[1].agentName).toBe("subagent");
+    expect(msgs[2].agentName).toBe("port_scan");
+  });
+
+  it("reconstructs tool_calls as embedded toolCalls instead of trace rows", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-tools",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "scan it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Starting scan...",
+          timestamp: "2026-04-20T10:00:01Z",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "scan_port", arguments: '{"target":"1.2.3.4"}' },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "Port 80 open",
+          tool_call_id: "call_1",
+          name: "scan_port",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+        {
+          role: "assistant",
+          content: "Done.",
+          timestamp: "2026-04-20T10:00:03Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-tools"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const msgs = result.current.messages;
+    // User + assistant (with toolCalls) + assistant = 3 messages, no trace row.
+    expect(msgs).toHaveLength(3);
+    expect(msgs[0].role).toBe("user");
+    expect(msgs[1].role).toBe("assistant");
+    expect(msgs[1].toolCalls).toHaveLength(1);
+    expect(msgs[1].toolCalls?.[0].tool_name).toBe("scan_port");
+    expect(msgs[1].toolCalls?.[0].tool_status).toBe("ok");
+    expect(msgs[2].role).toBe("assistant");
+  });
+
+  it("marks historical tool_call as error when the tool result looks like a failure", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-tool-err",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "assistant",
+          content: "trying...",
+          timestamp: "2026-04-20T10:00:01Z",
+          tool_calls: [
+            {
+              id: "call_err",
+              type: "function",
+              function: { name: " risky_cmd", arguments: '{}' },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "Traceback: connection refused",
+          tool_call_id: "call_err",
+          name: "risky_cmd",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-tool-err"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const tc = result.current.messages[0].toolCalls?.[0];
+    expect(tc?.tool_status).toBe("error");
+    expect(tc?.reason).toContain("Traceback");
+  });
+
   it("keeps the session in the list when delete fails", async () => {
     vi.mocked(api.listSessions).mockResolvedValue([
       {
@@ -196,5 +329,75 @@ describe("useSessions", () => {
     ).rejects.toThrow("boom");
 
     expect(result.current.sessions.map((s) => s.key)).toEqual(["websocket:chat-a"]);
+  });
+
+  it("renders persisted agent_event messages as inline cards on replay", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-events",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "scan it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:01Z",
+          _kind: "agent_event",
+          agent_event: {
+            type: "thought",
+            agent: "orchestrator",
+            content: "I should spawn a port scanner.",
+          },
+          sender_id: "orchestrator",
+        },
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:02Z",
+          _kind: "agent_event",
+          agent_event: {
+            type: "subagent_spawned",
+            task_id: "t1",
+            label: "Port Scan",
+            task_description: "scan ports",
+          },
+          sender_id: "port_scan",
+        },
+        {
+          role: "assistant",
+          content: "Done.",
+          timestamp: "2026-04-20T10:00:03Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-events"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const msgs = result.current.messages;
+    expect(msgs).toHaveLength(4);
+    expect(msgs[0].role).toBe("user");
+
+    expect(msgs[1].role).toBe("assistant");
+    expect(msgs[1].kind).toBe("agent_event");
+    expect(msgs[1].content).toBe("I should spawn a port scanner.");
+    expect(msgs[1].agentName).toBe("orchestrator");
+    expect(msgs[1].agentEvent?.type).toBe("thought");
+
+    expect(msgs[2].role).toBe("assistant");
+    expect(msgs[2].kind).toBe("agent_event");
+    expect(msgs[2].content).toBe("🚀 子智能体「Port Scan」已启动");
+    expect(msgs[2].agentName).toBe("port_scan");
+    expect(msgs[2].agentEvent?.type).toBe("subagent_spawned");
+
+    expect(msgs[3].role).toBe("assistant");
+    expect(msgs[3].kind).toBeUndefined();
   });
 });

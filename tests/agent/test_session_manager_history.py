@@ -431,3 +431,29 @@ def test_retain_recent_legal_suffix_hard_cap_with_long_non_user_chain():
     session.retain_recent_legal_suffix(6)
 
     assert len(session.messages) <= 6
+
+
+def test_get_history_skips_agent_event_messages():
+    """UI-only agent events must not leak into the LLM context."""
+    session = Session(key="test:agent-events")
+    session.messages.append({"role": "user", "content": "hi"})
+    session.messages.append({"role": "assistant", "content": "hello"})
+    session.messages.append(
+        {
+            "role": "assistant",
+            "content": "",
+            "_kind": "agent_event",
+            "agent_event": {
+                "type": "thought",
+                "agent": "orchestrator",
+                "content": "thinking...",
+            },
+            "sender_id": "orchestrator",
+        }
+    )
+    session.messages.append({"role": "assistant", "content": "result"})
+
+    history = session.get_history(max_messages=500)
+
+    assert [m["role"] for m in history] == ["user", "assistant", "assistant"]
+    assert [m["content"] for m in history] == ["hi", "hello", "result"]

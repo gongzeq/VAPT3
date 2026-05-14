@@ -262,6 +262,10 @@ class ToolsConfig(Base):
     restrict_to_workspace: bool = False  # restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
+    skill_binaries: dict[str, str] = Field(
+        default_factory=dict,
+        description="Override paths for skill binaries. Key=skill/binary name, value=absolute path to executable or script. When a path is given the skill runner will invoke it via 'python3 <path>' instead of searching PATH.",
+    )
 
 
 class Config(BaseSettings):

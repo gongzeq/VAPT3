@@ -1232,3 +1232,96 @@ def test_parse_envelope_rejects_legacy_and_garbage() -> None:
 )
 def test_is_valid_chat_id(value: Any, expected: bool) -> None:
     assert _is_valid_chat_id(value) is expected
+
+
+@pytest.mark.asyncio
+async def test_broadcast_agent_event_persists_to_session() -> None:
+    """High-signal agent events are written to the session JSONL."""
+    bus = MagicMock()
+    bus.publish_inbound = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session_manager = MagicMock()
+    mock_session_manager.get_or_create.return_value = mock_session
+
+    cfg = {
+        "enabled": True,
+        "allowFrom": ["*"],
+        "host": "127.0.0.1",
+        "port": _PORT,
+        "path": "/ws",
+        "websocketRequiresToken": False,
+    }
+    channel = WebSocketChannel(cfg, bus, session_manager=mock_session_manager)
+
+    await channel.broadcast_agent_event(
+        chat_id="chat-1",
+        type="thought",
+        payload={"agent": "orchestrator", "content": "thinking..."},
+    )
+
+    mock_session_manager.get_or_create.assert_called_once_with("websocket:chat-1")
+    call = mock_session.add_message.call_args
+    assert call.args[0] == "assistant"
+    assert call.args[1] == ""
+    assert call.kwargs["_kind"] == "agent_event"
+    assert call.kwargs["agent_event"]["type"] == "thought"
+    assert call.kwargs["sender_id"] == "orchestrator"
+    mock_session_manager.save.assert_called_once_with(mock_session)
+
+
+@pytest.mark.asyncio
+async def test_broadcast_agent_event_skips_ephemeral_types() -> None:
+    """agent_status, subagent_status, high_risk_confirm are NOT persisted."""
+    bus = MagicMock()
+    bus.publish_inbound = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session_manager = MagicMock()
+    mock_session_manager.get_or_create.return_value = mock_session
+
+    cfg = {
+        "enabled": True,
+        "allowFrom": ["*"],
+        "host": "127.0.0.1",
+        "port": _PORT,
+        "path": "/ws",
+        "websocketRequiresToken": False,
+    }
+    channel = WebSocketChannel(cfg, bus, session_manager=mock_session_manager)
+
+    for evt_type in ("agent_status", "subagent_status", "high_risk_confirm"):
+        await channel.broadcast_agent_event(
+            chat_id="chat-1",
+            type=evt_type,
+            payload={"agent_name": "port_scan"},
+        )
+
+    mock_session.add_message.assert_not_called()
+    mock_session_manager.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_agent_event_omits_save_when_no_session_manager() -> None:
+    """When session_manager is None, broadcast still works and does not crash."""
+    bus = MagicMock()
+    bus.publish_inbound = AsyncMock()
+
+    cfg = {
+        "enabled": True,
+        "allowFrom": ["*"],
+        "host": "127.0.0.1",
+        "port": _PORT,
+        "path": "/ws",
+        "websocketRequiresToken": False,
+    }
+    channel = WebSocketChannel(cfg, bus, session_manager=None)
+
+    result = await channel.broadcast_agent_event(
+        chat_id="chat-1",
+        type="thought",
+        payload={"agent": "orchestrator", "content": "thinking..."},
+    )
+
+    # No connections subscribed → broadcast returns False, but must not raise.
+    assert result is False

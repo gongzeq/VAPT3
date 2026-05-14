@@ -93,9 +93,13 @@ export async function fetchSessionMessages(
     tool_calls?: unknown;
     tool_call_id?: string;
     name?: string;
+    sender_id?: string;
     /** Present on ``user`` turns that attached images. Paths have already
      * been stripped server-side; only the signed fetch URLs survive. */
     media_urls?: SessionMediaUrl[];
+    /** UI-only agent event persisted for historical replay. */
+    _kind?: string;
+    agent_event?: Record<string, unknown>;
   }>;
 }> {
   return request(

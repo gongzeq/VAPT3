@@ -262,3 +262,81 @@ async def test_vulnerabilities_isolated_across_actors(tmp_cmdb):
 
     assert {v.title for v in alice} == {"alice-only"}
     assert {v.title for v in bob} == {"bob-only"}
+
+
+# ---------------------------------------------------------------------------
+# apply_cmdb_writes
+# ---------------------------------------------------------------------------
+
+
+async def test_apply_cmdb_writes_creates_assets_and_services(tmp_cmdb):
+    from secbot.cmdb.writes import apply_cmdb_writes
+
+    scan = await repo.create_scan(tmp_cmdb, "local", target="10.0.0.0/24")
+    writes = [
+        {
+            "table": "assets",
+            "op": "upsert",
+            "data": {"target": "10.0.0.1", "ip": "10.0.0.1"},
+        },
+        {
+            "table": "services",
+            "op": "upsert",
+            "data": {"target": "10.0.0.1", "port": 22, "protocol": "tcp", "state": "open"},
+        },
+        {
+            "table": "services",
+            "op": "upsert",
+            "data": {"target": "10.0.0.1", "port": 80, "protocol": "tcp", "state": "open"},
+        },
+    ]
+    await apply_cmdb_writes(tmp_cmdb, "local", scan.id, writes, discovered_by="test")
+
+    assets = await repo.list_assets(tmp_cmdb, "local", scan_id=scan.id)
+    assert len(assets) == 1
+    assert assets[0].target == "10.0.0.1"
+
+    services = await repo.list_services(tmp_cmdb, "local", asset_id=assets[0].id)
+    assert len(services) == 2
+    assert {s.port for s in services} == {22, 80}
+
+
+async def test_apply_cmdb_writes_creates_vulnerabilities(tmp_cmdb):
+    from secbot.cmdb.writes import apply_cmdb_writes
+
+    scan = await repo.create_scan(tmp_cmdb, "local", target="10.0.0.1")
+    writes = [
+        {
+            "table": "vulnerabilities",
+            "op": "upsert",
+            "data": {
+                "target": "10.0.0.1",
+                "severity": "high",
+                "title": "Test Vuln",
+                "evidence": "matched-at",
+            },
+        }
+    ]
+    await apply_cmdb_writes(tmp_cmdb, "local", scan.id, writes, discovered_by="nuclei")
+
+    assets = await repo.list_assets(tmp_cmdb, "local", scan_id=scan.id)
+    assert len(assets) == 1
+
+    vulns = await repo.list_vulnerabilities(tmp_cmdb, "local", asset_id=assets[0].id)
+    assert len(vulns) == 1
+    assert vulns[0].title == "Test Vuln"
+    assert vulns[0].severity == "high"
+    assert vulns[0].discovered_by == "nuclei"
+
+
+async def test_apply_cmdb_writes_skips_unknown_table(tmp_cmdb):
+    from secbot.cmdb.writes import apply_cmdb_writes
+
+    scan = await repo.create_scan(tmp_cmdb, "local", target="10.0.0.1")
+    writes = [
+        {"table": "unknown_table", "op": "upsert", "data": {"x": 1}},
+    ]
+    # Should not raise.
+    await apply_cmdb_writes(tmp_cmdb, "local", scan.id, writes)
+    assets = await repo.list_assets(tmp_cmdb, "local", scan_id=scan.id)
+    assert len(assets) == 0

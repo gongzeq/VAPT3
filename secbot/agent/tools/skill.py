@@ -189,6 +189,37 @@ class SkillTool(Tool):
             _LOG.exception("SkillTool %s crashed", self._meta.name)
             return _error_payload(self._meta.name, "internal_error", str(exc))
 
+        # Persist skill-generated CMDB writes so downstream consumers
+        # (report-html, dashboard) see live data.
+        if result.cmdb_writes:
+            try:
+                from secbot.cmdb.db import get_session as _get_cmdb_session
+                from secbot.cmdb.models import DEFAULT_ACTOR
+                from secbot.cmdb.repo import create_scan, get_scan
+                from secbot.cmdb.writes import apply_cmdb_writes
+
+                actor_id = DEFAULT_ACTOR
+                async with _get_cmdb_session() as session:
+                    scan = await get_scan(session, actor_id, scan_id)
+                    if scan is None:
+                        target = kwargs.get("target") or scan_id
+                        await create_scan(
+                            session, actor_id, target=target, scan_id=scan_id
+                        )
+                    await apply_cmdb_writes(
+                        session,
+                        actor_id,
+                        scan_id,
+                        result.cmdb_writes,
+                        discovered_by=self._meta.name,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _LOG.warning(
+                    "SkillTool %s: cmdb_writes persistence failed: %s",
+                    self._meta.name,
+                    exc,
+                )
+
         return _result_payload(self._meta, result)
 
 

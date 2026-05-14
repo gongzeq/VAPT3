@@ -10,7 +10,7 @@ import {
 } from "@/lib/api";
 import { deriveTitle } from "@/lib/format";
 import { toMediaAttachment } from "@/lib/media";
-import type { ChatSummary, UIMessage } from "@/lib/types";
+import type { AgentEventPayload, ChatSummary, ToolCallStatus, UIMessage } from "@/lib/types";
 
 const EMPTY_MESSAGES: UIMessage[] = [];
 
@@ -21,23 +21,11 @@ type RawHistoryMessage = {
   tool_calls?: unknown;
   tool_call_id?: string;
   name?: string;
+  sender_id?: string;
   media_urls?: Array<{ url: string; name?: string }>;
+  _kind?: string;
+  agent_event?: Record<string, unknown>;
 };
-
-/** Extract a tool function name from an OpenAI-compatible ``tool_call`` entry.
- * Falls back to the generic ``name``/``id`` fields so non-function tool
- * backends still render something meaningful. */
-function toolCallLabel(call: unknown): string {
-  if (!call || typeof call !== "object") return "tool";
-  const obj = call as Record<string, unknown>;
-  const fn = obj.function as Record<string, unknown> | undefined;
-  const name =
-    (fn && typeof fn.name === "string" && fn.name) ||
-    (typeof obj.name === "string" && obj.name) ||
-    (typeof obj.id === "string" && obj.id) ||
-    "tool";
-  return String(name);
-}
 
 /** Trim a tool result string to a compact one-line preview suitable for
  * rendering inside the collapsible trace group. */
@@ -48,11 +36,106 @@ function toolResultPreview(content: string, name?: string): string {
   return short ? `${prefix}: ${short}` : prefix;
 }
 
-/** Convert the raw persisted session messages into the UI's message shape,
- * reconstructing the trace (tool-usage) rows from ``tool_calls`` and
- * ``role: "tool"`` entries so reopening a conversation still shows the
- * "Used N tools" breadcrumbs that appeared live. */
+/** Infer the agent name from a persisted assistant message. */
+function inferAgentName(m: RawHistoryMessage): string | undefined {
+  if (m.sender_id && m.sender_id !== "assistant") {
+    return m.sender_id;
+  }
+  if (m.name) {
+    return m.name;
+  }
+  return undefined;
+}
+
+/** Convert an OpenAI-compatible ``tool_call`` entry into an
+ * ``AgentEventPayload`` so the UI can render it as a ``ToolCallCard``. */
+function convertOpenAIToolCall(
+  call: unknown,
+  toolResults: Map<string, { content: string; name?: string }>,
+): AgentEventPayload | null {
+  if (!call || typeof call !== "object") return null;
+  const obj = call as Record<string, unknown>;
+  const fn = obj.function as Record<string, unknown> | undefined;
+  const toolCallId = typeof obj.id === "string" ? obj.id : undefined;
+  const toolName =
+    (fn && typeof fn.name === "string" && fn.name) ||
+    (typeof obj.name === "string" && obj.name) ||
+    "tool";
+
+  let toolArgs: Record<string, unknown> | undefined;
+  if (fn && typeof fn.arguments === "string") {
+    try {
+      toolArgs = JSON.parse(fn.arguments);
+    } catch {
+      toolArgs = { raw: fn.arguments };
+    }
+  } else if (fn && typeof fn.arguments === "object") {
+    toolArgs = fn.arguments as Record<string, unknown>;
+  }
+
+  // Look up the matching tool result to infer terminal status.
+  const result = toolCallId ? toolResults.get(toolCallId) : undefined;
+  let toolStatus: ToolCallStatus = "ok";
+  let reason: string | undefined;
+  if (result) {
+    const lower = result.content.toLowerCase();
+    if (
+      lower.includes("error") ||
+      lower.includes("exception") ||
+      lower.includes("traceback") ||
+      lower.includes("失败")
+    ) {
+      toolStatus = "error";
+      reason = result.content.slice(0, 200);
+    }
+  }
+
+  return {
+    type: "tool_call",
+    tool_call_id: toolCallId,
+    tool_name: toolName,
+    tool_args: toolArgs,
+    tool_status: toolStatus,
+    reason,
+  };
+}
+
+/** Build a display string for a persisted ``agent_event`` so historical
+ * replay matches the live-stream rendering in ``useNanobotStream``. */
+function buildAgentEventContent(payload: AgentEventPayload): string {
+  switch (payload.type) {
+    case "thought":
+      return payload.content ?? "";
+    case "orchestrator_plan":
+      return `编排计划：${payload.steps?.length ?? 0} 步`;
+    case "subagent_spawned":
+      return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
+    case "subagent_done":
+      return payload.status === "ok"
+        ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`
+        : `❌ 子智能体「${payload.label ?? payload.task_id}」失败`;
+    case "blackboard_entry":
+      return `📝 黑板条目 [${payload.agent_name}]: ${payload.text ?? ""}`;
+    default:
+      return "";
+  }
+}
+
+/** Convert the raw persisted session messages into the UI's message shape.
+ *
+ * Tool-call rows are reconstructed as ``toolCalls`` embedded inside the
+ * assistant bubble (mirroring the live-stream layout) rather than flattened
+ * into detached trace lines.  The ``agentName`` is recovered from
+ * ``sender_id`` / ``name`` so avatars and meta labels stay correct on replay. */
 function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
+  // Pre-scan tool results so we can pair them with their call requests.
+  const toolResults = new Map<string, { content: string; name?: string }>();
+  for (const m of raw) {
+    if (m.role === "tool" && typeof m.content === "string" && m.tool_call_id) {
+      toolResults.set(m.tool_call_id, { content: m.content, name: m.name });
+    }
+  }
+
   const out: UIMessage[] = [];
   let pending: string[] = [];
   const flushPending = (idx: number) => {
@@ -67,35 +150,65 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
     });
     pending = [];
   };
+
   raw.forEach((m, idx) => {
     if (m.role === "assistant") {
-      if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
-        for (const call of m.tool_calls) {
-          pending.push(`→ ${toolCallLabel(call)}`);
-        }
-      }
-      if (typeof m.content === "string" && m.content.length > 0) {
+      // UI-only agent events (thought, subagent lifecycle, blackboard)
+      // are persisted with ``_kind="agent_event"`` so they render as
+      // inline cards on historical replay.
+      if (m._kind === "agent_event" && m.agent_event) {
+        const payload = m.agent_event as unknown as AgentEventPayload;
+        const agentName =
+          inferAgentName(m) || payload.agent_name || payload.agent || "assistant";
         flushPending(idx);
-        const media =
-          Array.isArray(m.media_urls) && m.media_urls.length > 0
-            ? m.media_urls.map((mu) => toMediaAttachment(mu))
-            : undefined;
         out.push({
           id: `hist-${idx}`,
           role: "assistant",
-          content: m.content,
+          kind: "agent_event",
+          content: buildAgentEventContent(payload),
+          agentEvent: payload,
+          agentName,
           createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
-          ...(media ? { media } : {}),
         });
+        return;
       }
+
+      const hasContent = typeof m.content === "string" && m.content.length > 0;
+      const rawToolCalls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
+      const toolCalls = rawToolCalls
+        .map((call) => convertOpenAIToolCall(call, toolResults))
+        .filter(Boolean) as AgentEventPayload[];
+
+      if (!hasContent && toolCalls.length === 0) {
+        return;
+      }
+
+      flushPending(idx);
+      const media =
+        Array.isArray(m.media_urls) && m.media_urls.length > 0
+          ? m.media_urls.map((mu) => toMediaAttachment(mu))
+          : undefined;
+
+      out.push({
+        id: `hist-${idx}`,
+        role: "assistant",
+        content: m.content || "",
+        agentName: inferAgentName(m),
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+        ...(media ? { media } : {}),
+      });
       return;
     }
+
     if (m.role === "tool") {
-      if (typeof m.content === "string") {
+      // Only orphan tool results (no paired tool_call_id) become trace lines.
+      if (!m.tool_call_id && typeof m.content === "string") {
         pending.push(toolResultPreview(m.content, m.name));
       }
       return;
     }
+
     if (m.role === "user") {
       if (typeof m.content !== "string") return;
       flushPending(idx);
@@ -117,6 +230,7 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
       });
     }
   });
+
   flushPending(raw.length);
   return out;
 }

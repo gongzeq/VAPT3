@@ -123,22 +123,92 @@ def render_html(model: ReportModel) -> str:
     Inlines the severity color tokens so the printed PDF matches the WebUI.
     """
     css = """
-    body { font-family: -apple-system, Segoe UI, sans-serif; color: #0F172A; }
-    h1, h2, h3 { color: #1E3A8A; }
-    table { border-collapse: collapse; margin-bottom: 1.5rem; }
-    th, td { border: 1px solid #E2E8F0; padding: 6px 10px; font-size: 13px; }
-    .badge { padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 12px; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #0F172A;
+      background: #F8FAFC;
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(90deg, #0F172A 0%, #1E293B 100%);
+      border-bottom: 1px solid #334155;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .toolbar-title {
+      color: #F8FAFC;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .toolbar-actions { display: flex; gap: 10px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #1E293B;
+      color: #E2E8F0;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+    .btn:hover { background: #334155; border-color: #64748B; }
+    .btn svg { width: 14px; height: 14px; fill: currentColor; }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+    h1, h2, h3 { color: #1E3A8A; margin-top: 1.5em; margin-bottom: 0.6em; }
+    h1 { font-size: 28px; margin-top: 0; border-bottom: 2px solid #E2E8F0; padding-bottom: 12px; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 16px; color: #334155; }
+    table { border-collapse: collapse; margin-bottom: 1.5rem; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    th, td { border: 1px solid #E2E8F0; padding: 10px 14px; font-size: 13px; }
+    th { background: #F1F5F9; font-weight: 600; text-align: left; }
+    .badge { padding: 3px 10px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 500; display: inline-block; }
     .sev-critical { background: #991B1B; }
     .sev-high { background: #DC2626; }
     .sev-medium { background: #D97706; }
     .sev-low { background: #2563EB; }
     .sev-info { background: #475569; }
+    ul { padding-left: 20px; }
+    code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #334155; }
+    @media print {
+      .toolbar { display: none !important; }
+      body { background: #fff; }
+      .container { padding: 16px; }
+    }
     """
     lines: list[str] = [
         "<!DOCTYPE html>",
-        "<html><head><meta charset=\"utf-8\">",
+        '<html lang="zh-CN"><head><meta charset="utf-8">',
         "<title>安全扫描报告</title>",
         f"<style>{css}</style></head><body>",
+        '<div class="toolbar">',
+        '  <span class="toolbar-title">🔒 安全扫描报告</span>',
+        '  <div class="toolbar-actions">',
+        '    <button class="btn" onclick="window.print()" title="打印报告">',
+        '      <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>',
+        '      打印报告',
+        "    </button>",
+        "  </div>",
+        "</div>",
+        '<div class="container">',
         "<h1>安全扫描报告</h1>",
         "<ul>",
         f"<li><strong>扫描 ID:</strong> <code>{model.scan_id}</code></li>",
@@ -177,7 +247,7 @@ def render_html(model: ReportModel) -> str:
                     f"<td>{f.discovered_by}</td></tr>"
                 )
             lines.append("</tbody></table>")
-    lines.append("</body></html>")
+    lines.append("</div></body></html>")
     return "\n".join(lines)
 
 

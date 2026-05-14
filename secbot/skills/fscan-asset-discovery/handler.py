@@ -44,12 +44,24 @@ def _resolve_fscan_binary(cli: list[str]) -> tuple[str, list[str]]:
 _ALIVE_RE = re.compile(r"Target\s+([\d.]+)\s+is alive", re.IGNORECASE)
 
 
-def _parse(raw_log: Path, exit_code: int) -> dict[str, Any]:
+def _parse(raw_log: Path, exit_code: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if not raw_log.exists():
-        return {"hosts_up": []}
+        return {"hosts_up": []}, []
     text = raw_log.read_text(encoding="utf-8", errors="replace")
     hosts = sorted(set(_ALIVE_RE.findall(text)))
-    return {"hosts_up": hosts[:500]}
+    cmdb_writes: list[dict[str, Any]] = []
+    for host in hosts[:500]:
+        cmdb_writes.append(
+            {
+                "table": "assets",
+                "op": "upsert",
+                "data": {
+                    "target": host,
+                    "ip": host,
+                },
+            }
+        )
+    return {"hosts_up": hosts[:500]}, cmdb_writes
 
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:

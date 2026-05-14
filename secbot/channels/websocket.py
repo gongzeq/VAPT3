@@ -1865,6 +1865,10 @@ class WebSocketChannel(BaseChannel):
         Throttle policy is left to the caller; this method does NOT
         throttle so that high-signal events (first thought, subagent
         spawn/done) are never dropped.
+
+        High-signal events are also persisted to the session JSONL so
+        that historical replay renders the same cards as the live stream.
+        Pure status pings and interactive confirmations are skipped.
         """
         body: dict[str, Any] = {
             "event": "agent_event",
@@ -1873,7 +1877,40 @@ class WebSocketChannel(BaseChannel):
             "payload": dict(payload),
             "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
-        return await self._broadcast_frame(body, chat_id=chat_id)
+        broadcast_ok = await self._broadcast_frame(body, chat_id=chat_id)
+
+        # Persist high-signal agent events to the session so historical
+        # replay can render thought cards, subagent lifecycle, and
+        # blackboard entries.  Skip pure status pings and interactive
+        # confirmations — they are ephemeral or user-specific.
+        if self._session_manager is not None and type not in {
+            "agent_status", "subagent_status", "high_risk_confirm",
+        }:
+            try:
+                session_key = f"websocket:{chat_id}"
+                session = self._session_manager.get_or_create(session_key)
+                sender_id = (
+                    payload.get("agent_name")
+                    or payload.get("agent")
+                    or "assistant"
+                )
+                session.add_message(
+                    "assistant",
+                    "",
+                    _kind="agent_event",
+                    agent_event={"type": type, **dict(payload)},
+                    sender_id=sender_id,
+                )
+                self._session_manager.save(session)
+            except Exception:
+                logger.debug(
+                    "Failed to persist agent_event ({}) for session {}",
+                    type,
+                    chat_id,
+                    exc_info=True,
+                )
+
+        return broadcast_ok
 
     async def surface_confirm(
         self,

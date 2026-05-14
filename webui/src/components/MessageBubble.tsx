@@ -103,6 +103,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   const empty = message.content.trim().length === 0;
   const media = message.media ?? [];
+  const hasToolCalls = (message.toolCalls?.length ?? 0) > 0;
+  // 隐藏空内容的助手消息（无内容、无媒体、无工具调用、非流式）
+  if (empty && !message.isStreaming && media.length === 0 && !hasToolCalls) {
+    return null;
+  }
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
   const agentInfo = resolveAgent(message.agentName);
   return (

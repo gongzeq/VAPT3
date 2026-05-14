@@ -45,18 +45,32 @@ def _resolve_fscan_binary(cli: list[str]) -> tuple[str, list[str]]:
 _OPEN_RE = re.compile(r"^([\d.]+):(\d+)\s+open", re.MULTILINE)
 
 
-def _parse(raw_log: Path, exit_code: int) -> dict[str, Any]:
+def _parse(raw_log: Path, exit_code: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if not raw_log.exists():
-        return {"services": []}
+        return {"services": []}, []
     text = raw_log.read_text(encoding="utf-8", errors="replace")
     services: list[dict[str, Any]] = []
+    cmdb_writes: list[dict[str, Any]] = []
     for host, port in _OPEN_RE.findall(text):
         services.append(
             {"host": host, "port": int(port), "protocol": "tcp", "service": ""}
         )
+        cmdb_writes.append(
+            {
+                "table": "services",
+                "op": "upsert",
+                "data": {
+                    "target": host,
+                    "port": int(port),
+                    "protocol": "tcp",
+                    "state": "open",
+                    "service": "",
+                },
+            }
+        )
         if len(services) >= 500:
             break
-    return {"services": services}
+    return {"services": services}, cmdb_writes
 
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:

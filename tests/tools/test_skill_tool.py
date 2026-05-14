@@ -192,3 +192,66 @@ def test_validate_params_rejects_missing_required(tmp_path: Path, skills_root: P
     tools = {t.name: t for t in discover_skill_tools(skills_root, workspace=tmp_path)}
     errors = tools["echo-skill"].validate_params({})
     assert any("target" in e for e in errors)
+
+
+def test_execute_persists_cmdb_writes(tmp_path: Path) -> None:
+    """SkillTool.execute applies cmdb_writes to the CMDB and auto-creates the scan."""
+    import asyncio
+
+    from secbot.cmdb import db as cmdb_db
+    from secbot.cmdb.models import Base
+
+    db_file = tmp_path / "cmdb.sqlite3"
+    cmdb_db.init_engine(f"sqlite+aiosqlite:///{db_file}")
+
+    async def _setup() -> None:
+        async with cmdb_db.get_engine().begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_setup())
+
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "persist-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(
+                    summary={"ok": True},
+                    cmdb_writes=[
+                        {
+                            "table": "assets",
+                            "op": "upsert",
+                            "data": {"target": "10.0.0.1", "ip": "10.0.0.1"},
+                        }
+                    ],
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    bind_skill_context(scan_id="unit-cmdb", scan_dir=tmp_path)
+
+    raw = asyncio.run(tools["persist-skill"].execute(target="10.0.0.1"))
+    payload = json.loads(raw)
+    assert payload["summary"] == {"ok": True}
+    assert len(payload["cmdb_writes"]) == 1
+
+    # Verify CMDB side effects
+    async def _verify() -> None:
+        from secbot.cmdb.repo import get_scan, list_assets
+
+        async with cmdb_db.get_session() as session:
+            scan = await get_scan(session, "local", "unit-cmdb")
+            assert scan is not None
+            assert scan.target == "10.0.0.1"
+            assets = await list_assets(session, "local", scan_id="unit-cmdb")
+            assert len(assets) == 1
+            assert assets[0].target == "10.0.0.1"
+
+    asyncio.run(_verify())
+    asyncio.run(cmdb_db.dispose_engine())

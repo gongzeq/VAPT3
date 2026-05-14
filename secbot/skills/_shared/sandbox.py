@@ -28,6 +28,7 @@ BINARY_WHITELIST = frozenset({
     "httpx",
     "ffuf",
     "sqlmap",
+    "ghauri",
     "python3",
     "git",
 })

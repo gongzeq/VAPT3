@@ -42,8 +42,8 @@ class ContextBuilder:
         locked orchestrator prompt (role + hard rules + expert-agent table +
         working style) is rendered in place of the generic secbot prompt.
         ``skills_summary`` is intentionally omitted for the orchestrator since
-        its tool surface is only ``delegate_task / read_blackboard /
-        write_plan / request_approval`` — listing skills there would mislead the
+        its tool surface is ``delegate_task / read_blackboard /
+        write_plan / request_approval / message`` — listing skills there would mislead the
         LLM into synthesising shell commands it has no tool to run.
         """
         parts = [self._get_identity(channel=channel)]

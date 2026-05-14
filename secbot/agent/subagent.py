@@ -425,6 +425,7 @@ class SubagentManager:
                 last_heartbeat_at=status.last_heartbeat_at,
             )
 
+        resolved_agent_name = spec.name if spec is not None else label
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
@@ -538,10 +539,11 @@ class SubagentManager:
                     task_id, label, task,
                     self._format_partial_progress(result),
                     origin, "error", origin_message_id,
+                    agent_name=resolved_agent_name,
                 )
                 await self._broadcast_agent_status(
                     origin=origin,
-                    agent_name=(spec.name if spec is not None else label),
+                    agent_name=resolved_agent_name,
                     status="error",
                     current_task_id=None,
                 )
@@ -550,20 +552,24 @@ class SubagentManager:
                     task_id, label, task,
                     result.error or "Error: subagent execution failed.",
                     origin, "error", origin_message_id,
+                    agent_name=resolved_agent_name,
                 )
                 await self._broadcast_agent_status(
                     origin=origin,
-                    agent_name=(spec.name if spec is not None else label),
+                    agent_name=resolved_agent_name,
                     status="error",
                     current_task_id=None,
                 )
             else:
                 final_result = result.final_content or "Task completed but no final response was generated."
                 logger.info("Subagent [{}] completed successfully", task_id)
-                await self._announce_result(task_id, label, task, final_result, origin, "ok", origin_message_id)
+                await self._announce_result(
+                    task_id, label, task, final_result, origin, "ok", origin_message_id,
+                    agent_name=resolved_agent_name,
+                )
                 await self._broadcast_agent_status(
                     origin=origin,
-                    agent_name=(spec.name if spec is not None else label),
+                    agent_name=resolved_agent_name,
                     status="idle",
                     current_task_id=None,
                 )
@@ -572,10 +578,13 @@ class SubagentManager:
             status.phase = "error"
             status.error = str(e)
             logger.exception("Subagent [{}] failed", task_id)
-            await self._announce_result(task_id, label, task, f"Error: {e}", origin, "error", origin_message_id)
+            await self._announce_result(
+                task_id, label, task, f"Error: {e}", origin, "error", origin_message_id,
+                agent_name=resolved_agent_name,
+            )
             await self._broadcast_agent_status(
                 origin=origin,
-                agent_name=(spec.name if spec is not None else label),
+                agent_name=resolved_agent_name,
                 status="error",
                 current_task_id=None,
             )
@@ -589,6 +598,7 @@ class SubagentManager:
         origin: dict[str, str],
         status: str,
         origin_message_id: str | None = None,
+        agent_name: str | None = None,
     ) -> None:
         """Announce the subagent result to the main agent via the message bus."""
         status_text = "completed successfully" if status == "ok" else "failed"
@@ -615,7 +625,7 @@ class SubagentManager:
             metadata["origin_message_id"] = origin_message_id
         msg = InboundMessage(
             channel="system",
-            sender_id="subagent",
+            sender_id=agent_name or label,
             chat_id=f"{origin['channel']}:{origin['chat_id']}",
             content=announce_content,
             session_key_override=override,

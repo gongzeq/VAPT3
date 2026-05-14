@@ -43,9 +43,15 @@ async def execute(
     raw_log_name: str,
     ctx: SkillContext,
     network: NetworkPolicy = NetworkPolicy.REQUIRED,
-    parser: Optional[Callable[[Path, int], dict[str, Any]]] = None,
+    parser: Optional[
+        Callable[[Path, int], dict[str, Any] | tuple[dict[str, Any], list[dict[str, Any]]]]
+    ] = None,
 ) -> SkillResult:
-    """Run *binary* via the sandbox; on success delegate to *parser*."""
+    """Run *binary* via the sandbox; on success delegate to *parser*.
+
+    *parser* may return either a plain summary dict, or a ``(summary,
+    cmdb_writes)`` tuple so the skill can declaratively persist scan results.
+    """
     raw_log = ctx.raw_log_dir / raw_log_name
     started = time.monotonic()
 
@@ -69,9 +75,14 @@ async def execute(
     elapsed = round(time.monotonic() - started, 2)
 
     parsed: dict[str, Any] = {}
+    cmdb_writes: list[dict[str, Any]] = []
     if parser is not None:
         try:
-            parsed = parser(raw_log, result.exit_code)
+            parser_result = parser(raw_log, result.exit_code)
+            if isinstance(parser_result, tuple):
+                parsed, cmdb_writes = parser_result
+            else:
+                parsed = parser_result
         except Exception as exc:  # noqa: BLE001
             parsed = {"parse_error": str(exc)[:200]}
 
@@ -79,4 +90,4 @@ async def execute(
     if result.exit_code != 0:
         parsed.setdefault("error", f"exit={result.exit_code}")
 
-    return SkillResult(summary=parsed, raw_log_path=str(raw_log))
+    return SkillResult(summary=parsed, raw_log_path=str(raw_log), cmdb_writes=cmdb_writes)

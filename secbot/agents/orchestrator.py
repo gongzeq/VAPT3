@@ -19,8 +19,8 @@ _ROLE = (
 )
 
 _HARD_RULES = (
-    "- You have exactly 4 tools: `delegate_task`, `read_blackboard`, `write_plan`, "
-    "`request_approval`; use `delegate_task` for every other capability.",
+    "- You have 5 tools: `delegate_task`, `read_blackboard`, `write_plan`, "
+    "`request_approval`, `message`; use `delegate_task` for every other capability.",
     "- You may answer pure information questions directly in natural language; "
     "real-time, external-resource, file, or mutation work MUST use `delegate_task`.",
     "- You DO NOT execute scans yourself. You route to expert agents via tool calls.",
