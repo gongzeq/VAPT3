@@ -20,7 +20,37 @@ from typing import Any
 
 from secbot.skills._shared import ffuf as _ffuf
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import InvalidSkillArg, SkillContext, SkillResult
+from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
+
+
+def _resolve_ffuf_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for ffuf, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.ffuf``.
+      2. ``ffuf`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("ffuf")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured ffuf override not found: {override}. "
+                "Check tools.skillBinaries.ffuf in your config."
+            )
+        return override, cli
+    if shutil.which("ffuf"):
+        return "ffuf", cli
+    raise SkillBinaryMissing(
+        "ffuf not found on PATH. "
+        "Install ffuf or set tools.skillBinaries.ffuf in ~/.secbot/config.json"
+    )
 
 
 def _parse_factory(results_file: Path):
@@ -114,9 +144,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     if timeout_sec <= 0 or timeout_sec > 7_200:
         raise InvalidSkillArg(f"timeout_sec out of range: {timeout_sec!r}")
 
+    binary, args = _resolve_ffuf_binary(cli)
     return await execute(
-        binary="ffuf",
-        args=cli,
+        binary=binary,
+        args=args,
         timeout_sec=timeout_sec,
         raw_log_name="ffuf-dir-fuzz.log",
         ctx=ctx,

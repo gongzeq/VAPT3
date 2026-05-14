@@ -19,7 +19,38 @@ from typing import Any
 
 from secbot.skills._shared.resource import resolve_resource
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import InvalidSkillArg, SkillContext, SkillResult
+from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
+
+
+def _resolve_hydra_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for hydra, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.hydra``.
+      2. ``hydra`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("hydra")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured hydra override not found: {override}. "
+                "Check tools.skillBinaries.hydra in your config."
+            )
+        return override, cli
+    if shutil.which("hydra"):
+        return "hydra", cli
+    raise SkillBinaryMissing(
+        "hydra not found on PATH. "
+        "Install hydra or set tools.skillBinaries.hydra in ~/.secbot/config.json"
+    )
+
 
 _TARGET_RE = re.compile(
     r"^(?:\d{1,3}\.){3}\d{1,3}$"
@@ -101,7 +132,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     user_dict: str | None = args.get("user_dict")
     pass_dict: str | None = args.get("pass_dict")
 
-    # Load optional wordlists from .secbot/resource/fuzzDicts/
+    # Load optional wordlists from secbot/resource/fuzzDicts/
     if user_dict:
         p = resolve_resource(ctx, "fuzzDicts", user_dict)
         if p is None:
@@ -150,9 +181,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     else:
         cli.append(service)
 
+    binary, args = _resolve_hydra_binary(cli)
     return await execute(
-        binary="hydra",
-        args=cli,
+        binary=binary,
+        args=args,
         timeout_sec=900,
         raw_log_name="hydra-bruteforce.log",
         ctx=ctx,

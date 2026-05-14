@@ -1,0 +1,8 @@
+{
+  "tools": {
+    "skillBinaries": {
+      "sqlmap": "/Users/shan/Desktop/ctf/sqlmap1.8/sqlmap.py",
+      "httpx": "/Users/shan/Downloads/httpx_1.9.0_macOS_arm64/httpx"
+    }
+  }
+}

@@ -23,6 +23,36 @@ from secbot.skills.types import (
     SkillTimeout,
 )
 
+
+def _resolve_fscan_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for fscan, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.fscan``.
+      2. ``fscan`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("fscan")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured fscan override not found: {override}. "
+                "Check tools.skillBinaries.fscan in your config."
+            )
+        return override, cli
+    if shutil.which("fscan"):
+        return "fscan", cli
+    raise SkillBinaryMissing(
+        "fscan not found on PATH. "
+        "Install fscan or set tools.skillBinaries.fscan in ~/.secbot/config.json"
+    )
+
 # Lines look like: "[+] poc-yaml-xxx http://1.2.3.4:80 ..."
 _VULN_RE = re.compile(
     r"^\[\+\]\s+(?P<title>[\w\-./]+)\s+(?P<url>https?://[^\s]+)",
@@ -86,6 +116,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     started = time.monotonic()
 
     cli = ["-h", target, "-p", ports, "-o", str(raw_log)]
+    binary, args = _resolve_fscan_binary(cli)
 
     # Enable brute-force when wordlists are provided; otherwise keep POC-only.
     if not user_dict and not pass_dict:
@@ -105,8 +136,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
 
     try:
         result = await run_command(
-            binary="fscan",
-            args=cli,
+            binary=binary,
+            args=args,
             timeout_sec=900,
             network=NetworkPolicy.REQUIRED,
             capture="discard",

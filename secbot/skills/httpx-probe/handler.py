@@ -15,7 +15,37 @@ from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import InvalidSkillArg, SkillContext, SkillResult
+from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
+
+
+def _resolve_httpx_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for httpx, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.httpx``.
+      2. ``httpx`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("httpx")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured httpx override not found: {override}. "
+                "Check tools.skillBinaries.httpx in your config."
+            )
+        return override, cli
+    if shutil.which("httpx"):
+        return "httpx", cli
+    raise SkillBinaryMissing(
+        "httpx not found on PATH. "
+        "Install projectdiscovery/httpx or set tools.skillBinaries.httpx in ~/.secbot/config.json"
+    )
+
 
 _TARGET_RE = re.compile(
     r"^https?://[a-zA-Z0-9._\-:/]+$"
@@ -75,7 +105,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     targets_file.write_text("\n".join(targets) + "\n", encoding="utf-8")
 
     cli: list[str] = [
-        str(targets_file),
+        "-l", str(targets_file),
         "-json",
         "-silent",
         "-no-color",
@@ -91,9 +121,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     if follow_redirects:
         cli.append("-follow-redirects")
 
+    binary, args = _resolve_httpx_binary(cli)
     return await execute(
-        binary="httpx",
-        args=cli,
+        binary=binary,
+        args=args,
         timeout_sec=300,
         raw_log_name="httpx-probe.jsonl",
         ctx=ctx,

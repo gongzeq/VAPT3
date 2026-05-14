@@ -7,9 +7,40 @@ from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared.runner import execute, validate_portspec, validate_target
-from secbot.skills.types import SkillContext, SkillResult
+from secbot.skills.types import SkillBinaryMissing, SkillContext, SkillResult
 
-# nmap -oG: "Host: 10.0.0.1 ()  Ports: 22/open/tcp//ssh///, 80/open/tcp//http///"
+
+def _resolve_nmap_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for nmap, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.nmap``.
+      2. ``nmap`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("nmap")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured nmap override not found: {override}. "
+                "Check tools.skillBinaries.nmap in your config."
+            )
+        return override, cli
+    if shutil.which("nmap"):
+        return "nmap", cli
+    raise SkillBinaryMissing(
+        "nmap not found on PATH. "
+        "Install nmap or set tools.skillBinaries.nmap in ~/.secbot/config.json"
+    )
+
+
+# nmap -oG: "Host: 10.0.0.1 ()  Ports: 22/open/tcp//ssh///, 80/open/tcp//http///""
 _HOST_LINE = re.compile(r"^Host:\s+(\S+)\s+\(.*?\)\s+Ports:\s+(.+)$", re.MULTILINE)
 _PORT_ENTRY = re.compile(r"(\d+)/open/(tcp|udp)//([^/]*)/")
 
@@ -37,9 +68,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         validate_target(t)
     validate_portspec(ports)
 
+    binary, args = _resolve_nmap_binary(["-sS", "-Pn", "-oG", "-", "-p", ports, *targets])
     return await execute(
-        binary="nmap",
-        args=["-sS", "-Pn", "-oG", "-", "-p", ports, *targets],
+        binary=binary,
+        args=args,
         timeout_sec=600,
         raw_log_name="nmap-port-scan.log",
         ctx=ctx,

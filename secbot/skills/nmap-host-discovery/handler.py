@@ -20,6 +20,36 @@ from secbot.skills.types import (
     SkillTimeout,
 )
 
+
+def _resolve_nmap_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for nmap, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.nmap``.
+      2. ``nmap`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("nmap")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured nmap override not found: {override}. "
+                "Check tools.skillBinaries.nmap in your config."
+            )
+        return override, cli
+    if shutil.which("nmap"):
+        return "nmap", cli
+    raise SkillBinaryMissing(
+        "nmap not found on PATH. "
+        "Install nmap or set tools.skillBinaries.nmap in ~/.secbot/config.json"
+    )
+
 # Per-field allow-regex; runs BEFORE forbidden-char check in sandbox.
 TARGET_PATTERN = re.compile(
     r"^(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?$"
@@ -44,10 +74,11 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     raw_log = ctx.raw_log_dir / "nmap-host-discovery.log"
     started = time.monotonic()
 
+    binary, args = _resolve_nmap_binary(["-sn", "-oG", "-", _RATE_TO_FLAG[rate], target])
     try:
         result = await run_command(
-            binary="nmap",
-            args=["-sn", "-oG", "-", _RATE_TO_FLAG[rate], target],
+            binary=binary,
+            args=args,
             timeout_sec=120,
             network=NetworkPolicy.REQUIRED,
             capture="file",

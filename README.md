@@ -108,6 +108,23 @@ secbot onboard
 }
 ```
 
+#### 安全工具二进制路径配置
+
+若安全工具未加入系统 PATH，可在 `tools.skillBinaries` 中按技能名指定绝对路径：
+
+```json
+{
+  "tools": {
+    "skillBinaries": {
+      "sqlmap": "/path/to/sqlmap.py",
+      "httpx": "/path/to/httpx"
+    }
+  }
+}
+```
+
+支持配置的技能名：`nmap`、`fscan`、`nuclei`、`hydra`、`httpx`、`ffuf`、`sqlmap`。
+
 ### 3. 启动对话
 
 secbot 有三个互不相同的入口，**启动前请确认选对了对应场景**：

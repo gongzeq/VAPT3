@@ -24,6 +24,36 @@ from secbot.skills.types import (
     SkillTimeout,
 )
 
+
+def _resolve_nuclei_binary(cli: list[str]) -> tuple[str, list[str]]:
+    """Return (binary, args) for nuclei, honouring config overrides.
+
+    Priority:
+      1. Configured override in ``tools.skillBinaries.nuclei``.
+      2. ``nuclei`` found on PATH.
+      3. Raise :class:`SkillBinaryMissing` with a helpful hint.
+    """
+    import shutil
+    from pathlib import Path
+
+    from secbot.config.loader import load_config
+
+    cfg = load_config()
+    override = cfg.tools.skill_binaries.get("nuclei")
+    if override:
+        if not Path(override).exists():
+            raise SkillBinaryMissing(
+                f"Configured nuclei override not found: {override}. "
+                "Check tools.skillBinaries.nuclei in your config."
+            )
+        return override, cli
+    if shutil.which("nuclei"):
+        return "nuclei", cli
+    raise SkillBinaryMissing(
+        "nuclei not found on PATH. "
+        "Install nuclei or set tools.skillBinaries.nuclei in ~/.secbot/config.json"
+    )
+
 _TARGET_RE = re.compile(
     r"^https?://[a-zA-Z0-9._\-:/]+$"
     r"|^(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?$"
@@ -149,10 +179,11 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     if builtin_templates.exists():
         cli_args += ["-t", str(builtin_templates)]
 
+    binary, args = _resolve_nuclei_binary(cli_args)
     try:
         result = await run_command(
-            binary="nuclei",
-            args=cli_args,
+            binary=binary,
+            args=args,
             timeout_sec=900,
             network=NetworkPolicy.REQUIRED,
             capture="discard",
