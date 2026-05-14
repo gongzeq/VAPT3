@@ -1287,7 +1287,10 @@ class AgentLoop:
             # provider compatibility, which previously caused the follow-up to
             # disappear from session.messages while still being visible to the
             # LLM via the merged prompt. See _persist_subagent_followup.
-            is_subagent = msg.sender_id == "subagent"
+            is_subagent = msg.sender_id == "subagent" or (
+                isinstance(msg.metadata, dict)
+                and msg.metadata.get("injected_event") == "subagent_result"
+            )
             if is_subagent and self._persist_subagent_followup(session, msg):
                 logger.debug("Subagent result persisted for session {}", key)
                 self.sessions.save(session)
