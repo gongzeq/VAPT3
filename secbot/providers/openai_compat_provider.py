@@ -568,7 +568,18 @@ class OpenAICompatProvider(LLMProvider):
             and semantic_effort not in ("none", "minimal", "minimum")
             and any(t in model_name.lower() for t in ("deepseek-v4", "deepseek-reasoner"))
         )
-        if explicit_thinking or implicit_deepseek_thinking:
+        # Xiaomi MIMO thinking mode: once turn-0 returns reasoning_content,
+        # every subsequent request must echo a reasoning_content field on the
+        # assistant turn or the API rejects with 400 "The reasoning_content
+        # in the thinking mode must be passed back to the API."  MIMO reasons
+        # natively without an explicit reasoning_effort, so backfill whenever
+        # the spec matches.
+        implicit_xiaomi_mimo_thinking = (
+            spec is not None
+            and spec.name == "xiaomi_mimo"
+            and semantic_effort not in ("none", "minimal", "minimum")
+        )
+        if explicit_thinking or implicit_deepseek_thinking or implicit_xiaomi_mimo_thinking:
             for msg in kwargs["messages"]:
                 if msg.get("role") == "assistant" and "reasoning_content" not in msg:
                     msg["reasoning_content"] = ""

@@ -1145,3 +1145,86 @@ def test_deepseek_no_backfill_when_reasoning_effort_none_string() -> None:
     )
     assistant = kw["messages"][1]
     assert "reasoning_content" not in assistant
+
+
+# ---------------------------------------------------------------------------
+# Xiaomi MIMO thinking mode — reasoning_content backfill on history
+# ---------------------------------------------------------------------------
+
+def test_xiaomi_mimo_backfills_reasoning_content_on_tool_call_history() -> None:
+    """MIMO thinking mode rejects multi-turn history with 400 'The reasoning_content
+    in the thinking mode must be passed back to the API.' when an assistant message
+    (e.g. a turn-0 tool_calls turn) is missing reasoning_content. _build_kwargs must
+    backfill reasoning_content='' on every assistant message lacking it, even when
+    reasoning_effort is not explicitly set (MIMO reasons natively)."""
+    spec = find_by_name("xiaomi_mimo")
+    with patch("secbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="mimo-pro", spec=spec)
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "scan target"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "tc1", "type": "function", "function": {"name": "write_plan", "arguments": "{}"}}
+        ]},
+        {"role": "tool", "tool_call_id": "tc1", "content": "ok"},
+        {"role": "user", "content": "continue"},
+    ]
+    kw = p._build_kwargs(
+        messages=list(messages), tools=None, model="mimo-pro",
+        max_tokens=1024, temperature=0.7,
+        reasoning_effort=None, tool_choice=None,
+    )
+    for msg in kw["messages"]:
+        if msg.get("role") == "assistant":
+            assert "reasoning_content" in msg, "MIMO assistant message missing reasoning_content"
+            assert msg["reasoning_content"] == ""
+
+
+def test_xiaomi_mimo_no_backfill_when_thinking_explicitly_off() -> None:
+    """When reasoning_effort='none', MIMO thinking is disabled and history must NOT be altered."""
+    spec = find_by_name("xiaomi_mimo")
+    with patch("secbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="mimo-pro", spec=spec)
+    messages = [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "tc1", "type": "function", "function": {"name": "web_search", "arguments": "{}"}}
+        ]},
+        {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+        {"role": "user", "content": "thanks"},
+    ]
+    for effort in ("minimal", "none"):
+        kw = p._build_kwargs(
+            messages=list(messages), tools=None, model="mimo-pro",
+            max_tokens=1024, temperature=0.7,
+            reasoning_effort=effort, tool_choice=None,
+        )
+        for msg in kw["messages"]:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                assert "reasoning_content" not in msg
+
+
+def test_xiaomi_mimo_preserves_existing_reasoning_content() -> None:
+    """Backfill must NOT overwrite reasoning_content already present in history."""
+    spec = find_by_name("xiaomi_mimo")
+    with patch("secbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="mimo-pro", spec=spec)
+    messages = [
+        {"role": "user", "content": "hi"},
+        {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "preserved-thought",
+            "tool_calls": [
+                {"id": "tc1", "type": "function", "function": {"name": "write_plan", "arguments": "{}"}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tc1", "content": "ok"},
+        {"role": "user", "content": "next"},
+    ]
+    kw = p._build_kwargs(
+        messages=list(messages), tools=None, model="mimo-pro",
+        max_tokens=1024, temperature=0.7,
+        reasoning_effort=None, tool_choice=None,
+    )
+    assert kw["messages"][1]["reasoning_content"] == "preserved-thought"
