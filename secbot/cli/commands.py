@@ -890,8 +890,12 @@ def _run_gateway(
         # is the on-disk skill catalogue (secbot/skills/*), NOT
         # ``agent.tools``: users asked for the builder dropdown to show
         # the existing skills (fscan-/nmap-/nuclei-/report-*).
+        # ``fallback_registry=agent.tools`` keeps the dropdown clean
+        # while letting ``kind=script`` steps still resolve the built-in
+        # ``exec`` tool that the ``ScriptExecutor`` shells out through.
         workflow_tool_registry = SkillToolRegistryAdapter(
             scan_root=config.workspace_path / "workflow_scans",
+            fallback_registry=getattr(agent, "tools", None),
         )
         workflow_service = WorkflowService(
             store_root=workflow_store_root,

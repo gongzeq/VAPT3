@@ -24,6 +24,7 @@ Spec: ``.trellis/tasks/05-11-workflow-builder-ui/api-spec.md §1.3``.
 from __future__ import annotations
 
 import ast
+import json
 import re
 from typing import Any
 
@@ -48,12 +49,22 @@ def _resolve_path(path: str, ctx: dict[str, Any]) -> Any:
     ``steps.s1.result.errors``. Missing segments raise :class:`ExprError`
     with the exact path that failed, so the user sees useful errors in
     run history instead of a bare ``KeyError``.
+
+    Null-safe traversal: if an intermediate segment resolves to ``None``
+    (e.g. ``steps.step2.result`` for a skipped step), continued lookup
+    returns ``None`` instead of raising. This matches lenient template
+    engines (Jinja, Mustache) and is required for branching workflows
+    where a downstream step references the *optional* output of a
+    conditionally-skipped step.
     """
     parts = path.split(".")
     cur: Any = ctx
     walked: list[str] = []
     for part in parts:
         walked.append(part)
+        if cur is None:
+            # Short-circuit: any further descent on None stays None.
+            return None
         if isinstance(cur, dict) and part in cur:
             cur = cur[part]
         elif isinstance(cur, list):
@@ -73,8 +84,12 @@ def interpolate(value: Any, ctx: dict[str, Any]) -> Any:
     - A string that is *exactly* one placeholder returns the native value
       (``int``, ``dict``, etc.) so downstream executors receive the right
       type without eval.
-    - A string with embedded placeholders returns a string; non-string
-      native values are ``str()``-ified at the insertion point.
+    - A string with embedded placeholders returns a string. Scalars
+      (``str``/``int``/``float``) are stringified directly; ``bool`` /
+      ``dict`` / ``list`` / ``None`` are JSON-encoded so the caller can
+      paste them inside a JSON template (e.g. ``stdin`` for a script
+      step) without producing Python ``repr()`` artefacts like
+      ``{'k': 'v'}`` (single quotes) or ``True``/``None``.
     - ``dict`` and ``list`` are walked in place (a new container is
       returned, input is not mutated).
     - All other types pass through unchanged.
@@ -86,7 +101,23 @@ def interpolate(value: Any, ctx: dict[str, Any]) -> Any:
 
         def _sub(m: re.Match[str]) -> str:
             v = _resolve_path(m.group(1), ctx)
-            return str(v) if v is not None else ""
+            if v is None:
+                return "null"
+            if isinstance(v, bool):
+                return "true" if v else "false"
+            if isinstance(v, (dict, list)):
+                return json.dumps(v, ensure_ascii=False)
+            if isinstance(v, str):
+                # JSON-escape strings so values containing ``\n``, ``\t``,
+                # quotes or backslashes can safely sit inside a ``"..."``
+                # literal in a JSON template (e.g. script ``stdin`` JSON
+                # or LLM prompt JSON). ``json.dumps`` wraps the value in
+                # quotes — strip them so the surrounding ``"..."`` in the
+                # template still provides them. For non-JSON contexts
+                # (LLM prose prompts) this only changes whitespace
+                # rendering, which the LLM tolerates.
+                return json.dumps(v, ensure_ascii=False)[1:-1]
+            return str(v)
 
         return _PLACEHOLDER.sub(_sub, value)
 

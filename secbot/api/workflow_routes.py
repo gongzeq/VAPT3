@@ -473,11 +473,20 @@ async def handle_agents(request: web.Request) -> web.Response:
 async def handle_templates(request: web.Request) -> web.Response:
     """Return the built-in workflow templates.
 
-    PR1 ships an empty catalogue; PR3 will add curated templates
-    (log-analysis / intranet-scan / mailbox-audit) via
-    ``secbot/workflow/templates.py``.
+    Catalogue lives in :mod:`secbot.workflow.templates` — a small Python
+    module rather than a YAML asset because the templates declare a
+    sizable amount of code (e.g. step1 / step3 inline scripts for the
+    phishing-email workflow). PRD: ``.trellis/tasks/05-13-phishing-email
+    -workflow/prd.md §R3``.
     """
-    return web.json_response({"items": []})
+    from secbot.workflow.templates import list_templates
+
+    try:
+        items = list_templates()
+    except Exception:
+        logger.exception("workflow.templates: unexpected build failure")
+        items = []
+    return web.json_response({"items": items})
 
 
 # ---------------------------------------------------------------------------

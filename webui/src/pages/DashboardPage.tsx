@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { ActivityEventStream } from "@/components/ActivityEventStream";
+import { PhishingSummaryCard } from "@/components/PhishingSummaryCard";
 import { cn } from "@/lib/utils";
 import {
   assetCluster,
@@ -510,6 +511,10 @@ export function DashboardPage() {
         <section className="mt-6">
           <ActivityEventStream />
         </section>
+
+        {/* Phishing Email Detection summary — single L1 card linking to
+            ``/dashboard/phishing`` (L2). Per PRD §R6 + prototype.html. */}
+        <PhishingSummaryCard />
       </main>
     </div>
   );

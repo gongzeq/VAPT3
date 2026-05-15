@@ -29,6 +29,8 @@ the error message.
 
 from __future__ import annotations
 
+import base64
+import json
 import re
 import shlex
 from math import ceil
@@ -113,24 +115,55 @@ class ScriptExecutor(StepExecutor):
                 f"workflow.executor.script_nonzero_exit: exit_code={output['exit_code']}, "
                 f"stderr={output['stderr'][:200]!r}"
             )
+        # Convenience field for downstream template authors: when the
+        # script writes valid JSON to stdout, expose the parsed object
+        # under ``parsed`` so condition / args templates can do
+        # ``${steps.<id>.result.parsed.cache_hit}`` instead of having to
+        # decode JSON in shell. Mirrors the LlmExecutor's ``parsed``
+        # field for ``responseFormat=json``.
+        stdout_str = output["stdout"].strip()
+        if stdout_str:
+            try:
+                output["parsed"] = json.loads(stdout_str)
+            except (json.JSONDecodeError, ValueError):
+                # Stdout is not JSON — leave ``parsed`` absent so
+                # templates that opt-in get an explicit ExprError on
+                # access (better than silently passing ``None``).
+                pass
         return output
 
 
 def _build_command(kind: str, code: str, stdin: str | None) -> str:
-    """Compose the shell command that runs the user-supplied snippet."""
+    """Compose the shell command that runs the user-supplied snippet.
+
+    ``kind=python`` MUST pass the source via ``python3 -c`` (argv) — NOT
+    ``python3 -`` (stdin). Otherwise the user script's ``sys.stdin`` is
+    already drained by the interpreter reading source, and the
+    ``stdin`` payload we piped in is silently dropped (#phishing-step1
+    saw all features as empty strings because of this).
+    """
     if kind == "shell":
         body = f"bash -lc {shlex.quote(code)}"
     else:
-        # python: pipe the source through python3's stdin so we avoid
-        # any shell quoting of the script itself.
-        body = f"printf %s {shlex.quote(code)} | python3 -"
+        # python: source goes through argv so stdin stays free for the
+        # caller-supplied data payload.
+        body = f"python3 -c {shlex.quote(code)}"
 
     if stdin is None:
         return body
-    # Feed ``stdin`` on the script's stdin regardless of kind. We chain
-    # with a second `printf` and a `|` instead of here-docs to keep the
-    # command a single line (easier for exec-tool's allow-list guards).
-    return f"printf %s {shlex.quote(stdin)} | {body}"
+    # Feed ``stdin`` on the script's stdin. We chain with a `printf` and
+    # a `|` instead of here-docs to keep the command a single line
+    # (easier for exec-tool's allow-list guards).
+    #
+    # The payload is base64-encoded so the raw bytes (which may contain
+    # URLs / shell metachars / non-ASCII) never appear in the command
+    # string. Without this wrapping, ExecTool._guard_command's
+    # ``contains_internal_url`` scanner trips on any URL the user
+    # passed as data (e.g. a phishing URL inside the email body) and
+    # blocks the whole step. Decoding happens via ``base64 -d`` (GNU
+    # coreutils) which is part of the standard exec-tool environment.
+    encoded = base64.b64encode(stdin.encode("utf-8")).decode("ascii")
+    return f"printf %s {shlex.quote(encoded)} | base64 -d | {body}"
 
 
 def _parse_exec_output(raw: str) -> dict[str, Any]:

@@ -24,6 +24,7 @@ import { SecbotClient } from "@/lib/secbot-client";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
+import { PhishingDetailPage } from "@/pages/PhishingDetailPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { WorkflowListPage } from "@/pages/WorkflowListPage";
@@ -219,6 +220,10 @@ export default function App() {
               }
             />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route
+              path="/dashboard/phishing"
+              element={<PhishingDetailPage />}
+            />
             <Route path="/tasks/:id" element={<TaskDetailPage />} />
             {WORKFLOW_BUILDER_ENABLED && (
               <>

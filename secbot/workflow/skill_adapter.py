@@ -119,9 +119,18 @@ class SkillToolRegistryAdapter:
         *,
         skills_root: Path | None = None,
         scan_root: Path | None = None,
+        fallback_registry: Any = None,
     ) -> None:
         self._skills_root = Path(skills_root) if skills_root else _DEFAULT_SKILLS_ROOT
         self._scan_root = Path(scan_root) if scan_root else (self._skills_root.parent.parent / "workspace" / "workflow_scans")
+        # Optional secondary registry (typically the agent's
+        # ``ToolRegistry`` containing ``exec`` / ``read_file`` / etc.).
+        # ``has`` / ``execute`` fall through to it when a name is not a
+        # known skill — this keeps ``kind=script`` steps working (the
+        # ``ScriptExecutor`` shells out via the ``exec`` tool) without
+        # polluting the workflow-builder dropdown, which still only
+        # iterates over real skills via :pyattr:`tool_names`.
+        self._fallback = fallback_registry
         self._metadata: dict[str, SkillMetadata] = {}
         self._tools: dict[str, _SkillTool] = {}
         self._reload()
@@ -162,7 +171,14 @@ class SkillToolRegistryAdapter:
         return sorted(self._tools)
 
     def has(self, name: str) -> bool:
-        return name in self._tools
+        if name in self._tools:
+            return True
+        if self._fallback is not None:
+            try:
+                return bool(self._fallback.has(name))
+            except Exception:
+                return False
+        return False
 
     def get(self, name: str) -> _SkillTool | None:
         return self._tools.get(name)
@@ -179,6 +195,16 @@ class SkillToolRegistryAdapter:
         """
         meta = self._metadata.get(name)
         if meta is None:
+            # Fall through to the agent tool registry so ``kind=script``
+            # (which invokes the ``exec`` tool) and any other built-in
+            # tool can run from a workflow step.
+            if self._fallback is not None:
+                try:
+                    has = self._fallback.has(name)
+                except Exception:
+                    has = False
+                if has:
+                    return await self._fallback.execute(name, args or {})
             return f"Error: skill '{name}' is not registered"
         handler = _load_handler(meta.skill_dir)
         if handler is None:

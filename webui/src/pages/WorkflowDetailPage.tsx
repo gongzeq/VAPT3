@@ -76,7 +76,21 @@ export function WorkflowDetailPage() {
   // schedule / runs).
   const [saved, setSaved] = useState<Workflow | null>(null);
   // Editable draft — form state for basics + steps tabs.
-  const [draft, setDraft] = useState<WorkflowDraft>(emptyWorkflowDraft());
+  // NOTE: We seed via lazy initializer (instead of inside the load
+  // effect) so React 18 StrictMode's effect double-invoke can never
+  // clobber a template-seeded draft with the empty fallback. The
+  // sessionStorage cleanup happens in the effect below.
+  const [draft, setDraft] = useState<WorkflowDraft>(() => {
+    if (id === "new") {
+      try {
+        const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+        if (raw) return JSON.parse(raw) as WorkflowDraft;
+      } catch {
+        // ignore — fall through to empty draft
+      }
+    }
+    return emptyWorkflowDraft();
+  });
   const [loading, setLoading] = useState(!isNew);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("basic");
@@ -131,19 +145,15 @@ export function WorkflowDetailPage() {
   // ─── Initial load ────────────────────────────────────────────────
   useEffect(() => {
     if (isNew) {
-      // Pop the stashed draft (if any) — list page seeds it when
-      // "New" / "From template" is clicked. Fallback to blank.
-      let seed: WorkflowDraft = emptyWorkflowDraft();
+      // Draft was already seeded by the useState lazy initializer
+      // (which runs once per mount, immune to StrictMode effect
+      // double-invoke). Just clear the stash so a future "new" tab
+      // doesn't accidentally inherit it.
       try {
-        const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
-        if (raw) {
-          seed = JSON.parse(raw) as WorkflowDraft;
-          sessionStorage.removeItem(DRAFT_STORAGE_KEY);
-        }
+        sessionStorage.removeItem(DRAFT_STORAGE_KEY);
       } catch {
-        // ignore, fall back to empty draft
+        // ignore — quota / private mode
       }
-      setDraft(seed);
       setLoading(false);
       return;
     }
