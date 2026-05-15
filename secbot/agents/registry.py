@@ -117,6 +117,7 @@ def load_agent_registry(
     *,
     skill_names: Iterable[str] | None = None,
     skills_root: Path | str | None = None,
+    skill_binary_overrides: Mapping[str, str] | None = None,
 ) -> AgentRegistry:
     """Load and validate every ``*.yaml`` file under *agents_dir*.
 
@@ -134,12 +135,20 @@ def load_agent_registry(
         computes ``required_binaries`` / ``missing_binaries`` per agent
         (PR3 availability contract). When ``None``, those fields stay
         empty and :attr:`ExpertAgentSpec.available` is ``True`` by default.
+    skill_binary_overrides:
+        Mapping of ``binary name -> absolute path`` (typically
+        ``Config.tools.skill_binaries``). When a binary appears here AND
+        the path exists on disk, it is considered resolved even if it is
+        not on ``PATH``. This keeps the registry's availability view in
+        sync with skill handlers that already honour
+        ``tools.skill_binaries`` (see ``secbot/skills/*/handler.py``).
     """
     base = Path(agents_dir)
     if not base.is_dir():
         raise AgentRegistryError(f"agents_dir not found: {base}")
 
     known_skills = set(skill_names) if skill_names is not None else None
+    overrides = dict(skill_binary_overrides or {})
 
     # Build ``skill_name -> external_binary`` once so we don't re-parse every
     # SKILL.md per agent. Only consulted when skills_root is provided.
@@ -149,6 +158,17 @@ def load_agent_registry(
 
         for name, meta in scan_skills(Path(skills_root)).items():
             skill_binaries[name] = meta.external_binary
+
+    def _is_resolved(binary: str) -> bool:
+        """Mirror the resolution order used by skill handlers.
+
+        Priority: ``tools.skill_binaries[binary]`` (when the file exists)
+        > ``shutil.which(binary)``. Anything else counts as missing.
+        """
+        override = overrides.get(binary)
+        if override and Path(override).is_file():
+            return True
+        return shutil.which(binary) is not None
 
     registry = AgentRegistry()
     seen_skills: dict[str, str] = {}  # skill -> first agent claiming it
@@ -176,7 +196,7 @@ def load_agent_registry(
                 b for skill in spec.scoped_skills
                 if (b := skill_binaries.get(skill))
             })
-            missing = [b for b in required if shutil.which(b) is None]
+            missing = [b for b in required if not _is_resolved(b)]
             spec = ExpertAgentSpec(
                 name=spec.name,
                 display_name=spec.display_name,

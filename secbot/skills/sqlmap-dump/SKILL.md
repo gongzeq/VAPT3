@@ -4,7 +4,7 @@ display_name: SQLMap Dump
 version: 1.0.0
 risk_level: critical
 category: vuln_scan
-external_binary: python3
+external_binary: sqlmap
 network_egress: required
 expected_runtime_sec: 1200
 summary_size_hint: medium

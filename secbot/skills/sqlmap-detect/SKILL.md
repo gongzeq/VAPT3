@@ -4,7 +4,7 @@ display_name: SQLMap Detect
 version: 1.0.0
 risk_level: medium
 category: vuln_scan
-external_binary: python3
+external_binary: sqlmap
 network_egress: required
 expected_runtime_sec: 600
 summary_size_hint: medium

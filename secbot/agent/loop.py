@@ -495,6 +495,7 @@ class AgentLoop:
                     agents_dir,
                     skill_names=None,
                     skills_root=BUILTIN_SKILLS_DIR if BUILTIN_SKILLS_DIR.is_dir() else None,
+                    skill_binary_overrides=dict(_tc.skill_binaries or {}),
                 )
                 if agents_dir.is_dir()
                 else None

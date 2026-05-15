@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "exit_code": {"type": "integer"},
+    "stdout_tail": {"type": "string"},
+    "bytes": {"type": "integer", "minimum": 0},
+    "truncated": {"type": "boolean"},
+    "script_path": {"type": "string"},
+    "elapsed_sec": {"type": "number"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"},
+    "user_denied": {"type": "boolean"}
+  }
+}

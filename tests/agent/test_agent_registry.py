@@ -142,6 +142,119 @@ def test_availability_some_missing(monkeypatch):
     assert weak.available is False
 
 
+def test_skill_binary_overrides_resolve_when_path_missing(monkeypatch, tmp_path):
+    """``skill_binary_overrides`` should mark a binary as resolved even when
+    ``shutil.which`` says it is missing, mirroring the precedence skill
+    handlers already use (``cfg.tools.skill_binaries[bin]`` > PATH).
+    """
+    # Pretend nothing is on PATH. The override below should still rescue httpx.
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", lambda name: None)
+
+    fake_httpx = tmp_path / "httpx"
+    fake_httpx.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+        skill_binary_overrides={"httpx": str(fake_httpx)},
+    )
+    asset = reg.get("asset_discovery")
+    assert "httpx" in asset.required_binaries
+    assert "httpx" not in asset.missing_binaries
+    # nmap and fscan are still missing — agent stays offline overall, but
+    # the override took effect for httpx.
+    assert "fscan" in asset.missing_binaries
+
+
+def test_skill_binary_overrides_ignored_when_path_does_not_exist(monkeypatch):
+    """A configured override pointing at a non-existent file MUST NOT
+    falsely mark the binary as available.
+    """
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", lambda name: None)
+
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+        skill_binary_overrides={"httpx": "/definitely/not/here/httpx"},
+    )
+    assert "httpx" in reg.get("asset_discovery").missing_binaries
+
+
+def test_sqlmap_resolved_via_path_binary(monkeypatch):
+    """方式一：PATH 上直接装了 ``sqlmap`` 二进制。
+
+    registry 必须把 sqlmap 列入 vuln_scan.required_binaries，并通过
+    ``shutil.which("sqlmap")`` 判定为已就绪。
+    """
+    monkeypatch.setattr(
+        "secbot.agents.registry.shutil.which",
+        lambda name: f"/usr/local/bin/{name}",
+    )
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+    )
+    vuln = reg.get("vuln_scan")
+    assert "sqlmap" in vuln.required_binaries, (
+        "sqlmap-detect/sqlmap-dump 的 external_binary 必须是 sqlmap，"
+        "registry 才能感知这两种 SQLMap 技能的真实依赖。"
+    )
+    assert "sqlmap" not in vuln.missing_binaries
+
+
+def test_sqlmap_resolved_via_config_override_pointing_at_sqlmap_py(
+    monkeypatch, tmp_path
+):
+    """方式二：通过 ``python3 sqlmap.py`` 间接调用。
+
+    用户在 ``tools.skillBinaries.sqlmap`` 里配置 sqlmap.py 的绝对路径，
+    PATH 上没有 sqlmap 二进制。registry 应通过 override + 文件存在判定
+    为已就绪，与 handler 中 ``_resolve_sqlmap_binary`` 的解析顺序保持一致。
+    """
+    # 模拟 PATH 上没有 sqlmap，只有 ffuf/fscan/nuclei 这些常规二进制。
+    def which(name: str):
+        if name == "sqlmap":
+            return None
+        return f"/usr/local/bin/{name}"
+
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", which)
+
+    fake_sqlmap_py = tmp_path / "sqlmap.py"
+    fake_sqlmap_py.write_text("# fake sqlmap entry script\n", encoding="utf-8")
+
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+        skill_binary_overrides={"sqlmap": str(fake_sqlmap_py)},
+    )
+    vuln = reg.get("vuln_scan")
+    assert "sqlmap" in vuln.required_binaries
+    assert "sqlmap" not in vuln.missing_binaries, (
+        "config.tools.skillBinaries.sqlmap 指向了真实存在的 sqlmap.py，"
+        "registry 必须视为已就绪（与 handler 保持一致）。"
+    )
+
+
+def test_sqlmap_missing_when_neither_path_nor_override_present(monkeypatch):
+    """两种安装方式都没有 → registry 必须把 sqlmap 报告为 missing。"""
+    monkeypatch.setattr(
+        "secbot.agents.registry.shutil.which",
+        lambda name: None if name == "sqlmap" else f"/usr/local/bin/{name}",
+    )
+    reg = load_agent_registry(
+        REPO_AGENTS_DIR,
+        skill_names=REAL_SKILL_NAMES,
+        skills_root=REPO_SKILLS_DIR,
+    )
+    vuln = reg.get("vuln_scan")
+    assert "sqlmap" in vuln.missing_binaries
+    assert vuln.available is False
+
+
 # ---------------------------------------------------------------------------
 # Synthetic fixtures: validation failure modes
 # ---------------------------------------------------------------------------

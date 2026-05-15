@@ -1,0 +1,28 @@
+{
+  "id": "subagent-run-custom-python",
+  "name": "subagent-run-custom-python",
+  "title": "brainstorm: 子智能体 run_custom_python 工具",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "shan",
+  "assignee": "shan",
+  "createdAt": "2026-05-14",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-14-run-python-sticky-approve"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
