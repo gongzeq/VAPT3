@@ -5,11 +5,13 @@
 - [models.py](file://secbot/cmdb/models.py)
 - [db.py](file://secbot/cmdb/db.py)
 - [repo.py](file://secbot/cmdb/repo.py)
-- [__init__.py](file://secbot/cmdb/__init__.py)
 - [20260507_initial.py](file://secbot/cmdb/migrations/versions/20260507_initial.py)
+- [20260510_report_meta.py](file://secbot/cmdb/migrations/versions/20260510_report_meta.py)
+- [env.py](file://secbot/cmdb/migrations/env.py)
 - [alembic.ini](file://secbot/cmdb/alembic.ini)
-- [commands.py](file://secbot/cli/commands.py)
-- [cli-reference.md](file://docs/cli-reference.md)
+- [test_repo.py](file://tests/cmdb/test_repo.py)
+- [websocket.py](file://secbot/channels/websocket.py)
+- [notifications.py](file://secbot/channels/notifications.py)
 </cite>
 
 ## 目录
@@ -18,124 +20,133 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
+6. [依赖分析](#依赖分析)
 7. [性能考量](#性能考量)
 8. [故障排查指南](#故障排查指南)
 9. [结论](#结论)
 10. [附录](#附录)
 
 ## 简介
-本文件为CMDB（配置管理数据库）资产管理系统的综合技术文档，聚焦于资产、服务、漏洞、扫描任务等核心实体的数据模型与关系，以及基于SQLite + SQLAlchemy 2.x + Alembic的本地化数据库方案。文档同时覆盖：
-- 数据库架构设计：实体关系、索引策略、约束与多租户字段
-- 技术栈优势与使用方法：异步引擎、会话管理、连接级PRAGMA设置
-- 资产发现、漏洞跟踪、任务管理的完整功能说明
-- 数据迁移与版本管理：迁移脚本编写与升级流程
-- CMDB查询与管理命令使用指南
-- 数据导入导出、备份恢复与性能优化最佳实践
-- 与安全扫描流程的集成方式与数据流转过程
+本文件面向VAPT3/secbot的CMDB（配置管理数据库）资产管理子系统，系统采用SQLite + SQLAlchemy 2.x + Alembic的组合方案，围绕资产、服务、漏洞、扫描任务与报告元数据构建数据模型与持久化层。文档从数据库架构设计、实体关系、ORM模型实现、迁移管理、查询优化、CLI与API使用、数据生命周期管理到导入导出与迁移最佳实践进行系统性说明。
 
 ## 项目结构
-CMDB子系统位于 secbot/cmdb 目录，核心由以下模块组成：
-- 模型层：定义ORM基类与四张核心表（scan、asset、service、vulnerability）
-- 引擎与会话：封装异步SQLAlchemy引擎初始化、连接PRAGMA设置、会话上下文管理
-- 仓储层：提供upsert/list查询等高阶操作，遵循自然键与事务边界约定
-- 迁移：Alembic初始迁移脚本，定义表结构、索引与约束
-- 导出入口：对外暴露统一的初始化与会话接口
+CMDB相关代码集中在secbot/cmdb目录，关键文件如下：
+- models.py：定义ORM模型与索引约束
+- db.py：异步引擎与会话工厂初始化、连接参数与SQLite PRAGMA设置
+- repo.py：仓库层封装CRUD与聚合查询，提供upsert语义与仪表盘聚合函数
+- migrations/：Alembic迁移脚本与环境配置
+- tests/cmdb/test_repo.py：仓库层行为测试，覆盖多租户隔离、枚举校验、幂等upsert等
 
 ```mermaid
 graph TB
-subgraph "CMDB 子系统"
+subgraph "CMDB模块"
 M["models.py<br/>ORM模型与约束"]
-D["db.py<br/>异步引擎与会话"]
-R["repo.py<br/>仓储操作upsert/list"]
-I["__init__.py<br/>导出入口"]
-V["migrations/versions/20260507_initial.py<br/>初始迁移"]
-A["alembic.ini<br/>迁移配置"]
+D["db.py<br/>异步引擎/会话工厂"]
+R["repo.py<br/>仓库层CRUD/聚合"]
+subgraph "迁移"
+E["env.py<br/>Alembic环境"]
+I["alembic.ini<br/>配置"]
+V1["versions/20260507_initial.py"]
+V2["versions/20260510_report_meta.py"]
 end
-M --> R
+end
+subgraph "调用方"
+WS["channels/websocket.py<br/>仪表盘/接口"]
+NQ["channels/notifications.py<br/>通知发布"]
+end
+M --> D
 D --> R
-I --> D
-I --> M
-A --> V
+R --> WS
+R --> NQ
+E --> V1
+E --> V2
+I --> E
 ```
 
 图表来源
-- [models.py:34-177](file://secbot/cmdb/models.py#L34-L177)
+- [models.py:34-263](file://secbot/cmdb/models.py#L34-L263)
 - [db.py:64-133](file://secbot/cmdb/db.py#L64-L133)
-- [repo.py:68-370](file://secbot/cmdb/repo.py#L68-L370)
-- [__init__.py:13-25](file://secbot/cmdb/__init__.py#L13-L25)
+- [repo.py:76-994](file://secbot/cmdb/repo.py#L76-L994)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [alembic.ini:4-45](file://secbot/cmdb/alembic.ini#L4-L45)
 - [20260507_initial.py:23-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L23-L159)
-- [alembic.ini:4-8](file://secbot/cmdb/alembic.ini#L4-L8)
+- [20260510_report_meta.py:24-72](file://secbot/cmdb/migrations/versions/20260510_report_meta.py#L24-L72)
+- [websocket.py:1106-1324](file://secbot/channels/websocket.py#L1106-L1324)
+- [notifications.py:29-29](file://secbot/channels/notifications.py#L29-L29)
 
 章节来源
-- [__init__.py:1-26](file://secbot/cmdb/__init__.py#L1-L26)
-- [models.py:1-178](file://secbot/cmdb/models.py#L1-L178)
+- [models.py:1-263](file://secbot/cmdb/models.py#L1-L263)
 - [db.py:1-133](file://secbot/cmdb/db.py#L1-L133)
-- [repo.py:1-370](file://secbot/cmdb/repo.py#L1-L370)
+- [repo.py:1-994](file://secbot/cmdb/repo.py#L1-L994)
 - [20260507_initial.py:1-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L1-L159)
+- [20260510_report_meta.py:1-72](file://secbot/cmdb/migrations/versions/20260510_report_meta.py#L1-L72)
+- [env.py:1-78](file://secbot/cmdb/migrations/env.py#L1-L78)
 - [alembic.ini:1-45](file://secbot/cmdb/alembic.ini#L1-L45)
 
 ## 核心组件
-- 异步数据库引擎与会话管理：负责默认数据库URL解析、WAL模式与PRAGMA设置、进程内单引擎与会话工厂的生命周期管理；提供安全的异步上下文会话，确保提交/回滚/关闭的正确性。
-- ORM模型与约束：定义四张核心表及外键关系、JSON字段、时间戳字段、索引与唯一约束；统一引入actor_id以支持多租户与未来RBAC扩展。
-- 仓储操作：提供扫描、资产、服务、漏洞的创建、查询与upsert逻辑，严格遵循自然键与事务边界，保证重扫描与重复发现的幂等性。
+- 异步数据库引擎与会话工厂：负责连接建立、PRAGMA设置、会话生命周期管理
+- ORM模型层：定义表结构、索引、外键、默认值与时间戳
+- 仓库层：提供事务边界内的CRUD与聚合查询，保证幂等upsert与多租户隔离
+- 迁移系统：基于Alembic的版本化schema演进
 
 章节来源
 - [db.py:64-133](file://secbot/cmdb/db.py#L64-L133)
-- [models.py:34-177](file://secbot/cmdb/models.py#L34-L177)
-- [repo.py:68-370](file://secbot/cmdb/repo.py#L68-L370)
+- [models.py:34-263](file://secbot/cmdb/models.py#L34-L263)
+- [repo.py:76-994](file://secbot/cmdb/repo.py#L76-L994)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
 
 ## 架构总览
-CMDB采用“模型-引擎-仓储-迁移”的分层架构：
-- 模型层：声明式基类与实体定义，承载业务表结构与约束
-- 引擎层：异步SQLAlchemy引擎与连接级PRAGMA设置，保障并发与一致性
-- 仓储层：面向业务的upsert/list操作，封装事务边界
-- 迁移层：Alembic初始迁移脚本，定义表结构、索引与约束
+下图展示CMDB在应用中的位置与交互：
 
 ```mermaid
 graph TB
 subgraph "应用层"
-C["CLI 命令示例：serve/gateway 等"]
+API["API/仪表盘<br/>channels/websocket.py"]
+Skills["技能处理/报告<br/>report/*, skills/*"]
+Noti["通知中心<br/>channels/notifications.py"]
 end
-subgraph "CMDB 层"
-E["异步引擎<br/>db.init_engine/get_engine"]
-S["会话管理<br/>db.get_session"]
-P["仓储操作<br/>repo.upsert_* / list_*"]
-O["ORM模型<br/>models.*"]
-M["迁移脚本<br/>Alembic 初始版本"]
+subgraph "CMDB"
+Engine["异步引擎<br/>db.init_engine/get_engine"]
+Session["会话工厂<br/>db.get_session"]
+Repo["仓库层<br/>repo.*"]
+Models["ORM模型<br/>models.*"]
+Migs["迁移<br/>Alembic"]
 end
-C --> E
-C --> S
-S --> P
-P --> O
-M --> O
+API --> Session
+Skills --> Session
+Noti --> Repo
+Session --> Repo
+Repo --> Models
+Engine --> Session
+Migs --> Engine
 ```
 
 图表来源
 - [db.py:64-133](file://secbot/cmdb/db.py#L64-L133)
-- [repo.py:68-370](file://secbot/cmdb/repo.py#L68-L370)
-- [models.py:34-177](file://secbot/cmdb/models.py#L34-L177)
-- [20260507_initial.py:23-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L23-L159)
+- [repo.py:76-994](file://secbot/cmdb/repo.py#L76-L994)
+- [models.py:34-263](file://secbot/cmdb/models.py#L34-L263)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [websocket.py:1106-1324](file://secbot/channels/websocket.py#L1106-L1324)
+- [notifications.py:29-29](file://secbot/channels/notifications.py#L29-L29)
 
 ## 详细组件分析
 
-### 数据库架构与实体关系
-- 实体与主键
-  - Scan：主键为字符串型ULID
-  - Asset：自增整数主键，关联Scan
-  - Service：自增整数主键，关联Asset，唯一约束（asset_id, port, protocol）
-  - Vulnerability：自增整数主键，关联Asset与Service（可空），用于记录漏洞证据与日志路径
-- 外键与删除策略
-  - Asset对Scan使用RESTRICT，避免误删仍在使用的扫描记录
-  - Service对Asset使用CASCADE，清理资产时同步删除其服务
-  - Vulnerability对Service使用SET NULL，允许服务被删除后保留漏洞归属信息
-- 索引与约束
-  - Scan：按actor_id+status、actor_id+created_at建立复合索引
-  - Asset：按actor_id+ip、actor_id+hostname、scan_id建立索引
-  - Service：唯一约束（asset_id, port, protocol）
-  - Vulnerability：按actor_id+severity+created_at、asset_id建立索引
-- 多租户字段
-  - 所有表均包含actor_id，默认值为local，便于未来扩展RBAC且不破坏现有数据
+### 数据库架构设计（SQLite + SQLAlchemy + Alembic）
+- SQLite作为本地单机存储，适配短写入并发；通过WAL模式与PRAGMA提升并发与可靠性
+- SQLAlchemy 2.x ORM提供强类型模型与声明式关系映射
+- Alembic进行版本化迁移，支持离线/在线两种执行模式，URL解析优先级可配置
+
+章节来源
+- [db.py:51-93](file://secbot/cmdb/db.py#L51-L93)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [alembic.ini:4-45](file://secbot/cmdb/alembic.ini#L4-L45)
+
+### 核心实体模型与关系
+- Scan（扫描任务）：主键为ULID字符串，记录目标、状态、范围JSON、时间戳与错误信息，并带actor_id与创建时间
+- Asset（资产）：属于一次扫描，包含IP/主机名/OS猜测/标签等，带actor_id与更新时间
+- Service（服务）：属于资产，唯一约束为(资产, 端口, 协议)，记录协议、产品、版本、状态
+- Vulnerability（漏洞）：属于资产与可选服务，按标题+CVE去重，记录严重级别、类别、证据、原始日志路径
+- ReportMeta（报告元数据）：与Scan关联，记录报告标题、类型、状态、关键数、作者与下载路径
 
 ```mermaid
 erDiagram
@@ -174,6 +185,7 @@ string state
 string actor_id
 timestamptz created_at
 timestamptz updated_at
+unique uq_service_asset_port_proto
 }
 VULNERABILITY {
 int id PK
@@ -189,210 +201,238 @@ string discovered_by
 string actor_id
 timestamptz created_at
 }
-SCAN ||--o{ ASSET : "has"
-ASSET ||--o{ SERVICE : "hosts"
-ASSET ||--o{ VULNERABILITY : "discloses"
-SERVICE ||--o{ VULNERABILITY : "may cause"
+REPORT_META {
+string id PK
+string scan_id FK
+string title
+string type
+string status
+int critical_count
+string author
+string download_path
+string actor_id
+timestamptz created_at
+}
+SCAN ||--o{ ASSET : "扫描包含资产"
+ASSET ||--o{ SERVICE : "资产包含服务"
+ASSET ||--o{ VULNERABILITY : "资产关联漏洞"
+SERVICE ||--o{ VULNERABILITY : "服务关联漏洞"
+SCAN ||--o{ REPORT_META : "生成报告"
 ```
 
 图表来源
-- [models.py:38-170](file://secbot/cmdb/models.py#L38-L170)
-- [20260507_initial.py:24-144](file://secbot/cmdb/migrations/versions/20260507_initial.py#L24-L144)
+- [models.py:38-174](file://secbot/cmdb/models.py#L38-L174)
+- [models.py:177-218](file://secbot/cmdb/models.py#L177-L218)
 
 章节来源
-- [models.py:38-177](file://secbot/cmdb/models.py#L38-L177)
-- [20260507_initial.py:23-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L23-L159)
+- [models.py:38-218](file://secbot/cmdb/models.py#L38-L218)
 
-### 异步引擎与会话管理
-- 默认数据库URL解析：优先环境变量，其次用户家目录下的固定路径，确保可配置性与便携性
-- 连接级PRAGMA设置：启用WAL、NORMAL同步、外键检查、忙等待超时，提升并发写入稳定性
-- 引擎与会话工厂：支持多次初始化与销毁，提供安全的异步上下文会话，自动提交或回滚
-- 使用建议：所有CMDB读写必须通过会话上下文进行，避免直接使用sqlite3或原生SQL
+### ORM模型实现细节
+- 字段定义：使用String/Integer/JSON/DateTime(timezone=True)等类型，确保时区安全
+- 索引设计：针对高频过滤与排序列建立复合索引，如scan的(actor,status)、(actor,created_at)，asset的(actor,ip)、(actor,hostname)、scan_id，vulnerability的(actor,severity,created_at)、asset_id
+- 外键关系：RESTRICT用于资产删除保护，CASCADE用于服务删除级联，SET NULL用于漏洞与服务解绑
+- 默认值与服务器默认：通过server_default绑定func.now()与固定字符串，确保一致性
+- 时间戳：created_at默认当前UTC，updated_at在onupdate触发更新
+
+章节来源
+- [models.py:38-218](file://secbot/cmdb/models.py#L38-L218)
+
+### Alembic迁移管理
+- 初始版本（20260507_initial）：创建scan、asset、service、vulnerability四张表及索引
+- 报告元数据版本（20260510_report_meta）：新增report_meta表与索引
+- 环境配置：env.py解析URL优先级（命令行参数 > 环境变量 > 默认路径），离线/在线模式分别处理
+- 配置文件：alembic.ini集中管理日志与路径
+
+```mermaid
+sequenceDiagram
+participant Dev as "开发者"
+participant Alembic as "Alembic CLI"
+participant Env as "env.py"
+participant DB as "SQLite"
+Dev->>Alembic : "upgrade head"
+Alembic->>Env : "加载配置/解析URL"
+Env->>DB : "连接并开始事务"
+Env->>DB : "执行迁移脚本"
+DB-->>Env : "提交/回滚"
+Env-->>Alembic : "完成"
+Alembic-->>Dev : "迁移成功"
+```
+
+图表来源
+- [env.py:59-77](file://secbot/cmdb/migrations/env.py#L59-L77)
+- [20260507_initial.py:23-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L23-L159)
+- [20260510_report_meta.py:24-72](file://secbot/cmdb/migrations/versions/20260510_report_meta.py#L24-L72)
+
+章节来源
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [alembic.ini:4-45](file://secbot/cmdb/alembic.ini#L4-L45)
+- [20260507_initial.py:1-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L1-L159)
+- [20260510_report_meta.py:1-72](file://secbot/cmdb/migrations/versions/20260510_report_meta.py#L1-L72)
+
+### 仓库层与查询逻辑
+- 幂等upsert：以自然键为条件查找并更新或插入，避免重复扫描导致的数据膨胀
+- 多租户隔离：所有读写均以actor_id过滤，确保不同用户数据隔离
+- 枚举校验：对严重级别、漏洞类别、扫描状态、协议等进行严格校验
+- 聚合查询：提供仪表盘所需的关键指标统计、趋势分析、分布统计与集群聚合
 
 ```mermaid
 flowchart TD
-Start(["调用 get_session()"]) --> CheckMaker["检查会话工厂是否存在"]
-CheckMaker --> |不存在| Init["init_engine() 初始化引擎与工厂"]
-CheckMaker --> |存在| MakeSession["创建异步会话"]
-Init --> MakeSession
-MakeSession --> Yield["yield 会话实例"]
-Yield --> Commit{"是否发生异常？"}
-Commit --> |否| DoCommit["提交事务"]
-Commit --> |是| DoRollback["回滚事务"]
-DoCommit --> Close["关闭会话"]
-DoRollback --> Close
-Close --> End(["结束"])
+Start(["进入仓库函数"]) --> Validate["校验输入/枚举"]
+Validate --> BuildStmt["构建查询/UPSERT条件"]
+BuildStmt --> Exists{"是否已存在?"}
+Exists -- 是 --> Update["更新字段/时间戳"]
+Exists -- 否 --> Insert["创建新记录"]
+Update --> Flush["flush/commit"]
+Insert --> Flush
+Flush --> End(["返回ORM对象"])
 ```
 
 图表来源
-- [db.py:103-122](file://secbot/cmdb/db.py#L103-L122)
+- [repo.py:149-206](file://secbot/cmdb/repo.py#L149-L206)
+- [repo.py:227-276](file://secbot/cmdb/repo.py#L227-L276)
+- [repo.py:297-385](file://secbot/cmdb/repo.py#L297-L385)
 
 章节来源
-- [db.py:29-93](file://secbot/cmdb/db.py#L29-L93)
-- [db.py:103-133](file://secbot/cmdb/db.py#L103-L133)
+- [repo.py:76-994](file://secbot/cmdb/repo.py#L76-L994)
+- [test_repo.py:22-265](file://tests/cmdb/test_repo.py#L22-L265)
 
-### 仓储操作与幂等性
-- 扫描（Scan）
-  - 创建：生成ULID，设置状态为排队，写入作用域JSON
-  - 查询：按actor_id与scan_id精确查询；列表查询支持按状态过滤与限制数量
-  - 状态更新：严格校验状态集合，首次运行设置开始时间，结束态设置完成时间与错误信息
-- 资产（Asset）
-  - upsert：以（actor_id, scan_id, target）为自然键，同一扫描内的目标视为唯一，更新IP/主机名/OS/标签与更新时间
-  - 查询：支持按scan_id过滤与数量限制
-- 服务（Service）
-  - upsert：以（asset_id, port, protocol）为自然键，协议限定为tcp/udp，更新状态与产品信息
-  - 查询：支持按资产过滤与数量限制
-- 漏洞（Vulnerability）
-  - upsert：以（asset_id, service_id, title, cve_id）为自然键，重复发现仅刷新证据与日志路径
-  - 查询：支持按资产、严重级别过滤与数量限制
+### 关键流程示例
 
+#### 扫描状态流转与时间戳更新
 ```mermaid
 sequenceDiagram
 participant Caller as "调用方"
-participant Repo as "仓储(repo.py)"
-participant DB as "会话(db.get_session)"
-participant ORM as "ORM模型(models.*)"
-Caller->>Repo : upsert_vulnerability(...)
-Repo->>DB : 获取会话
-Repo->>ORM : select(Vulnerability).where(...)
-ORM-->>Repo : 返回匹配对象或None
-alt 新建
-Repo->>ORM : 创建Vulnerability实例并add
-else 更新
-Repo->>ORM : 更新证据/日志路径等字段
-end
-Repo->>DB : flush/commit
-DB-->>Repo : 完成
-Repo-->>Caller : 返回Vulnerability
+participant Repo as "repo.update_scan_status"
+participant DB as "数据库"
+Caller->>Repo : "更新扫描状态"
+Repo->>DB : "查询扫描记录"
+Repo->>Repo : "校验状态枚举"
+Repo->>DB : "设置started_at/finished_at/error"
+DB-->>Repo : "提交"
+Repo-->>Caller : "返回更新后的扫描"
 ```
 
 图表来源
-- [repo.py:281-348](file://secbot/cmdb/repo.py#L281-L348)
-- [models.py:139-170](file://secbot/cmdb/models.py#L139-L170)
+- [repo.py:117-142](file://secbot/cmdb/repo.py#L117-L142)
 
-章节来源
-- [repo.py:68-370](file://secbot/cmdb/repo.py#L68-L370)
-- [models.py:38-177](file://secbot/cmdb/models.py#L38-L177)
-
-### 迁移与版本管理
-- 初始迁移：定义四张表、索引与约束，确保首次部署即具备完整的CMDB结构
-- 升级流程：通过Alembic在运行时解析URL，执行upgrade/downgrade；迁移脚本中显式声明修订ID与依赖
-- 配置文件：alembic.ini集中管理脚本位置、路径分隔符与日志级别
-
+#### 漏洞upsert与关键漏洞通知
 ```mermaid
-flowchart TD
-A["启动迁移"] --> B["加载 alembic.ini"]
-B --> C["解析运行时URLenv.py"]
-C --> D["执行 upgrade() 或 downgrade()"]
-D --> E["创建/删除表与索引"]
-E --> F["完成"]
+sequenceDiagram
+participant Skill as "扫描技能"
+participant Repo as "repo.upsert_vulnerability"
+participant DB as "数据库"
+participant Noti as "通知队列"
+Skill->>Repo : "upsert漏洞"
+Repo->>DB : "查找(title+cve_id)"
+Repo->>DB : "不存在则插入，存在则更新"
+Repo->>Repo : "若首次达到critical则发布通知"
+Repo->>Noti : "publish(critical_vuln)"
+DB-->>Repo : "提交"
+Repo-->>Skill : "返回漏洞对象"
 ```
 
 图表来源
-- [20260507_initial.py:23-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L23-L159)
-- [alembic.ini:4-8](file://secbot/cmdb/alembic.ini#L4-L8)
+- [repo.py:297-385](file://secbot/cmdb/repo.py#L297-L385)
+- [notifications.py:29-29](file://secbot/channels/notifications.py#L29-L29)
 
-章节来源
-- [20260507_initial.py:1-159](file://secbot/cmdb/migrations/versions/20260507_initial.py#L1-L159)
-- [alembic.ini:1-45](file://secbot/cmdb/alembic.ini#L1-L45)
-
-### CMDB查询与管理命令使用指南
-- 命令入口：CLI命令模块提供多种运行模式（网关、API服务、引导等），CMDB作为底层数据存储被这些命令间接使用
-- 交互与输出：CLI使用Rich与prompt_toolkit渲染终端输出，支持历史、粘贴、Markdown渲染等
-- 会话与事务：所有CMDB访问需通过会话上下文，确保一致性与并发安全
-
-章节来源
-- [commands.py:1-800](file://secbot/cli/commands.py#L1-L800)
-- [cli-reference.md:1-22](file://docs/cli-reference.md#L1-L22)
-
-## 依赖关系分析
-- 组件耦合
-  - 仓储层依赖模型层与异步会话；模型层不依赖仓储；引擎层独立于业务逻辑
-  - 迁移脚本独立于运行时代码，仅在部署阶段使用
-- 外部依赖
-  - SQLAlchemy 2.x（异步）、Alembic（迁移）、SQLite（文件型数据库）
+## 依赖分析
+- 模型依赖：各实体间通过外键约束形成清晰的层次关系
+- 仓库依赖：仓库层依赖模型与SQLAlchemy表达式，不直接依赖通道层，保持关注点分离
+- 迁移依赖：迁移脚本仅依赖Alembic与SQLAlchemy，URL解析由env.py统一处理
+- 运行时依赖：API与仪表盘通过db.get_session获取会话，确保事务边界与一致性
 
 ```mermaid
 graph LR
-Repo["repo.py"] --> Models["models.py"]
-Repo --> DB["db.py"]
-DB --> SQLA["SQLAlchemy 异步引擎"]
-Migs["migrations/*"] --> Models
+Models["models.py"] --> Repo["repo.py"]
+Repo --> API["channels/websocket.py"]
+Repo --> Noti["channels/notifications.py"]
+DB["db.py"] --> Repo
+Env["migrations/env.py"] --> DB
 ```
 
 图表来源
-- [repo.py:25-34](file://secbot/cmdb/repo.py#L25-L34)
-- [models.py:25-34](file://secbot/cmdb/models.py#L25-L34)
-- [db.py:18-23](file://secbot/cmdb/db.py#L18-L23)
-- [20260507_initial.py:14-15](file://secbot/cmdb/migrations/versions/20260507_initial.py#L14-L15)
+- [models.py:34-263](file://secbot/cmdb/models.py#L34-L263)
+- [repo.py:26-40](file://secbot/cmdb/repo.py#L26-L40)
+- [db.py:64-133](file://secbot/cmdb/db.py#L64-L133)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [websocket.py:1106-1324](file://secbot/channels/websocket.py#L1106-L1324)
+- [notifications.py:29-29](file://secbot/channels/notifications.py#L29-L29)
 
 章节来源
-- [repo.py:25-34](file://secbot/cmdb/repo.py#L25-L34)
-- [models.py:25-34](file://secbot/cmdb/models.py#L25-L34)
-- [db.py:18-23](file://secbot/cmdb/db.py#L18-L23)
+- [repo.py:26-40](file://secbot/cmdb/repo.py#L26-L40)
+- [db.py:64-133](file://secbot/cmdb/db.py#L64-L133)
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
 
 ## 性能考量
-- 并发与锁：启用WAL模式与合理的busy_timeout，减少短事务写入时的“数据库被锁定”问题
-- 索引策略：针对高频过滤字段（actor_id、status、created_at、scan_id、asset_id）建立复合索引，提升查询效率
-- 写入路径：使用upsert与flush策略，避免重复插入与多余事务开销
-- 会话复用：通过进程级引擎与会话工厂，降低连接创建成本
-- I/O与磁盘：SQLite文件位于用户家目录下，建议在SSD上运行以提升随机读写性能
-
-## 故障排查指南
-- 数据库连接失败
-  - 检查SECBOT_HOME或默认路径权限，确认数据库文件存在且可读写
-  - 确认未同时占用数据库文件（例如其他进程打开）
-- 迁移执行失败
-  - 查看Alembic日志级别与输出，确认URL解析正确
-  - 确认目标数据库版本与脚本兼容
-- 并发写入冲突
-  - 检查PRAGMA设置是否生效（WAL、foreign_keys、busy_timeout）
-  - 减少长事务，尽量缩短会话生命周期
-- 查询性能差
-  - 确认WHERE条件命中索引（如actor_id、scan_id、asset_id）
-  - 控制返回结果集大小（limit参数）
+- 并发与锁：启用WAL模式与合理的busy_timeout，减少“database is locked”问题
+- 索引优化：针对高频过滤列建立复合索引，避免全表扫描
+- 查询限制：列表查询默认限制数量，防止内存与网络压力
+- 时间窗口：仪表盘聚合使用日期函数与本地时区计算，避免跨时区复杂度
+- 事务粒度：仓库层每个操作在调用方提供的会话内执行，避免长事务
 
 章节来源
-- [db.py:51-62](file://secbot/cmdb/db.py#L51-L62)
-- [alembic.ini:26-44](file://secbot/cmdb/alembic.ini#L26-L44)
+- [db.py:51-93](file://secbot/cmdb/db.py#L51-L93)
+- [models.py:56-104](file://secbot/cmdb/models.py#L56-L104)
+- [models.py:171-174](file://secbot/cmdb/models.py#L171-L174)
+- [models.py:210-218](file://secbot/cmdb/models.py#L210-L218)
+- [repo.py:101-114](file://secbot/cmdb/repo.py#L101-L114)
+- [repo.py:278-289](file://secbot/cmdb/repo.py#L278-L289)
+- [repo.py:387-405](file://secbot/cmdb/repo.py#L387-L405)
+
+## 故障排查指南
+- 连接与迁移
+  - 使用env.py解析的URL确认数据库路径与驱动
+  - 在线/离线模式分别检查连接参数与渲染模式
+- 枚举与约束
+  - 若出现“未知扫描状态/漏洞严重级别/类别”，检查枚举集合与输入值
+  - 唯一约束冲突时，确认upsert键组合是否正确
+- 事务与会话
+  - 确保通过db.get_session获取会话并在异常时自动回滚
+  - 长时间未提交会导致锁等待，适当调整超时
+- 通知与集成
+  - 关键漏洞通知失败不影响主流程，但需检查通知通道可用性
+
+章节来源
+- [env.py:33-77](file://secbot/cmdb/migrations/env.py#L33-L77)
+- [repo.py:117-142](file://secbot/cmdb/repo.py#L117-L142)
+- [repo.py:297-385](file://secbot/cmdb/repo.py#L297-L385)
+- [db.py:103-122](file://secbot/cmdb/db.py#L103-L122)
 
 ## 结论
-本CMDB子系统以SQLite + SQLAlchemy 2.x + Alembic构建，围绕资产、服务、漏洞、扫描任务形成清晰的实体关系与索引策略，提供异步引擎与严格的会话管理，确保在单机场景下的高可用与高性能。通过自然键upsert与多租户字段，系统具备良好的幂等性与扩展性。结合迁移脚本与统一的会话入口，能够稳定支撑资产发现、漏洞跟踪与任务管理等核心功能。
+本CMDB方案以SQLite为存储底座，结合SQLAlchemy ORM与Alembic迁移，实现了轻量、可靠且可演进的资产管理能力。通过严格的多租户隔离、幂等upsert与完善的索引策略，满足了扫描、资产、服务、漏洞与报告元数据的全生命周期管理需求。配合仓库层聚合查询，为仪表盘与报告提供了高效的数据支撑。
 
 ## 附录
 
-### 数据导入导出与备份恢复
-- 导出
-  - 使用ORM查询导出JSON/CSV：通过list_*接口获取数据，序列化为JSON或CSV格式
-  - 备份数据库文件：直接复制SQLite文件（建议在停止写入时进行）
+### 数据库操作与CLI使用
+- 初始化与迁移
+  - 在线迁移：使用Alembic CLI指定配置文件并升级至最新版本
+  - 离线迁移：在无运行时环境时，通过同步驱动执行
+- 会话与事务
+  - 通过db.get_session获取异步会话，确保在try/finally中提交或回滚
+- 示例流程
+  - 创建扫描 -> upsert资产 -> upsert服务 -> upsert漏洞 -> 聚合统计 -> 生成报告元数据
+
+章节来源
+- [alembic.ini:4-45](file://secbot/cmdb/alembic.ini#L4-L45)
+- [env.py:59-77](file://secbot/cmdb/migrations/env.py#L59-L77)
+- [db.py:103-122](file://secbot/cmdb/db.py#L103-L122)
+- [repo.py:76-994](file://secbot/cmdb/repo.py#L76-L994)
+
+### 数据生命周期管理
+- 清理策略
+  - 可根据created_at设置保留周期，定期删除过期扫描与报告
+  - 删除扫描前需确保无活动任务与报告依赖
+- 备份与恢复
+  - 直接复制SQLite文件即可备份；恢复时停止服务后替换文件
+- 审计日志
+  - 通过created_at与actor_id进行审计追踪；必要时扩展审计表
+
+### 导入导出与迁移最佳实践
 - 导入
-  - 通过upsert_*接口批量写入，注意控制事务大小与并发
-  - 迁移前先备份，迁移后验证关键索引与约束
-- 恢复
-  - 停止服务，替换数据库文件，重启服务
-  - 如需回滚，使用Alembic downgrade至目标版本
-
-### 与安全扫描流程的集成
-- 资产发现：创建扫描任务，记录目标与范围；通过upsert_asset将发现的资产写入
-- 端口扫描：基于资产ID与端口协议upsert_service，记录服务指纹
-- 漏洞扫描：基于资产与服务upsert_vulnerability，记录严重级别、类别、证据与原始日志路径
-- 任务编排：通过扫描状态管理（queued/running/completed/failed/cancelled）协调各步骤
-
-```mermaid
-sequenceDiagram
-participant Scanner as "扫描器"
-participant Repo as "仓储(repo.py)"
-participant DB as "会话(db.get_session)"
-participant Model as "模型(models.*)"
-Scanner->>Repo : create_scan(target, scope)
-Repo->>DB : 获取会话
-Repo->>Model : 写入Scan
-Scanner->>Repo : upsert_asset(scan_id, target, ip, hostname, tags)
-Scanner->>Repo : upsert_service(asset_id, port, protocol, state, product, version)
-Scanner->>Repo : upsert_vulnerability(asset_id, service_id, severity, category, title, evidence)
-Repo->>DB : 提交事务
-```
-
-图表来源
-- [repo.py:68-348](file://secbot/cmdb/repo.py#L68-L348)
-- [models.py:38-170](file://secbot/cmdb/models.py#L38-L170)
+  - 使用仓库层upsert函数保证幂等；分批导入避免大事务
+  - 先导入低依赖表（如scan），再导入高依赖表（asset/service/vuln）
+- 导出
+  - 使用聚合查询导出仪表盘所需维度；注意时区转换与本地化
+- 迁移
+  - 新增索引与约束时先添加迁移脚本，避免生产环境长时间锁表
+  - 对大表变更采用分批处理与维护窗口

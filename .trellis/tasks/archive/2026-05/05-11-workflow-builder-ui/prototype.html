@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工作流 · 海盾智能体管控台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        fontFamily: { sans:['Inter','Noto Sans SC','system-ui','sans-serif'], mono:['JetBrains Mono','ui-monospace','monospace'] },
+        colors: { primary:'hsl(210 100% 56%)', 'primary-glow':'hsl(210 100% 70%)' },
+        keyframes: {
+          'pulse-glow':{ '0%,100%':{boxShadow:'0 0 18px hsl(210 100% 70% / 0.35)'}, '50%':{boxShadow:'0 0 32px hsl(210 100% 70% / 0.65)'} },
+          'fade-in-up':{ '0%':{opacity:'0',transform:'translateY(12px)'}, '100%':{opacity:'1',transform:'translateY(0)'} },
+        },
+        animation:{ 'pulse-glow':'pulse-glow 2.4s ease-in-out infinite','fade-in-up':'fade-in-up .6s ease-out' },
+      } },
+    };
+  </script>
+  <style>
+    :root {
+      --background:222 47% 6%; --foreground:210 40% 98%;
+      --primary:210 100% 56%; --primary-glow:210 100% 70%;
+      --card:222 47% 9%; --border:210 32% 18%;
+      --muted:222 28% 14%; --muted-foreground:210 16% 65%;
+      --destructive:0 84% 60%; --warning:38 92% 50%; --success:142 71% 45%;
+      --purple:270 70% 66%;
+      --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+      --gradient-card:    linear-gradient(140deg, hsl(222 47% 11% / .95), hsl(210 32% 14% / .85));
+      --transition-smooth: all .35s cubic-bezier(.4,0,.2,1);
+    }
+    html, body { background: hsl(var(--background)); color: hsl(var(--foreground)); font-family:'Inter','Noto Sans SC',system-ui,sans-serif; }
+    .bg-glass    { background: hsl(var(--card) / .55); backdrop-filter: blur(18px); }
+    .border-glow { border: 1px solid hsl(var(--primary) / .35); box-shadow: 0 0 24px hsl(var(--primary-glow) / .25); }
+    .hover-lift  { transition: var(--transition-smooth); }
+    .hover-lift:hover { transform: translateY(-3px); box-shadow: 0 16px 36px -12px hsl(var(--primary) / .45); }
+    .text-gradient { background: var(--gradient-primary); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .gradient-card { background: var(--gradient-card); }
+    .gradient-primary { background: var(--gradient-primary); }
+    .scroll-hide::-webkit-scrollbar { display:none; }
+    .severity-bar { width:4px; border-radius:2px; }
+    /* View / Tab switching uses Tailwind's `hidden` class (display:none !important)
+       so that when a tab becomes active, its original layout class
+       (grid / space-y-* / block) takes effect without being overridden. */
+    details > summary { list-style:none; cursor:pointer; }
+    details > summary::-webkit-details-marker { display:none; }
+    .tab-btn.active { background: hsl(var(--primary) / .12); color: hsl(var(--primary)); border-color: hsl(var(--primary) / .4); }
+    /* 工作流执行流程图 —— 运行中段的流动扫光效果 */
+    @keyframes flow-x { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
+    .flow-progress-bar {
+      position:absolute; top:0; bottom:0; left:0; width:40%;
+      border-radius:9999px;
+      background: linear-gradient(to right, transparent, hsl(var(--primary) / .9), transparent);
+      animation: flow-x 1.8s linear infinite;
+    }
+    .flow-node-running { box-shadow: 0 0 0 6px hsl(var(--primary) / .12), 0 0 20px hsl(var(--primary) / .45); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <!-- ═══════════════ Sticky Navbar ═══════════════ -->
+  <header class="sticky top-0 z-50 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-xl">
+    <div class="mx-auto flex h-16 max-w-[1600px] items-center gap-6 px-6">
+      <button class="lg:hidden text-[hsl(var(--muted-foreground))]"><i data-lucide="menu" class="h-5 w-5"></i></button>
+      <div class="flex items-center gap-2.5">
+        <img src="../../../logo.png" class="h-9 w-9 rounded-lg ring-1 ring-primary/30" />
+        <img src="../05-09-uiux-template-refactor/prototypes/assets/text-logo-light.png" class="h-7 hidden md:block" />
+      </div>
+      <nav class="hidden md:flex items-center gap-1 ml-4">
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="message-square" class="h-4 w-4"></i> 智能助手</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="layout-dashboard" class="h-4 w-4"></i> 大屏分析</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="list-checks" class="h-4 w-4"></i> 任务详情</a>
+        <a class="rounded-lg gradient-primary px-3 py-1.5 text-sm font-medium text-white shadow-md inline-flex items-center gap-1.5"><i data-lucide="workflow" class="h-4 w-4"></i> 工作流</a>
+        <a class="rounded-lg px-3 py-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/5 inline-flex items-center gap-1.5"><i data-lucide="settings" class="h-4 w-4"></i> 设置</a>
+      </nav>
+      <div class="flex-1"></div>
+      <div class="hidden md:flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-1.5 text-xs">
+        <span class="h-2 w-2 rounded-full bg-[hsl(var(--success))] animate-pulse"></span>
+        <span class="font-mono text-[hsl(var(--muted-foreground))]">WS · 已连接 · 12ms</span>
+      </div>
+      <button class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 p-2 hover:border-primary/40"><i data-lucide="bell" class="h-4 w-4"></i></button>
+      <div class="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-1">
+        <div class="h-7 w-7 rounded-md gradient-primary flex items-center justify-center text-xs font-bold">SH</div>
+        <div class="hidden md:block leading-tight"><div class="text-xs font-medium">shan</div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">admin · v1.0</div></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Demo switcher（原型专用，交付时移除） -->
+  <div class="sticky top-16 z-40 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/70 backdrop-blur">
+    <div class="mx-auto max-w-[1600px] px-6 py-2 flex items-center gap-3 text-xs">
+      <span class="text-[hsl(var(--muted-foreground))] font-mono">PROTOTYPE NAV:</span>
+      <button onclick="showView('list')"   id="btn-view-list"   class="tab-btn active rounded-md border border-[hsl(var(--border))] px-3 py-1 inline-flex items-center gap-1.5"><i data-lucide="list" class="h-3.5 w-3.5"></i> 列表页</button>
+      <button onclick="showView('detail')" id="btn-view-detail" class="tab-btn rounded-md border border-[hsl(var(--border))] px-3 py-1 inline-flex items-center gap-1.5"><i data-lucide="git-branch" class="h-3.5 w-3.5"></i> 详情页</button>
+    </div>
+  </div>
+
+  <main class="mx-auto max-w-[1600px] px-6 py-6">
+
+    <!-- ═══════════════ View: 列表页 ═══════════════ -->
+    <section data-view="list" class="active">
+      <div class="grid lg:grid-cols-[260px_1fr_300px] gap-6">
+
+        <!-- 左侧：分组 / 标签过滤 -->
+        <aside class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-4 space-y-5 h-fit">
+          <button class="w-full inline-flex items-center justify-center gap-2 rounded-lg gradient-primary px-3 py-2 text-sm font-semibold shadow-md hover-lift">
+            <i data-lucide="plus" class="h-4 w-4"></i> 新建工作流
+          </button>
+
+          <div>
+            <p class="px-2 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">状态</p>
+            <ul class="mt-1 space-y-1 text-sm">
+              <li class="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 flex items-center justify-between text-primary cursor-pointer"><span class="inline-flex items-center gap-2"><i data-lucide="layers" class="h-3.5 w-3.5"></i> 全部</span><span class="font-mono text-xs">12</span></li>
+              <li class="rounded-lg px-3 py-2 hover:bg-white/5 flex items-center justify-between cursor-pointer"><span class="inline-flex items-center gap-2 text-[hsl(var(--success))]"><i data-lucide="circle-play" class="h-3.5 w-3.5"></i> 运行中</span><span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">1</span></li>
+              <li class="rounded-lg px-3 py-2 hover:bg-white/5 flex items-center justify-between cursor-pointer"><span class="inline-flex items-center gap-2"><i data-lucide="clock" class="h-3.5 w-3.5 text-primary"></i> 已调度</span><span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">5</span></li>
+              <li class="rounded-lg px-3 py-2 hover:bg-white/5 flex items-center justify-between cursor-pointer"><span class="inline-flex items-center gap-2"><i data-lucide="pause" class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]"></i> 草稿</span><span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">6</span></li>
+              <li class="rounded-lg px-3 py-2 hover:bg-white/5 flex items-center justify-between cursor-pointer"><span class="inline-flex items-center gap-2 text-[hsl(var(--destructive))]"><i data-lucide="triangle-alert" class="h-3.5 w-3.5"></i> 失败</span><span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">0</span></li>
+            </ul>
+          </div>
+
+          <div>
+            <p class="px-2 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">标签</p>
+            <div class="mt-2 flex flex-wrap gap-1.5 px-1">
+              <span class="rounded-full border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-xs cursor-pointer">#recon</span>
+              <span class="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-xs cursor-pointer hover:border-primary/40">#weak-password</span>
+              <span class="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-xs cursor-pointer hover:border-primary/40">#daily</span>
+              <span class="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-xs cursor-pointer hover:border-primary/40">#report</span>
+              <span class="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-xs cursor-pointer hover:border-primary/40">#compliance</span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- 中部：工作流卡片网格 -->
+        <section class="space-y-4">
+          <div class="flex items-center gap-3">
+            <div class="relative flex-1">
+              <i data-lucide="search" class="h-4 w-4 absolute left-3 top-2.5 text-[hsl(var(--muted-foreground))]"></i>
+              <input placeholder="搜索工作流名称、描述、标签…" class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 pl-9 pr-3 py-2 text-sm outline-none focus:border-primary" />
+            </div>
+            <button class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-xs inline-flex items-center gap-1.5 hover:border-primary/40"><i data-lucide="sliders-horizontal" class="h-3.5 w-3.5"></i> 排序</button>
+          </div>
+
+          <!-- 卡片：运行中 -->
+          <a onclick="showView('detail')" class="block gradient-card rounded-2xl border border-primary/30 p-5 hover-lift cursor-pointer animate-fade-in-up">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 px-2.5 py-0.5 text-[10px] text-[hsl(var(--success))] font-mono"><span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))] animate-pulse"></span> RUNNING</span>
+                  <span class="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">wf_9a2b</span>
+                </div>
+                <h3 class="text-base font-semibold truncate">内网资产发现 + 端口指纹 + 弱口令检测</h3>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1 line-clamp-1">每日 09:00 扫描 C 段，输出高危资产表并生成 PDF 报告给运维组。</p>
+              </div>
+              <button class="rounded-md p-1.5 hover:bg-white/5"><i data-lucide="more-vertical" class="h-4 w-4 text-[hsl(var(--muted-foreground))]"></i></button>
+            </div>
+            <div class="mt-3 flex items-center gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="radar" class="h-3 w-3"></i> asset_discovery</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="scan" class="h-3 w-3"></i> port_scan</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] px-1.5 py-0.5"><i data-lucide="git-branch" class="h-3 w-3"></i> if highRisk&gt;0</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="key" class="h-3 w-3"></i> weak_password</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--purple))]/15 text-[hsl(var(--purple))] px-1.5 py-0.5"><i data-lucide="file-text" class="h-3 w-3"></i> report</span>
+            </div>
+            <div class="mt-4 grid grid-cols-4 gap-3 text-xs">
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">步骤</div><div class="font-mono text-sm mt-0.5">5</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">下次运行</div><div class="font-mono text-sm mt-0.5 text-primary">明日 09:00</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">最近运行</div><div class="font-mono text-sm mt-0.5 text-[hsl(var(--success))]">今天 09:00 · ok</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">成功率 (30d)</div><div class="font-mono text-sm mt-0.5">96.7%</div></div>
+            </div>
+          </a>
+
+          <!-- 卡片：已调度 -->
+          <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 hover-lift cursor-pointer animate-fade-in-up">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 text-[10px] text-primary font-mono"><i data-lucide="clock" class="h-3 w-3"></i> SCHEDULED</span>
+                  <span class="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">wf_b01c</span>
+                </div>
+                <h3 class="text-base font-semibold truncate">月度合规扫描 · 等保 2.0</h3>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1 line-clamp-1">每月 1 号凌晨跑完整的合规扫描，生成 PDF + Excel 双格式。</p>
+              </div>
+              <button class="rounded-md p-1.5 hover:bg-white/5"><i data-lucide="more-vertical" class="h-4 w-4 text-[hsl(var(--muted-foreground))]"></i></button>
+            </div>
+            <div class="mt-3 flex items-center gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="radar" class="h-3 w-3"></i> asset_discovery</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="bug" class="h-3 w-3"></i> vuln_scan</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-[hsl(var(--purple))]/15 text-[hsl(var(--purple))] px-1.5 py-0.5"><i data-lucide="file-text" class="h-3 w-3"></i> report</span>
+            </div>
+            <div class="mt-4 grid grid-cols-4 gap-3 text-xs">
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">步骤</div><div class="font-mono text-sm mt-0.5">3</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">下次运行</div><div class="font-mono text-sm mt-0.5 text-primary">06/01 00:00</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">最近运行</div><div class="font-mono text-sm mt-0.5 text-[hsl(var(--success))]">05/01 · ok</div></div>
+              <div><div class="text-[10px] text-[hsl(var(--muted-foreground))]">平均耗时</div><div class="font-mono text-sm mt-0.5">12m32s</div></div>
+            </div>
+          </div>
+
+          <!-- 卡片：草稿 -->
+          <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 hover-lift cursor-pointer animate-fade-in-up">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2.5 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))] font-mono"><i data-lucide="file" class="h-3 w-3"></i> DRAFT</span>
+                  <span class="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">wf_2e41</span>
+                </div>
+                <h3 class="text-base font-semibold truncate">CVE-2024-3094 影响面快速排查</h3>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-1 line-clamp-1">XZ Utils 后门受影响主机识别 + 一键告警。</p>
+              </div>
+              <button class="rounded-md p-1.5 hover:bg-white/5"><i data-lucide="more-vertical" class="h-4 w-4 text-[hsl(var(--muted-foreground))]"></i></button>
+            </div>
+            <div class="mt-3 flex items-center gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="search" class="h-3 w-3"></i> search</span>
+              <i data-lucide="arrow-right" class="h-3 w-3 text-[hsl(var(--muted-foreground))]"></i>
+              <span class="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-1.5 py-0.5"><i data-lucide="terminal" class="h-3 w-3"></i> shell</span>
+              <span class="ml-1 text-[hsl(var(--muted-foreground))]">未调度</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 右侧：今日态势 + 模板推荐 -->
+        <aside class="space-y-4">
+          <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold">今日态势</h4>
+              <span class="text-xs text-[hsl(var(--muted-foreground))]">实时</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3 hover-lift cursor-pointer"><div class="text-xs text-[hsl(var(--muted-foreground))]">调度中</div><div class="text-2xl font-bold text-primary mt-1">5</div><div class="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">next 09:00</div></div>
+              <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3 hover-lift cursor-pointer"><div class="text-xs text-[hsl(var(--muted-foreground))]">今日运行</div><div class="text-2xl font-bold text-gradient mt-1">18</div><div class="text-[10px] text-[hsl(var(--success))] mt-0.5">0 失败</div></div>
+              <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3 hover-lift cursor-pointer"><div class="text-xs text-[hsl(var(--muted-foreground))]">总耗时</div><div class="text-2xl font-bold text-white mt-1">3h12m</div><div class="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">-12% ↓</div></div>
+              <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3 hover-lift cursor-pointer"><div class="text-xs text-[hsl(var(--muted-foreground))]">告警</div><div class="text-2xl font-bold text-[hsl(var(--destructive))] mt-1">0</div><div class="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">近 24h</div></div>
+            </div>
+          </div>
+
+          <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 space-y-3">
+            <div class="flex items-center gap-2">
+              <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i>
+              <h4 class="text-sm font-semibold">模板推荐</h4>
+            </div>
+            <div class="space-y-2">
+              <button class="w-full text-left rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-sm hover:border-primary/40 hover:bg-primary/5 transition group">
+                <div class="flex items-center gap-2 font-medium"><i data-lucide="shield-check" class="h-3.5 w-3.5 text-primary"></i> 标准内网体检</div>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">发现 → 端口 → 漏洞 → 报告 · 5 步</p>
+              </button>
+              <button class="w-full text-left rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-sm hover:border-primary/40 hover:bg-primary/5 transition group">
+                <div class="flex items-center gap-2 font-medium"><i data-lucide="key" class="h-3.5 w-3.5 text-primary"></i> 弱口令周巡</div>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">SSH/RDP/SMB 字典爆破 + 告警</p>
+              </button>
+              <button class="w-full text-left rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-sm hover:border-primary/40 hover:bg-primary/5 transition group">
+                <div class="flex items-center gap-2 font-medium"><i data-lucide="file-bar-chart" class="h-3.5 w-3.5 text-primary"></i> 月度合规报告</div>
+                <p class="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">汇总扫描数据 · 自动归档 PDF</p>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </section>
+
+    <!-- ═══════════════ View: 详情页（4 Tab）═══════════════ -->
+    <section data-view="detail" class="space-y-6 hidden">
+
+      <!-- 面包屑 -->
+      <nav class="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]">
+        <a onclick="showView('list')" class="hover:text-primary cursor-pointer">工作流</a>
+        <i data-lucide="chevron-right" class="h-3 w-3"></i>
+        <span class="text-white">日志异常分析 · 脚本预筛 + LLM 诊断</span>
+      </nav>
+
+      <!-- 工作流头部卡片 -->
+      <div class="gradient-card rounded-2xl border-glow p-6 animate-fade-in-up">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="space-y-2 min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 px-3 py-1 text-xs text-[hsl(var(--success))] font-mono">
+                <span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))] animate-pulse"></span> RUNNING · 00:34
+              </span>
+              <span class="rounded-md bg-[hsl(var(--muted))]/50 px-2 py-0.5 text-xs font-mono text-[hsl(var(--muted-foreground))]">wf_7d3f</span>
+              <span class="rounded-full border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-[10px]">#ops</span>
+              <span class="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))]">#log</span>
+              <span class="rounded-full border border-pink-400/40 bg-pink-400/10 text-pink-300 px-2 py-0.5 text-[10px] font-mono">mixed · tool+script+llm</span>
+            </div>
+            <h1 class="text-2xl font-bold">日志异常分析 · 脚本预筛 + LLM 诊断</h1>
+            <p class="text-sm text-[hsl(var(--muted-foreground))] max-w-3xl">每 5 分钟拉取 /var/log/app/*.log，脚本先筛 ERROR；全部正常则早退，有异常才送 LLM 做根因诊断并推送告警。</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-sm hover:border-primary/40"><i data-lucide="copy" class="h-4 w-4"></i> 克隆</button>
+            <button class="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/10 px-3 py-2 text-sm text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/20"><i data-lucide="square" class="h-4 w-4"></i> 终止</button>
+            <button class="inline-flex items-center gap-2 rounded-lg gradient-primary px-3 py-2 text-sm font-semibold shadow-md hover-lift animate-pulse-glow"><i data-lucide="play" class="h-4 w-4"></i> 立即运行</button>
+          </div>
+        </div>
+
+        <!-- 运行进度 -->
+        <div class="mt-5 grid grid-cols-5 gap-3">
+          <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3"><div class="text-[10px] text-[hsl(var(--muted-foreground))]">当前 Step</div><div class="font-mono text-sm mt-0.5 text-primary">4 / 5</div></div>
+          <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3"><div class="text-[10px] text-[hsl(var(--muted-foreground))]">已用时</div><div class="font-mono text-sm mt-0.5">00:34</div></div>
+          <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3"><div class="text-[10px] text-[hsl(var(--muted-foreground))]">扫描日志行</div><div class="font-mono text-sm mt-0.5 text-white">2,148</div></div>
+          <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3"><div class="text-[10px] text-[hsl(var(--muted-foreground))]">ERROR 命中</div><div class="font-mono text-sm mt-0.5 text-[hsl(var(--destructive))]">18</div></div>
+          <div class="rounded-lg bg-[hsl(var(--muted))]/40 p-3"><div class="text-[10px] text-[hsl(var(--muted-foreground))]">下次调度</div><div class="font-mono text-sm mt-0.5 text-primary">05:00 后</div></div>
+        </div>
+
+        <!-- 步骤流程图：混合 kind 链路的按步推进动画（s1/s2/s3 完成 · s4 LLM 诊断中 · s5 待执行） -->
+        <div class="mt-5 pt-5 border-t border-[hsl(var(--border))]">
+          <div class="flex items-center justify-between mb-4">
+            <div class="text-xs font-semibold text-[hsl(var(--muted-foreground))] inline-flex items-center gap-1.5">
+              <i data-lucide="activity" class="h-3.5 w-3.5 text-primary"></i> 执行流程 · 混合 kind 链路
+            </div>
+            <div class="text-[10px] font-mono text-[hsl(var(--muted-foreground))] space-x-3">
+              <span><span class="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))] mr-1 align-middle"></span>完成 3</span>
+              <span><span class="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse mr-1 align-middle"></span>进行中 1</span>
+              <span><span class="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--muted-foreground))]/60 mr-1 align-middle"></span>待执行 1</span>
+            </div>
+          </div>
+
+          <div class="flex items-start">
+            <!-- Step 1 · tool:file_read (done) -->
+            <div class="flex flex-col items-center shrink-0 min-w-[84px]">
+              <div class="h-10 w-10 rounded-full border-2 border-[hsl(var(--success))] bg-[hsl(var(--success))]/15 flex items-center justify-center">
+                <i data-lucide="check" class="h-5 w-5 text-[hsl(var(--success))]"></i>
+              </div>
+              <div class="text-[11px] font-medium mt-2 leading-tight">读取日志</div>
+              <div class="text-[10px] font-mono text-primary mt-0.5">tool · 0.4s</div>
+            </div>
+            <div class="flex-1 pt-5 px-1"><div class="h-0.5 w-full rounded-full bg-[hsl(var(--success))]/60"></div></div>
+
+            <!-- Step 2 · script:python (done) -->
+            <div class="flex flex-col items-center shrink-0 min-w-[84px]">
+              <div class="h-10 w-10 rounded-full border-2 border-[hsl(var(--success))] bg-[hsl(var(--success))]/15 flex items-center justify-center">
+                <i data-lucide="check" class="h-5 w-5 text-[hsl(var(--success))]"></i>
+              </div>
+              <div class="text-[11px] font-medium mt-2 leading-tight">脚本筛选</div>
+              <div class="text-[10px] font-mono text-[hsl(var(--purple))] mt-0.5">script · 2.1s</div>
+            </div>
+            <div class="flex-1 pt-5 px-1"><div class="h-0.5 w-full rounded-full bg-[hsl(var(--success))]/60"></div></div>
+
+            <!-- Step 3 · cond (done · errors>0 成立) -->
+            <div class="flex flex-col items-center shrink-0 min-w-[84px]">
+              <div class="h-10 w-10 rounded-full border-2 border-[hsl(var(--success))] bg-[hsl(var(--success))]/15 flex items-center justify-center">
+                <i data-lucide="check" class="h-5 w-5 text-[hsl(var(--success))]"></i>
+              </div>
+              <div class="text-[11px] font-medium mt-2 leading-tight">条件判定</div>
+              <div class="text-[10px] font-mono text-[hsl(var(--warning))] mt-0.5">cond · true</div>
+            </div>
+            <div class="flex-1 pt-5 px-1">
+              <div class="relative h-0.5 w-full rounded-full bg-[hsl(var(--muted))]/60 overflow-hidden">
+                <div class="flow-progress-bar"></div>
+              </div>
+            </div>
+
+            <!-- Step 4 · llm:chat (running) -->
+            <div class="flex flex-col items-center shrink-0 min-w-[84px]">
+              <div class="relative h-10 w-10 rounded-full border-2 border-primary bg-primary/15 flex items-center justify-center flow-node-running animate-pulse-glow">
+                <i data-lucide="brain-circuit" class="h-5 w-5 text-primary"></i>
+                <span class="absolute inset-[-6px] rounded-full border border-primary/30 animate-ping"></span>
+              </div>
+              <div class="text-[11px] font-semibold mt-2 leading-tight text-primary">LLM 诊断</div>
+              <div class="text-[10px] font-mono text-primary mt-0.5">llm · 00:18</div>
+            </div>
+            <div class="flex-1 pt-5 px-1"><div class="h-0 w-full border-t-2 border-dashed border-[hsl(var(--border))]"></div></div>
+
+            <!-- Step 5 · tool:message (pending) -->
+            <div class="flex flex-col items-center shrink-0 min-w-[84px]">
+              <div class="h-10 w-10 rounded-full border-2 border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 flex items-center justify-center">
+                <i data-lucide="send" class="h-5 w-5 text-[hsl(var(--muted-foreground))]"></i>
+              </div>
+              <div class="text-[11px] mt-2 leading-tight text-[hsl(var(--muted-foreground))]">推送告警</div>
+              <div class="text-[10px] font-mono text-[hsl(var(--muted-foreground))] mt-0.5">tool · 待执行</div>
+            </div>
+          </div>
+
+          <!-- 当前 step 实时提示 -->
+          <div class="mt-4 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+            <i data-lucide="zap" class="h-4 w-4 text-primary animate-pulse"></i>
+            <div class="text-xs flex-1 min-w-0">
+              <span class="font-semibold text-primary">Step 4 / 5</span>
+              <span class="text-[hsl(var(--muted-foreground))]"> · 正在调用 </span>
+              <span class="font-mono text-white">当前 LLM 配置</span>
+              <span class="text-[hsl(var(--muted-foreground))]"> 对 </span>
+              <span class="font-mono text-[hsl(var(--destructive))]">18</span>
+              <span class="text-[hsl(var(--muted-foreground))]"> 条 ERROR 样本做根因诊断… 已输出 </span>
+              <span class="font-mono text-white">2</span>
+              <span class="text-[hsl(var(--muted-foreground))]"> 条假设</span>
+            </div>
+            <span class="text-[10px] font-mono text-[hsl(var(--muted-foreground))] shrink-0">ETA ≈ 18s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 栏 -->
+      <div class="flex items-center gap-2 border-b border-[hsl(var(--border))]">
+        <button onclick="showTab('basic')"   id="btn-tab-basic"   class="tab-btn active rounded-t-lg border-b-2 border-transparent px-4 py-2.5 text-sm inline-flex items-center gap-2"><i data-lucide="info" class="h-4 w-4"></i> 基本信息</button>
+        <button onclick="showTab('steps')"   id="btn-tab-steps"   class="tab-btn rounded-t-lg border-b-2 border-transparent px-4 py-2.5 text-sm inline-flex items-center gap-2"><i data-lucide="list-ordered" class="h-4 w-4"></i> 步骤 <span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">5</span></button>
+        <button onclick="showTab('schedule')" id="btn-tab-schedule" class="tab-btn rounded-t-lg border-b-2 border-transparent px-4 py-2.5 text-sm inline-flex items-center gap-2"><i data-lucide="clock" class="h-4 w-4"></i> 调度</button>
+        <button onclick="showTab('runs')"    id="btn-tab-runs"    class="tab-btn rounded-t-lg border-b-2 border-transparent px-4 py-2.5 text-sm inline-flex items-center gap-2"><i data-lucide="history" class="h-4 w-4"></i> 运行记录 <span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">128</span></button>
+      </div>
+
+      <!-- Tab: 基本信息 -->
+      <div data-tab="basic" class="grid lg:grid-cols-[1fr_380px] gap-6">
+        <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-6 space-y-5">
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1.5">名称</label>
+            <input value="日志异常分析 · 脚本预筛 + LLM 诊断" class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-sm outline-none focus:border-primary" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1.5">描述</label>
+            <textarea rows="3" class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-sm outline-none focus:border-primary">每 5 分钟拉取 /var/log/app/*.log，脚本先筛 ERROR；全部正常则早退，有异常才送 LLM 做根因诊断并推送告警。</textarea>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1.5">标签</label>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="rounded-full border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-xs inline-flex items-center gap-1">#ops <i data-lucide="x" class="h-3 w-3 cursor-pointer"></i></span>
+              <span class="rounded-full border border-primary/40 bg-primary/10 text-primary px-2 py-0.5 text-xs inline-flex items-center gap-1">#log <i data-lucide="x" class="h-3 w-3 cursor-pointer"></i></span>
+              <span class="rounded-full border border-pink-400/40 bg-pink-400/10 text-pink-300 px-2 py-0.5 text-xs inline-flex items-center gap-1">#mixed-kind <i data-lucide="x" class="h-3 w-3 cursor-pointer"></i></span>
+              <button class="rounded-full border border-dashed border-[hsl(var(--border))] px-2 py-0.5 text-xs text-[hsl(var(--muted-foreground))] hover:border-primary/40 hover:text-primary inline-flex items-center gap-1"><i data-lucide="plus" class="h-3 w-3"></i> 添加</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 工作流入参（Inputs）— 通用编辑器：字段名/类型/描述/默认值/必填 全部由用户自定义 -->
+        <div class="gradient-card rounded-2xl border border-primary/30 p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2"><i data-lucide="variable" class="h-4 w-4 text-primary"></i><h4 class="text-sm font-semibold">工作流入参</h4></div>
+            <button class="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-1 text-[11px] inline-flex items-center gap-1 hover:border-primary/40"><i data-lucide="plus" class="h-3 w-3"></i> 添加入参</button>
+          </div>
+          <p class="text-[11px] text-[hsl(var(--muted-foreground))] leading-relaxed">
+            自由定义任意数量的入参：<span class="text-primary">字段名 / 类型 / 描述 / 默认值 / 是否必填</span> 均由你决定，不预设任何业务名。保存后，在 step 的 <span class="font-mono">args</span> 中通过 <span class="font-mono text-primary">${inputs.&lt;字段名&gt;}</span> 引用。
+          </p>
+
+          <!-- 入参卡片 1：通用编辑形态（type=string） -->
+          <div class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-3 space-y-2">
+            <div class="flex items-center gap-2">
+              <input value="param_a" placeholder="字段名" class="flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary" />
+              <select class="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary">
+                <option selected>string</option><option>int</option><option>bool</option><option>enum</option><option>cidr</option>
+              </select>
+              <button class="p-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+            <input placeholder="描述（可选）—— 用一句话说明该入参的用途" class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs outline-none focus:border-primary" />
+            <input placeholder="默认值（可选）" class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary" />
+            <label class="flex items-center gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"><input type="checkbox" class="accent-primary" /> 标为必填</label>
+          </div>
+
+          <!-- 入参卡片 2：type=enum 会在下方展开 enumValues 编辑行 -->
+          <div class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-3 space-y-2">
+            <div class="flex items-center gap-2">
+              <input value="param_b" placeholder="字段名" class="flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary" />
+              <select class="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary">
+                <option>string</option><option>int</option><option>bool</option><option selected>enum</option><option>cidr</option>
+              </select>
+              <button class="p-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+            <input placeholder="描述（可选）" class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs outline-none focus:border-primary" />
+            <div class="rounded-md border border-dashed border-primary/40 bg-primary/5 p-2 space-y-1">
+              <div class="text-[10px] font-mono text-primary">enumValues</div>
+              <input placeholder="用逗号分隔，例如：a, b, c" class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary" />
+            </div>
+            <label class="flex items-center gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"><input type="checkbox" class="accent-primary" /> 标为必填</label>
+          </div>
+
+          <!-- 入参卡片 3：type=bool 时默认值改为布尔下拉 -->
+          <div class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-3 space-y-2">
+            <div class="flex items-center gap-2">
+              <input value="param_c" placeholder="字段名" class="flex-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary" />
+              <select class="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary">
+                <option>string</option><option>int</option><option selected>bool</option><option>enum</option><option>cidr</option>
+              </select>
+              <button class="p-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))]"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+            <input placeholder="描述（可选）" class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs outline-none focus:border-primary" />
+            <select class="w-full rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-2 py-1 text-xs font-mono outline-none focus:border-primary">
+              <option>默认值：true</option>
+              <option selected>默认值：false</option>
+            </select>
+            <label class="flex items-center gap-2 text-[11px] text-[hsl(var(--muted-foreground))]"><input type="checkbox" class="accent-primary" /> 标为必填</label>
+          </div>
+
+          <div class="pt-1 text-[10px] font-mono text-[hsl(var(--muted-foreground))] border-t border-[hsl(var(--border))]">
+            支持类型：<span class="text-primary">string · int · bool · enum · cidr</span>（后续可扩展 stringArray 等）
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: 步骤编排 -->
+      <div data-tab="steps" class="grid lg:grid-cols-[1fr_380px] gap-6 hidden">
+        <div class="space-y-3">
+
+          <!-- Step 1 · kind=tool · file_read -->
+          <div class="flex gap-3 animate-fade-in-up">
+            <div class="severity-bar bg-primary"></div>
+            <div class="flex-1 gradient-card rounded-xl border border-[hsl(var(--border))] p-4 hover:border-primary/40">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-6 w-6 rounded-full gradient-primary flex items-center justify-center text-[10px] font-bold">1</span>
+                  <i data-lucide="file-text" class="h-4 w-4 text-primary"></i>
+                  <span class="text-sm font-semibold">读取日志</span>
+                  <span class="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-mono">tool · file_read</span>
+                  <span class="rounded bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] px-1.5 py-0.5 text-[10px] font-mono">OK · 0.4s</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button class="p-1 hover:bg-white/5 rounded"><i data-lucide="grip-vertical" class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] cursor-grab"></i></button>
+                  <button class="p-1 hover:bg-white/5 rounded"><i data-lucide="trash-2" class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]"></i></button>
+                </div>
+              </div>
+              <pre class="rounded-md bg-[hsl(var(--background))]/60 border border-[hsl(var(--border))] p-2 text-[11px] font-mono text-[hsl(var(--muted-foreground))] overflow-x-auto">args: {
+  "path":     "${inputs.log_path}",
+  "maxBytes": 262144
+}</pre>
+            </div>
+          </div>
+
+          <!-- Step 2 · kind=script · python -->
+          <div class="flex gap-3 animate-fade-in-up">
+            <div class="severity-bar bg-[hsl(var(--purple))]"></div>
+            <div class="flex-1 gradient-card rounded-xl border border-[hsl(var(--purple))]/40 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-6 w-6 rounded-full bg-[hsl(var(--purple))]/20 border border-[hsl(var(--purple))]/40 flex items-center justify-center text-[10px] font-bold text-[hsl(var(--purple))]">2</span>
+                  <i data-lucide="code-2" class="h-4 w-4 text-[hsl(var(--purple))]"></i>
+                  <span class="text-sm font-semibold">脚本筛选 ERROR 行</span>
+                  <span class="rounded bg-[hsl(var(--purple))]/15 text-[hsl(var(--purple))] px-1.5 py-0.5 text-[10px] font-mono">script · python</span>
+                  <span class="rounded bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] px-1.5 py-0.5 text-[10px] font-mono">OK · 2.1s · errors=18</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button class="p-1 hover:bg-white/5 rounded"><i data-lucide="grip-vertical" class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] cursor-grab"></i></button>
+                  <button class="p-1 hover:bg-white/5 rounded"><i data-lucide="trash-2" class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]"></i></button>
+                </div>
+              </div>
+              <pre class="rounded-md bg-[hsl(var(--background))]/60 border border-[hsl(var(--purple))]/30 p-2 text-[11px] font-mono text-[hsl(var(--muted-foreground))] overflow-x-auto">args: {
+  "code":      "import json,sys\nlines=stdin_text.splitlines()\nerr=[l for l in lines if 'ERROR' in l]\nprint(json.dumps({'errors':len(err),'samples':err[:20]}))",
+  "stdin":     "${steps.s1.result.content}",
+  "timeoutMs": 15000
+}</pre>
+            </div>
+          </div>
+
+          <!-- Step 3 · 条件分支 -->
+          <div class="flex gap-3 animate-fade-in-up">
+            <div class="severity-bar bg-[hsl(var(--warning))]"></div>
+            <div class="flex-1 gradient-card rounded-xl border border-[hsl(var(--warning))]/40 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-6 w-6 rounded-full bg-[hsl(var(--warning))]/20 border border-[hsl(var(--warning))]/40 flex items-center justify-center text-[10px] font-bold text-[hsl(var(--warning))]">3</span>
+                  <i data-lucide="git-branch" class="h-4 w-4 text-[hsl(var(--warning))]"></i>
+                  <span class="text-sm font-semibold">条件：有 ERROR 才送 LLM</span>
+                  <span class="rounded bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] px-1.5 py-0.5 text-[10px] font-mono">if</span>
+                  <span class="rounded bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] px-1.5 py-0.5 text-[10px] font-mono">OK · true</span>
+                </div>
+              </div>
+              <pre class="rounded-md bg-[hsl(var(--background))]/60 border border-[hsl(var(--warning))]/30 p-2 text-[11px] font-mono text-[hsl(var(--warning))] overflow-x-auto">condition: steps.s2.result.errors > 0</pre>
+              <p class="text-[11px] text-[hsl(var(--muted-foreground))] mt-2">→ 为 false 时早退（跳过 step 4 LLM 调用，仅推送 “全部正常” 心跳）</p>
+            </div>
+          </div>
+
+          <!-- Step 4 · kind=llm · chat -->
+          <div class="flex gap-3 animate-fade-in-up">
+            <div class="severity-bar bg-pink-500"></div>
+            <div class="flex-1 gradient-card rounded-xl border border-pink-500/40 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-6 w-6 rounded-full bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-[10px] font-bold text-pink-300">4</span>
+                  <i data-lucide="brain-circuit" class="h-4 w-4 text-pink-400"></i>
+                  <span class="text-sm font-semibold">LLM 根因诊断</span>
+                  <span class="rounded bg-pink-500/15 text-pink-300 px-1.5 py-0.5 text-[10px] font-mono">llm · chat</span>
+                  <span class="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-mono animate-pulse">RUNNING · 00:18</span>
+                </div>
+                <span class="rounded border border-[hsl(var(--border))] px-1.5 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">maxTokens 800 · 使用当前 LLM 配置</span>
+              </div>
+              <pre class="rounded-md bg-[hsl(var(--background))]/60 border border-pink-500/30 p-2 text-[11px] font-mono text-[hsl(var(--muted-foreground))] overflow-x-auto">args: {
+  "temperature":    0.2,
+  "systemPrompt":   "你是资深 SRE，根据日志样本给出 3 条最可能的根因假设，按严重度排序。",
+  "userPrompt":     "errors=${steps.s2.result.errors}\n样本:\n${steps.s2.result.samples}",
+  "responseFormat": "text",
+  "maxTokens":      800
+}</pre>
+
+              <!-- LLM 流式输出预览：结果不是 PDF，而是模型文本，确保用户能看到 -->
+              <div class="mt-3 rounded-md border border-pink-500/30 bg-pink-500/5 p-3 space-y-2">
+                <div class="flex items-center justify-between text-[10px] font-mono">
+                  <span class="inline-flex items-center gap-1.5 text-pink-300"><i data-lucide="sparkles" class="h-3 w-3"></i> LLM 输出预览 · 流式</span>
+                  <span class="text-[hsl(var(--muted-foreground))]">tokens in 1,248 · out 312</span>
+                </div>
+                <div class="text-xs leading-relaxed text-white/90 space-y-1">
+                  <p><span class="font-semibold text-pink-300">假设 1（高）</span>：下游 <span class="font-mono text-white">order-svc</span> 在 12:31:05 起 HTTP 5xx 激增，疑似连接池耗尽，共 11 条相关 ERROR。</p>
+                  <p><span class="font-semibold text-pink-300">假设 2（中）</span>：Redis 在 12:31:40 出现 <span class="font-mono text-white">READONLY</span> 报错 4 次，疑似主从切换窗口未完成…<span class="inline-block w-2 h-3 bg-pink-400 animate-pulse align-middle ml-0.5"></span></p>
+                </div>
+                <div class="flex items-center gap-2 pt-1 border-t border-pink-500/20">
+                  <button class="inline-flex items-center gap-1 rounded border border-pink-400/40 px-2 py-0.5 text-[10px] font-mono text-pink-300 hover:bg-pink-400/10"><i data-lucide="copy" class="h-3 w-3"></i> 复制</button>
+                  <button class="inline-flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))] hover:border-primary/40"><i data-lucide="maximize-2" class="h-3 w-3"></i> 全屏查看</button>
+                  <span class="ml-auto text-[10px] font-mono text-[hsl(var(--muted-foreground))]">完成后保存到 <span class="text-pink-300">run.output.text</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 5 · kind=tool · message -->
+          <div class="flex gap-3 animate-fade-in-up opacity-80">
+            <div class="severity-bar bg-primary"></div>
+            <div class="flex-1 gradient-card rounded-xl border border-[hsl(var(--border))] p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-6 w-6 rounded-full bg-[hsl(var(--muted))]/60 flex items-center justify-center text-[10px] font-bold">5</span>
+                  <i data-lucide="send" class="h-4 w-4 text-primary"></i>
+                  <span class="text-sm font-semibold">推送告警</span>
+                  <span class="rounded bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-mono">tool · message</span>
+                  <span class="rounded bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))] px-1.5 py-0.5 text-[10px] font-mono">PENDING</span>
+                </div>
+                <span class="rounded border border-[hsl(var(--border))] px-1.5 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">on_error: retry × 2</span>
+              </div>
+              <pre class="rounded-md bg-[hsl(var(--background))]/60 border border-[hsl(var(--border))] p-2 text-[11px] font-mono text-[hsl(var(--muted-foreground))] overflow-x-auto">args: {
+  "channel": "slack://ops",
+  "text":    "${steps.s4.result.text}"
+}</pre>
+            </div>
+          </div>
+
+          <button class="w-full rounded-xl border border-dashed border-[hsl(var(--border))] py-3 text-sm text-[hsl(var(--muted-foreground))] hover:border-primary/60 hover:text-primary inline-flex items-center justify-center gap-2">
+            <i data-lucide="plus" class="h-4 w-4"></i> 添加步骤
+          </button>
+        </div>
+
+        <!-- 右侧：四 kind 拖拽面板 -->
+        <aside class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 space-y-4 h-fit">
+          <div class="flex items-center gap-2"><i data-lucide="blocks" class="h-4 w-4 text-primary"></i><h4 class="text-sm font-semibold">拖拽添加 Step</h4></div>
+          <p class="text-[11px] text-[hsl(var(--muted-foreground))] -mt-2">按 kind 分组 · 每步可自由选择执行体</p>
+
+          <!-- Tool -->
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-primary mb-2 inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span> Tool · 程序化工具</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="file-text" class="h-3.5 w-3.5 text-primary"></i> file_read</div>
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="upload" class="h-3.5 w-3.5 text-primary"></i> upload <span class="ml-auto text-[10px] text-[hsl(var(--muted-foreground))] font-mono">手动上传 文件/文本</span></div>
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="terminal" class="h-3.5 w-3.5 text-primary"></i> shell</div>
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="globe" class="h-3.5 w-3.5 text-primary"></i> web</div>
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="search" class="h-3.5 w-3.5 text-primary"></i> search</div>
+              <div class="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-primary/60"><i data-lucide="send" class="h-3.5 w-3.5 text-primary"></i> message</div>
+            </div>
+          </div>
+
+          <!-- Script -->
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-[hsl(var(--purple))] mb-2 inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--purple))]"></span> Script · 内联脚本</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 rounded-md border border-[hsl(var(--purple))]/30 bg-[hsl(var(--purple))]/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-[hsl(var(--purple))]/60"><i data-lucide="code-2" class="h-3.5 w-3.5 text-[hsl(var(--purple))]"></i> python</div>
+              <div class="flex items-center gap-2 rounded-md border border-[hsl(var(--purple))]/30 bg-[hsl(var(--purple))]/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-[hsl(var(--purple))]/60"><i data-lucide="terminal-square" class="h-3.5 w-3.5 text-[hsl(var(--purple))]"></i> shell</div>
+            </div>
+          </div>
+
+          <!-- Agent -->
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-indigo-400 mb-2 inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-indigo-400"></span> Agent · 专家智能体</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 rounded-md border border-indigo-400/30 bg-indigo-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-indigo-400/60"><i data-lucide="radar" class="h-3.5 w-3.5 text-indigo-400"></i> asset_discovery</div>
+              <div class="flex items-center gap-2 rounded-md border border-indigo-400/30 bg-indigo-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-indigo-400/60"><i data-lucide="scan" class="h-3.5 w-3.5 text-indigo-400"></i> port_scan</div>
+              <div class="flex items-center gap-2 rounded-md border border-indigo-400/30 bg-indigo-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-indigo-400/60"><i data-lucide="bug" class="h-3.5 w-3.5 text-indigo-400"></i> vuln_scan</div>
+              <div class="flex items-center gap-2 rounded-md border border-indigo-400/30 bg-indigo-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-indigo-400/60"><i data-lucide="key" class="h-3.5 w-3.5 text-indigo-400"></i> weak_password</div>
+              <div class="flex items-center gap-2 rounded-md border border-indigo-400/30 bg-indigo-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-indigo-400/60"><i data-lucide="file-bar-chart" class="h-3.5 w-3.5 text-indigo-400"></i> report</div>
+            </div>
+          </div>
+
+          <!-- LLM -->
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-pink-400 mb-2 inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-pink-400"></span> LLM · 调用当前配置</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 rounded-md border border-pink-400/30 bg-pink-400/5 px-2.5 py-1.5 text-xs cursor-grab hover:border-pink-400/60"><i data-lucide="brain-circuit" class="h-3.5 w-3.5 text-pink-400"></i> chat <span class="ml-auto text-[10px] text-[hsl(var(--muted-foreground))] font-mono">使用当前 provider</span></div>
+            </div>
+            <p class="mt-1.5 text-[10px] text-[hsl(var(--muted-foreground))] leading-snug">由全局 LLM 配置决定 provider / model，step 只关心 prompt 与输出格式</p>
+          </div>
+
+          <!-- Logic -->
+          <div>
+            <p class="text-[10px] uppercase tracking-wider text-[hsl(var(--warning))] mb-2 inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))]"></span> Logic · 逻辑</p>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2 rounded-md border border-[hsl(var(--warning))]/40 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] px-2.5 py-1.5 text-xs cursor-grab"><i data-lucide="git-branch" class="h-3.5 w-3.5"></i> 条件分支 (if)</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Tab: 调度 -->
+      <div data-tab="schedule" class="grid lg:grid-cols-[1fr_380px] gap-6 hidden">
+        <div class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-6 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold">调度设置</h3>
+            <label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked class="accent-primary" /> 启用定时调度</label>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-2">触发方式</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-sm text-left hover:border-primary/40">
+                <div class="inline-flex items-center gap-1.5 font-medium"><i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i> 一次性 (at)</div>
+                <p class="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">指定时刻运行一次</p>
+              </button>
+              <button class="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-sm text-left hover:border-primary/40">
+                <div class="inline-flex items-center gap-1.5 font-medium"><i data-lucide="timer-reset" class="h-3.5 w-3.5"></i> 间隔 (every)</div>
+                <p class="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">每隔 N 分钟/小时</p>
+              </button>
+              <button class="rounded-lg border border-primary/40 bg-primary/10 text-primary px-3 py-2.5 text-sm text-left">
+                <div class="inline-flex items-center gap-1.5 font-medium"><i data-lucide="calendar" class="h-3.5 w-3.5"></i> Cron 表达式</div>
+                <p class="text-[11px] mt-0.5 opacity-80">标准 cron 语法</p>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1.5">Cron 表达式</label>
+            <input value="0 9 * * *" class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-sm font-mono outline-none focus:border-primary" />
+            <div class="mt-2 grid grid-cols-5 gap-1 text-[10px] font-mono text-[hsl(var(--muted-foreground))]">
+              <span class="rounded bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 text-center">分 0</span>
+              <span class="rounded bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 text-center">时 9</span>
+              <span class="rounded bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 text-center">日 *</span>
+              <span class="rounded bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 text-center">月 *</span>
+              <span class="rounded bg-[hsl(var(--muted))]/60 px-1.5 py-0.5 text-center">周 *</span>
+            </div>
+            <p class="mt-2 text-xs text-primary inline-flex items-center gap-1.5"><i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i> 等价于：每天 09:00 执行一次</p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1.5">时区</label>
+            <select class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2 text-sm outline-none focus:border-primary">
+              <option>Asia/Shanghai (UTC+08:00)</option>
+              <option>UTC</option>
+              <option>Asia/Tokyo (UTC+09:00)</option>
+            </select>
+          </div>
+
+          <div class="rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <div class="flex items-center gap-2 text-xs text-primary font-semibold mb-2"><i data-lucide="variable" class="h-3.5 w-3.5"></i> 触发时使用的入参默认值</div>
+            <div class="space-y-2 text-xs font-mono">
+              <div class="flex items-center gap-2"><span class="text-[hsl(var(--muted-foreground))] w-32 truncate">target_ip</span><input value="192.168.1.0/24" class="flex-1 rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 px-2 py-1 outline-none focus:border-primary" /></div>
+              <div class="flex items-center gap-2"><span class="text-[hsl(var(--muted-foreground))] w-32 truncate">ports</span><input value="22,3389,445,3306" class="flex-1 rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 px-2 py-1 outline-none focus:border-primary" /></div>
+              <div class="flex items-center gap-2"><span class="text-[hsl(var(--muted-foreground))] w-32 truncate">notify_on_high_risk</span><input value="true" class="flex-1 rounded border border-[hsl(var(--border))] bg-[hsl(var(--background))]/60 px-2 py-1 outline-none focus:border-primary" /></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 pt-2">
+            <button class="inline-flex items-center gap-2 rounded-lg gradient-primary px-4 py-2 text-sm font-semibold shadow-md hover-lift"><i data-lucide="save" class="h-4 w-4"></i> 保存调度</button>
+            <button class="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--destructive))]/40 text-[hsl(var(--destructive))] px-4 py-2 text-sm hover:bg-[hsl(var(--destructive))]/10"><i data-lucide="x" class="h-4 w-4"></i> 解除调度</button>
+          </div>
+        </div>
+
+        <!-- 右侧：预览 -->
+        <aside class="gradient-card rounded-2xl border border-[hsl(var(--border))] p-5 space-y-3 h-fit">
+          <div class="flex items-center gap-2"><i data-lucide="calendar-days" class="h-4 w-4 text-primary"></i><h4 class="text-sm font-semibold">即将运行 (下 10 次)</h4></div>
+          <ul class="space-y-1.5 text-xs font-mono">
+            <li class="flex items-center justify-between rounded-md bg-primary/10 border border-primary/30 px-2.5 py-1.5 text-primary"><span>2026-05-12 09:00:00</span><span class="text-[10px]">+23h 17m</span></li>
+            <li class="flex items-center justify-between rounded-md bg-[hsl(var(--muted))]/40 px-2.5 py-1.5 text-[hsl(var(--muted-foreground))]"><span>2026-05-13 09:00:00</span><span class="text-[10px]">+2d</span></li>
+            <li class="flex items-center justify-between rounded-md bg-[hsl(var(--muted))]/40 px-2.5 py-1.5 text-[hsl(var(--muted-foreground))]"><span>2026-05-14 09:00:00</span><span class="text-[10px]">+3d</span></li>
+            <li class="flex items-center justify-between rounded-md bg-[hsl(var(--muted))]/40 px-2.5 py-1.5 text-[hsl(var(--muted-foreground))]"><span>2026-05-15 09:00:00</span><span class="text-[10px]">+4d</span></li>
+            <li class="flex items-center justify-between rounded-md bg-[hsl(var(--muted))]/40 px-2.5 py-1.5 text-[hsl(var(--muted-foreground))]"><span>2026-05-16 09:00:00</span><span class="text-[10px]">+5d</span></li>
+          </ul>
+          <div class="pt-3 border-t border-[hsl(var(--border))] text-[11px] text-[hsl(var(--muted-foreground))] leading-relaxed">
+            关联 Cron Job ID：<span class="font-mono text-primary">cron_3f21</span><br/>
+            由 <span class="font-mono">CronService</span> 触发，payload 类型 <span class="font-mono">agent_turn</span>，前缀 <span class="font-mono">__workflow__:</span>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Tab: 运行记录 -->
+      <div data-tab="runs" class="space-y-3 hidden">
+        <div class="flex items-center gap-3 mb-2">
+          <div class="relative flex-1 max-w-md">
+            <i data-lucide="search" class="h-4 w-4 absolute left-3 top-2.5 text-[hsl(var(--muted-foreground))]"></i>
+            <input placeholder="按 runId / 状态 过滤…" class="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 pl-9 pr-3 py-2 text-sm outline-none focus:border-primary" />
+          </div>
+          <div class="text-xs text-[hsl(var(--muted-foreground))] ml-auto">共 128 次运行 · 近 30 天成功率 <span class="text-[hsl(var(--success))] font-mono">96.7%</span></div>
+        </div>
+
+        <details class="gradient-card rounded-xl border border-primary/30 overflow-hidden" open>
+          <summary class="flex items-center justify-between px-4 py-3 hover:bg-white/5">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 px-2.5 py-0.5 text-[11px] text-[hsl(var(--success))] font-mono"><span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))] animate-pulse"></span> RUNNING</span>
+              <span class="font-mono text-xs text-primary">run_7c80</span>
+              <span class="text-xs text-[hsl(var(--muted-foreground))]">今天 12:34:22 · 由 shan@admin 手动触发</span>
+            </div>
+            <span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">已运行 01:42 / 5 step</span>
+          </summary>
+          <div class="border-t border-[hsl(var(--border))] px-4 py-3 grid grid-cols-5 gap-2 text-xs">
+            <div class="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 p-2">
+              <div class="flex items-center gap-1.5 text-[hsl(var(--success))]"><i data-lucide="check" class="h-3 w-3"></i> s1 · file_read</div>
+              <div class="font-mono text-[10px] text-[hsl(var(--muted-foreground))] mt-1">0.4s · 2,148 行</div>
+            </div>
+            <div class="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 p-2">
+              <div class="flex items-center gap-1.5 text-[hsl(var(--success))]"><i data-lucide="check" class="h-3 w-3"></i> s2 · script:python</div>
+              <div class="font-mono text-[10px] text-[hsl(var(--muted-foreground))] mt-1">2.1s · errors=18</div>
+            </div>
+            <div class="rounded-md border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/5 p-2">
+              <div class="flex items-center gap-1.5 text-[hsl(var(--success))]"><i data-lucide="check" class="h-3 w-3"></i> s3 · if</div>
+              <div class="font-mono text-[10px] text-[hsl(var(--muted-foreground))] mt-1">true · 进入 LLM</div>
+            </div>
+            <div class="rounded-md border border-primary/40 bg-primary/5 p-2">
+              <div class="flex items-center gap-1.5 text-primary"><i data-lucide="brain-circuit" class="h-3 w-3 animate-pulse"></i> s4 · llm:chat</div>
+              <div class="font-mono text-[10px] text-primary mt-1">00:18 · streaming…</div>
+            </div>
+            <div class="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 p-2">
+              <div class="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]"><i data-lucide="hourglass" class="h-3 w-3"></i> s5 · message</div>
+              <div class="font-mono text-[10px] text-[hsl(var(--muted-foreground))] mt-1">pending</div>
+            </div>
+          </div>
+
+          <!-- 结果形态提示：此工作流终点不是 PDF，而是 LLM 文本，用户可直接查看 -->
+          <div class="border-t border-[hsl(var(--border))] px-4 py-3 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="inline-flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]"><i data-lucide="file-output" class="h-3.5 w-3.5 text-pink-300"></i> 输出形态 · <span class="text-pink-300 font-mono">llm.text</span> <span class="text-[10px]">(非 PDF)</span></span>
+              <div class="flex items-center gap-1.5">
+                <button class="inline-flex items-center gap-1 rounded border border-pink-400/40 px-2 py-0.5 text-[10px] font-mono text-pink-300 hover:bg-pink-400/10"><i data-lucide="eye" class="h-3 w-3"></i> 查看 LLM 回答</button>
+                <button class="inline-flex items-center gap-1 rounded border border-[hsl(var(--border))] px-2 py-0.5 text-[10px] font-mono text-[hsl(var(--muted-foreground))] hover:border-primary/40"><i data-lucide="download" class="h-3 w-3"></i> 导出 .md</button>
+              </div>
+            </div>
+            <div class="rounded-md border border-pink-500/20 bg-pink-500/5 p-2.5 text-[11px] leading-relaxed text-white/85 max-h-32 overflow-y-auto">
+              <p class="mb-1"><span class="font-semibold text-pink-300">假设 1（高）</span>：<span class="font-mono text-white">order-svc</span> 连接池耗尽，11 条相关 ERROR 集中于 12:31:05。</p>
+              <p class="mb-1"><span class="font-semibold text-pink-300">假设 2（中）</span>：Redis <span class="font-mono">READONLY</span> 主从切换未完成…<span class="inline-block w-2 h-3 bg-pink-400 animate-pulse align-middle ml-0.5"></span></p>
+            </div>
+            <p class="text-[10px] text-[hsl(var(--muted-foreground))]">→ 完整 LLM 回答保存在 <span class="font-mono">run.output.text</span>，step 5 <span class="font-mono">message</span> 会把该文本推送到 <span class="font-mono text-primary">slack://ops</span>。</p>
+          </div>
+        </details>
+
+        <details class="gradient-card rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+          <summary class="flex items-center justify-between px-4 py-3 hover:bg-white/5">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 px-2.5 py-0.5 text-[11px] text-[hsl(var(--success))] font-mono">OK</span>
+              <span class="font-mono text-xs">run_7c7f</span>
+              <span class="text-xs text-[hsl(var(--muted-foreground))]">今天 09:00:00 · 由 cron 触发</span>
+            </div>
+            <span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">耗时 12m08s</span>
+          </summary>
+          <div class="border-t border-[hsl(var(--border))] px-4 py-3 space-y-2 text-xs">
+            <div class="font-mono text-[hsl(var(--muted-foreground))]">5 steps OK · errors=6 · 已推送 slack://ops</div>
+            <div class="rounded-md border border-pink-500/20 bg-pink-500/5 p-2.5 text-[11px] leading-relaxed text-white/85">
+              <span class="font-semibold text-pink-300">LLM 结论：</span>慢查询集中于 <span class="font-mono">users_login</span> 表，建议补索引 <span class="font-mono">idx_login_at</span>；其余 3 条为瞬时网络抖动，无需动作。
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-mono text-[hsl(var(--muted-foreground))]">输出形态</span>
+              <span class="rounded bg-pink-500/15 text-pink-300 px-1.5 py-0.5 text-[10px] font-mono">llm.text</span>
+              <button class="ml-auto inline-flex items-center gap-1 rounded border border-pink-400/40 px-2 py-0.5 text-[10px] font-mono text-pink-300 hover:bg-pink-400/10"><i data-lucide="eye" class="h-3 w-3"></i> 查看完整回答</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="gradient-card rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+          <summary class="flex items-center justify-between px-4 py-3 hover:bg-white/5">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 px-2.5 py-0.5 text-[11px] text-[hsl(var(--success))] font-mono">OK</span>
+              <span class="font-mono text-xs">run_7c7e</span>
+              <span class="text-xs text-[hsl(var(--muted-foreground))]">昨天 09:00:00 · 由 cron 触发</span>
+            </div>
+            <span class="font-mono text-xs text-[hsl(var(--muted-foreground))]">耗时 11m42s</span>
+          </summary>
+        </details>
+
+        <details class="gradient-card rounded-xl border border-[hsl(var(--destructive))]/30 overflow-hidden">
+          <summary class="flex items-center justify-between px-4 py-3 hover:bg-white/5">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/10 px-2.5 py-0.5 text-[11px] text-[hsl(var(--destructive))] font-mono">ERROR</span>
+              <span class="font-mono text-xs">run_7b12</span>
+              <span class="text-xs text-[hsl(var(--muted-foreground))]">05/05 09:00:00 · 由 cron 触发</span>
+            </div>
+            <span class="font-mono text-xs text-[hsl(var(--destructive))]">step s2 failed</span>
+          </summary>
+          <div class="border-t border-[hsl(var(--destructive))]/30 px-4 py-3 text-xs font-mono text-[hsl(var(--destructive))]">
+            port_scan timeout after 3 retries · 扫描目标不可达
+          </div>
+        </details>
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="border-t border-[hsl(var(--border))] py-6 mt-8">
+    <div class="mx-auto max-w-[1600px] px-6 flex items-center justify-between text-xs text-[hsl(var(--muted-foreground))]">
+      <span>© 2026 海盾安全 · 工作流原型 v0.1</span>
+      <span class="font-mono">.trellis/tasks/05-11-workflow-builder-ui/prototype.html</span>
+    </div>
+  </footer>
+
+  <script>
+    function showView(v) {
+      document.querySelectorAll('[data-view]').forEach(el => {
+        const active = el.dataset.view === v;
+        el.classList.toggle('hidden', !active);
+        el.classList.toggle('active', active);
+      });
+      document.querySelectorAll('#btn-view-list, #btn-view-detail').forEach(el => el.classList.remove('active'));
+      document.getElementById('btn-view-' + v).classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function showTab(t) {
+      document.querySelectorAll('[data-tab]').forEach(el => {
+        const active = el.dataset.tab === t;
+        el.classList.toggle('hidden', !active);
+        el.classList.toggle('active', active);
+      });
+      document.querySelectorAll('[id^="btn-tab-"]').forEach(el => el.classList.remove('active'));
+      document.getElementById('btn-tab-' + t).classList.add('active');
+    }
+    lucide.createIcons();
+  </script>
+</body>
+</html>

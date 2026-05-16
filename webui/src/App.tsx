@@ -14,6 +14,7 @@ import { Shell } from "@/components/Shell";
 import { ClientProvider } from "@/providers/ClientProvider";
 import {
   clearSavedSecret,
+  deriveWorkflowApiBase,
   deriveWsUrl,
   fetchBootstrap,
   loadSavedSecret,
@@ -23,8 +24,12 @@ import { SecbotClient } from "@/lib/secbot-client";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
+import { PhishingDetailPage } from "@/pages/PhishingDetailPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
+import { WorkflowListPage } from "@/pages/WorkflowListPage";
+import { WorkflowDetailPage } from "@/pages/WorkflowDetailPage";
+import { WORKFLOW_BUILDER_ENABLED } from "@/lib/workflow-client";
 
 /**
  * Default to ON so the refactor lands behind a default-true flag — flipping
@@ -80,6 +85,7 @@ export default function App() {
           client,
           token: boot.token,
           modelName: boot.model_name ?? null,
+          workflowApiBase: deriveWorkflowApiBase(boot.workflow_api_port),
         });
       } catch (e) {
         if (cancelled) return;
@@ -162,6 +168,7 @@ export default function App() {
         client={state.client}
         token={state.token}
         modelName={state.modelName}
+        workflowApiBase={state.workflowApiBase}
       >
         <Shell
           onModelNameChange={handleModelNameChange}
@@ -196,6 +203,7 @@ export default function App() {
                   client={state.client}
                   token={state.token}
                   modelName={state.modelName}
+                  workflowApiBase={state.workflowApiBase}
                 >
                   <Outlet />
                 </ClientProvider>
@@ -212,7 +220,20 @@ export default function App() {
               }
             />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route
+              path="/dashboard/phishing"
+              element={<PhishingDetailPage />}
+            />
             <Route path="/tasks/:id" element={<TaskDetailPage />} />
+            {WORKFLOW_BUILDER_ENABLED && (
+              <>
+                <Route path="/workflows" element={<WorkflowListPage />} />
+                <Route
+                  path="/workflows/:id"
+                  element={<WorkflowDetailPage />}
+                />
+              </>
+            )}
             <Route
               path="/settings"
               element={

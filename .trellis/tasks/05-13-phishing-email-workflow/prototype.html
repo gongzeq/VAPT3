@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>钓鱼邮件检测 · 大屏分析原型</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #0a0e1a; --card: #131826; --border: rgba(148, 163, 184, 0.15);
+    --primary: #1E90FF; --primary-glow: #38bdf8;
+    --rose: #ef4444; --amber: #f59e0b; --emerald: #10b981; --violet: #a855f7;
+    --muted: #64748b; --foreground: #e2e8f0;
+  }
+  body { background: var(--bg); color: var(--foreground); font-family: 'Inter', -apple-system, sans-serif; }
+  .gradient-card { background: linear-gradient(135deg, rgba(30,144,255,0.05), rgba(168,85,247,0.03)); border: 1px solid var(--border); }
+  .gradient-primary { background: linear-gradient(135deg, var(--primary), var(--primary-glow)); }
+  .hover-lift { transition: transform .2s, box-shadow .2s, border-color .2s; }
+  .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.25); }
+  .clickable-card { cursor: pointer; }
+  .clickable-card:hover { border-color: rgba(30,144,255,0.5); }
+  .glow-rose { box-shadow: 0 0 12px rgba(239,68,68,0.4); }
+  .badge-critical { background: rgba(239,68,68,0.15); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
+  .badge-warn { background: rgba(245,158,11,0.15); color:#fcd34d; border:1px solid rgba(245,158,11,0.3); }
+  .badge-ok { background: rgba(16,185,129,0.15); color:#6ee7b7; border:1px solid rgba(16,185,129,0.3); }
+  .text-rose-400 { color:#fb7185; } .text-emerald-400 { color:#34d399; }
+  .text-amber-400 { color:#fbbf24; } .text-violet-400 { color:#c084fc; }
+  .text-muted { color: var(--muted); }
+  .border-soft { border: 1px solid var(--border); }
+  .nav-link { color: var(--muted); }
+  .nav-link.active { color: var(--foreground); border-bottom: 2px solid var(--primary); }
+  table th { color: var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  table td { font-size:13px; }
+  table tbody tr:hover { background: rgba(255,255,255,0.03); }
+  .pulse-dot::before { content:''; display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--rose); margin-right:6px; animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1; box-shadow:0 0 0 0 rgba(239,68,68,0.6);} 50%{opacity:0.6; box-shadow:0 0 0 6px rgba(239,68,68,0);} }
+  .prototype-banner { background: linear-gradient(90deg, rgba(245,158,11,0.15), transparent); border-left: 3px solid var(--amber); }
+  .view { display: none; }
+  .view.active { display: block; }
+  .breadcrumb a { color: var(--muted); transition: color .15s; }
+  .breadcrumb a:hover { color: var(--foreground); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="prototype-banner px-6 py-2 text-xs text-amber-400 flex items-center justify-between">
+  <span>📐 PROTOTYPE · 钓鱼邮件检测大屏分析（两层：主屏概要卡 → 详情页）· 数据为 mock</span>
+  <span class="text-muted">Task: 05-13-phishing-email-workflow</span>
+</div>
+
+<header class="border-soft border-b">
+  <div class="container mx-auto px-6 py-4 flex items-center justify-between max-w-[1400px]">
+    <div class="flex items-center gap-8">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center text-sm font-bold">S</div>
+        <span class="font-semibold">secbot</span>
+      </div>
+      <nav class="flex items-center gap-6 text-sm">
+        <a class="nav-link active pb-1">大屏分析</a>
+        <a class="nav-link">资产</a>
+        <a class="nav-link">工作流</a>
+        <a class="nav-link">报告</a>
+        <a class="nav-link">设置</a>
+      </nav>
+    </div>
+    <div class="flex items-center gap-3 text-xs text-muted">
+      <span class="pulse-dot">实时</span>
+      <span>2026-05-13 14:32:08</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ 视图1：主屏（DashboardPage） ═══════════════════════════ -->
+<main id="view-overview" class="view active container mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+
+  <!-- 现有大屏占位 -->
+  <section class="gradient-card rounded-xl p-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-sm font-semibold">现有大屏内容（占位）</h2>
+        <p class="text-xs text-muted mt-1">KPI · 风险趋势 · 资产分布 · 漏洞类型 · 资产聚类 · 历史报告 · 实时活动流</p>
+      </div>
+      <span class="text-xs text-muted">↓ 新增"钓鱼邮件检测"概要卡</span>
+    </div>
+  </section>
+
+  <!-- 新增：钓鱼邮件检测概要卡（一行 3 列宽度） -->
+  <section>
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-1 h-5 gradient-primary rounded-full"></div>
+      <h2 class="text-base font-semibold">钓鱼邮件检测</h2>
+      <span class="text-xs text-muted">phishing-email workflow</span>
+    </div>
+
+    <!-- 单卡片：左侧主指标 + 中部 sparkline + 右侧分项 + 详情按钮 -->
+    <div onclick="showDetail()" class="clickable-card hover-lift gradient-card rounded-xl p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+
+      <!-- 主指标：今日识别钓鱼数（占位 3 列） -->
+      <div class="lg:col-span-3 flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+             style="background: rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3);">🎣</div>
+        <div>
+          <p class="text-3xl font-bold tracking-tight font-mono text-rose-400">73</p>
+          <p class="text-xs text-muted mt-0.5">今日识别钓鱼 · <span class="text-emerald-400">↑ 8 vs 昨日</span></p>
+        </div>
+      </div>
+
+      <!-- sparkline 趋势（4 列） -->
+      <div class="lg:col-span-4">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-muted">近 7 天检测趋势</span>
+          <span class="text-xs text-muted">钓鱼率 1.55%</span>
+        </div>
+        <div id="overviewSpark" style="height: 56px;"></div>
+      </div>
+
+      <!-- 右侧 3 个小指标（4 列） -->
+      <div class="lg:col-span-4 grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <p class="text-lg font-mono font-semibold">1,284</p>
+          <p class="text-[11px] text-muted">今日总数</p>
+        </div>
+        <div>
+          <p class="text-lg font-mono font-semibold text-amber-400">42.6%</p>
+          <p class="text-[11px] text-muted">缓存命中率</p>
+        </div>
+        <div>
+          <p class="text-lg font-mono font-semibold">2.8s</p>
+          <p class="text-[11px] text-muted">平均耗时</p>
+        </div>
+      </div>
+
+      <!-- 详情按钮（1 列） -->
+      <div class="lg:col-span-1 flex items-center justify-end gap-2">
+        <span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">链路正常</span>
+        <span class="text-primary text-sm">→</span>
+      </div>
+
+    </div>
+    <p class="text-[11px] text-muted mt-2 text-right">点击卡片查看详情 →</p>
+  </section>
+
+  <!-- 后续大屏内容占位 -->
+  <section class="gradient-card rounded-xl p-4">
+    <p class="text-xs text-muted">↑ 概要卡之后是其它大屏区块（保持原样）</p>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════ 视图2：钓鱼邮件检测详情页 ═══════════════════════════ -->
+<main id="view-detail" class="view container mx-auto max-w-[1400px] px-6 py-6 space-y-6">
+
+  <!-- 面包屑 + 返回 -->
+  <div class="flex items-center justify-between">
+    <div class="breadcrumb flex items-center gap-2 text-sm">
+      <a onclick="showOverview()" class="cursor-pointer">大屏分析</a>
+      <span class="text-muted">/</span>
+      <span>钓鱼邮件检测</span>
+    </div>
+    <button onclick="showOverview()" class="text-xs text-muted hover:text-foreground border-soft rounded-lg px-3 py-1.5">← 返回大屏</button>
+  </div>
+
+  <!-- 标题栏 -->
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-1 h-6 gradient-primary rounded-full"></div>
+      <h2 class="text-lg font-semibold">钓鱼邮件检测分析</h2>
+      <span class="text-xs text-muted">来自 mail-gateway / phishing-email workflow</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 rounded-lg border-soft bg-white/5 p-0.5 text-xs">
+        <button class="rounded-md px-2.5 py-1 gradient-primary text-white">今日</button>
+        <button class="rounded-md px-2.5 py-1 text-muted hover:text-foreground">7 天</button>
+        <button class="rounded-md px-2.5 py-1 text-muted hover:text-foreground">30 天</button>
+      </div>
+      <button class="text-xs text-muted hover:text-foreground border-soft rounded-lg px-3 py-1.5">导出 CSV</button>
+    </div>
+  </div>
+
+  <!-- KPI×4 -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="hover-lift gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between"><span class="text-violet-400">📧</span><span class="text-[10px] text-emerald-400">↑ 12%</span></div>
+      <p class="text-2xl font-bold font-mono mt-2">1,284</p>
+      <p class="text-xs text-muted mt-1">今日检测邮件总数</p>
+    </div>
+    <div class="hover-lift gradient-card rounded-xl p-4 glow-rose">
+      <div class="flex items-center justify-between"><span class="text-rose-400">🎣</span><span class="text-[10px] text-rose-400">↑ 8</span></div>
+      <p class="text-2xl font-bold font-mono mt-2 text-rose-400">73</p>
+      <p class="text-xs text-muted mt-1">识别为钓鱼 (5.7%)</p>
+    </div>
+    <div class="hover-lift gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between"><span class="text-amber-400">⚡</span><span class="text-[10px] text-emerald-400">↑ 3%</span></div>
+      <p class="text-2xl font-bold font-mono mt-2">42.6%</p>
+      <p class="text-xs text-muted mt-1">Redis 缓存命中率</p>
+    </div>
+    <div class="hover-lift gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between"><span class="text-emerald-400">⏱</span><span class="text-[10px] text-emerald-400">↓ 0.4s</span></div>
+      <p class="text-2xl font-bold font-mono mt-2">2.8<span class="text-sm text-muted">s</span></p>
+      <p class="text-xs text-muted mt-1">workflow 平均耗时</p>
+    </div>
+  </div>
+
+  <!-- 趋势 + 风险饼图 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold">检测趋势</h3>
+          <p class="text-xs text-muted mt-0.5">钓鱼 vs 可疑 vs 正常 · 近 7 天</p>
+        </div>
+        <div class="flex items-center gap-3 text-xs text-muted">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-400"></span>钓鱼</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400"></span>可疑</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>正常</span>
+        </div>
+      </div>
+      <div id="trendChart" style="height: 320px;"></div>
+    </div>
+    <div class="gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold">风险等级分布</h3>
+          <p class="text-xs text-muted mt-0.5">基于 LLM confidence</p>
+        </div>
+      </div>
+      <div id="riskPie" style="height: 320px;"></div>
+    </div>
+  </div>
+
+  <!-- Top 发件人 + 检测明细 -->
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <div class="lg:col-span-2 gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold">高危发件人 Top 8</h3>
+          <p class="text-xs text-muted mt-0.5">近 7 天累计钓鱼次数</p>
+        </div>
+      </div>
+      <div id="senderRank" style="height: 360px;"></div>
+    </div>
+    <div class="lg:col-span-3 gradient-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-semibold">检测明细</h3>
+          <p class="text-xs text-muted mt-0.5">来自 SQLite detection_results 表 · 最近 50 条</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <input type="text" placeholder="搜索发件人 / 主题..." class="bg-white/5 border-soft rounded-lg px-3 py-1.5 text-xs w-48 outline-none focus:border-primary" />
+          <select class="bg-white/5 border-soft rounded-lg px-2 py-1.5 text-xs text-muted">
+            <option>全部</option><option>仅钓鱼</option><option>仅可疑</option>
+          </select>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="border-b border-soft">
+            <tr>
+              <th class="text-left py-2">时间</th><th class="text-left py-2">发件人</th>
+              <th class="text-left py-2">主题</th><th class="text-right py-2">置信度</th>
+              <th class="text-right py-2">耗时</th><th class="text-right py-2">动作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[var(--border)]" id="detailTable"></tbody>
+        </table>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-xs text-muted">
+        <span>共 1,284 条记录</span>
+        <div class="flex items-center gap-2">
+          <button class="border-soft rounded-md px-2 py-1 hover:text-foreground">‹</button>
+          <span>1 / 26</span>
+          <button class="border-soft rounded-md px-2 py-1 hover:text-foreground">›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 健康卡 -->
+  <div class="gradient-card rounded-xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold">链路健康</h3>
+      <span class="text-xs text-muted">/api/dashboard/phishing/health（聚合 postfix + rspamd + workflow + provider + redis + sqlite）</span>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">postfix</span><span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">RUNNING</span></div>
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">rspamd</span><span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">RUNNING</span></div>
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">workflow</span><span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">OK</span></div>
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">LLM provider</span><span class="badge-warn rounded-full px-2 py-0.5 text-[10px]">SLOW</span></div>
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">redis</span><span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">OK</span></div>
+      <div class="border-soft rounded-lg p-3 flex items-center justify-between"><span class="text-xs text-muted">SQLite</span><span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">OK</span></div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="border-soft border-t mt-8 py-4 text-center text-xs text-muted">
+  prototype · 主屏概要卡 → 详情页（点击卡片切换）· 与现有大屏视觉风格一致
+</footer>
+
+<script>
+// ── 视图切换 ────────────────────────────────────────────────
+function showOverview() {
+  document.getElementById('view-overview').classList.add('active');
+  document.getElementById('view-detail').classList.remove('active');
+  window.scrollTo(0, 0);
+}
+function showDetail() {
+  document.getElementById('view-overview').classList.remove('active');
+  document.getElementById('view-detail').classList.add('active');
+  window.scrollTo(0, 0);
+  setTimeout(() => { trendChart.resize(); riskPie.resize(); senderRank.resize(); }, 50);
+}
+
+// ── 主屏概要 sparkline ──────────────────────────────────────
+const overviewSpark = echarts.init(document.getElementById('overviewSpark'), null, { renderer: 'svg' });
+overviewSpark.setOption({
+  backgroundColor: 'transparent',
+  grid: { left: 0, right: 0, top: 4, bottom: 4 },
+  xAxis: { type: 'category', show: false, data: ['05-07','05-08','05-09','05-10','05-11','05-12','05-13'] },
+  yAxis: { type: 'value', show: false },
+  tooltip: { trigger: 'axis', backgroundColor: '#131826', borderColor:'#1f2937', textStyle: { color:'#e2e8f0' } },
+  series: [{
+    type: 'line', smooth: true, symbol: 'circle', symbolSize: 4,
+    data: [12, 18, 9, 15, 24, 11, 20],
+    lineStyle: { color: '#ef4444', width: 2 },
+    itemStyle: { color: '#ef4444' },
+    areaStyle: { color: { type:'linear', x:0, y:0, x2:0, y2:1,
+      colorStops: [{ offset:0, color: 'rgba(239,68,68,0.35)' },{ offset:1, color:'rgba(239,68,68,0)' }] } }
+  }]
+});
+
+// ── 详情页：检测趋势 ────────────────────────────────────────
+const trendChart = echarts.init(document.getElementById('trendChart'), null, { renderer: 'svg' });
+trendChart.setOption({
+  backgroundColor: 'transparent',
+  tooltip: { trigger: 'axis', backgroundColor:'#131826', borderColor:'#1f2937', textStyle:{ color:'#e2e8f0' } },
+  legend: { show: false },
+  grid: { left: 36, right: 16, top: 16, bottom: 32 },
+  xAxis: { type: 'category', data: ['05-07','05-08','05-09','05-10','05-11','05-12','05-13'],
+           axisLine: { lineStyle: { color:'#334155' } }, axisLabel: { color:'#94a3b8', fontSize: 11 } },
+  yAxis: { type: 'value', splitLine: { lineStyle: { color:'rgba(148,163,184,0.08)' } },
+           axisLabel: { color:'#94a3b8', fontSize: 11 } },
+  series: [
+    { name:'正常', type:'bar', stack:'mail', data:[980,1120,1240,1015,1320,1100,1211],
+      itemStyle:{ color:'#10b981', borderRadius:[0,0,4,4] }, barWidth: 24 },
+    { name:'可疑', type:'bar', stack:'mail', data:[42,58,65,51,72,49,53], itemStyle:{ color:'#f59e0b' } },
+    { name:'钓鱼', type:'bar', stack:'mail', data:[12,18,9,15,24,11,20],
+      itemStyle:{ color:'#ef4444', borderRadius:[4,4,0,0] } },
+    { name:'钓鱼率(%)', type:'line', data:[1.16,1.49,0.68,1.39,1.69,0.95,1.55],
+      smooth: true, symbol:'circle', symbolSize: 6,
+      lineStyle:{ color:'#1E90FF', width: 2 },
+      itemStyle:{ color:'#1E90FF', borderColor:'#fff', borderWidth: 2 } }
+  ]
+});
+
+// ── 详情页：风险饼图 ───────────────────────────────────────
+const riskPie = echarts.init(document.getElementById('riskPie'), null, { renderer: 'svg' });
+riskPie.setOption({
+  backgroundColor: 'transparent',
+  tooltip: { trigger:'item', backgroundColor:'#131826', borderColor:'#1f2937', textStyle:{ color:'#e2e8f0' } },
+  legend: { bottom: 0, left:'center', textStyle:{ color:'#94a3b8', fontSize: 11 }, icon:'circle' },
+  series: [{
+    type: 'pie', radius: ['52%','78%'], center: ['50%','46%'],
+    itemStyle: { borderColor:'#0a0e1a', borderWidth: 2 },
+    label: { show: false }, labelLine: { show: false },
+    data: [
+      { value: 28, name:'高 (>0.7)', itemStyle:{ color:'#ef4444' } },
+      { value: 32, name:'中 (0.4-0.7)', itemStyle:{ color:'#f59e0b' } },
+      { value: 13, name:'低 (<0.4)', itemStyle:{ color:'#a855f7' } },
+      { value: 1211, name:'正常', itemStyle:{ color:'#10b981' } }
+    ]
+  }]
+});
+
+// ── 详情页：高危发件人 ───────────────────────────────────────
+const senderRank = echarts.init(document.getElementById('senderRank'), null, { renderer: 'svg' });
+senderRank.setOption({
+  backgroundColor: 'transparent',
+  tooltip: { trigger:'axis', axisPointer: { type:'shadow' }, backgroundColor:'#131826', borderColor:'#1f2937', textStyle:{ color:'#e2e8f0' } },
+  grid: { left: 140, right: 16, top: 8, bottom: 8 },
+  xAxis: { type:'value', splitLine: { lineStyle: { color:'rgba(148,163,184,0.08)' } },
+           axisLabel: { color:'#94a3b8', fontSize: 11 } },
+  yAxis: { type:'category',
+    data: ['no-reply@paypa1.com','admin@bank-secure.io','support@app1e.com','service@m1crosoft.com',
+           'noreply@arnazon.com','security@gma1l.com','billing@app1eid.com','team@gith0b.com'].reverse(),
+    axisLine: { lineStyle: { color:'#334155' } }, axisLabel: { color:'#cbd5e1', fontSize: 11 } },
+  series: [{
+    type:'bar', data: [42,38,31,27,24,19,15,12].reverse(), barWidth: 16,
+    itemStyle: {
+      color: { type:'linear', x:0, y:0, x2:1, y2:0,
+        colorStops: [{ offset:0, color:'#ef4444' },{ offset:1, color:'#f59e0b' }] },
+      borderRadius: [0,4,4,0]
+    },
+    label: { show: true, position:'right', color:'#94a3b8', fontSize: 11 }
+  }]
+});
+
+// ── 详情页：明细表 ───────────────────────────────────────
+const rows = [
+  { ts:'14:31:42', sender:'no-reply@paypa1.com', subject:'【紧急】您的账户即将冻结，请立即验证身份', conf:0.94, ms:2840, action:'reject' },
+  { ts:'14:30:18', sender:'support@bank-secure.io', subject:'Action Required: Update Your Password', conf:0.87, ms:3120, action:'quarantine' },
+  { ts:'14:28:55', sender:'newsletter@example.com', subject:'本周技术周刊 #128', conf:0.12, ms:2240, action:'accept' },
+  { ts:'14:27:33', sender:'service@app1e.com', subject:'您的 Apple ID 已被锁定，请尽快解锁', conf:0.91, ms:2950, action:'reject' },
+  { ts:'14:25:11', sender:'hr@company.com', subject:'关于年度安全培训的通知', conf:0.08, ms:0, action:'cached' },
+  { ts:'14:23:47', sender:'security@gma1l.com', subject:'Suspicious sign-in attempt blocked', conf:0.76, ms:3380, action:'quarantine' },
+  { ts:'14:22:09', sender:'billing@app1eid.com', subject:'账单异常：检测到未授权交易，请确认', conf:0.83, ms:2710, action:'review' },
+  { ts:'14:20:35', sender:'team@gith0b.com', subject:'Critical security alert for your repository', conf:0.69, ms:2880, action:'review' },
+];
+const actionBadge = {
+  reject: '<span class="badge-critical rounded-full px-2 py-0.5 text-[10px]">REJECT</span>',
+  quarantine: '<span class="badge-warn rounded-full px-2 py-0.5 text-[10px]">QUARANTINE</span>',
+  review: '<span class="badge-warn rounded-full px-2 py-0.5 text-[10px]">REVIEW</span>',
+  accept: '<span class="badge-ok rounded-full px-2 py-0.5 text-[10px]">ACCEPT</span>',
+  cached: '<span class="badge-ok rounded-full px-2 py-0.5 text-[10px]" title="Redis 缓存命中">CACHED</span>',
+};
+document.getElementById('detailTable').innerHTML = rows.map(r => {
+  const c = r.conf > 0.7 ? 'text-rose-400' : (r.conf > 0.4 ? 'text-amber-400' : 'text-emerald-400');
+  return `<tr>
+    <td class="py-2.5 font-mono text-muted">${r.ts}</td>
+    <td class="py-2.5"><span class="font-mono text-violet-400">${r.sender}</span></td>
+    <td class="py-2.5 max-w-md truncate" title="${r.subject}">${r.subject}</td>
+    <td class="py-2.5 text-right font-mono ${c}">${(r.conf*100).toFixed(0)}%</td>
+    <td class="py-2.5 text-right font-mono text-muted">${r.ms ? r.ms+'ms' : '—'}</td>
+    <td class="py-2.5 text-right">${actionBadge[r.action]}</td>
+  </tr>`;
+}).join('');
+
+window.addEventListener('resize', () => {
+  overviewSpark.resize(); trendChart.resize(); riskPie.resize(); senderRank.resize();
+});
+</script>
+
+</body>
+</html>

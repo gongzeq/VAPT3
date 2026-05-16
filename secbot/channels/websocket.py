@@ -513,6 +513,7 @@ class WebSocketChannel(BaseChannel):
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
+        workflow_api_port: int | None = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
@@ -548,6 +549,11 @@ class WebSocketChannel(BaseChannel):
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
         self._blackboard_registry = blackboard_registry
+        # Port of the standalone aiohttp workflow sub-service started by
+        # ``secbot gateway`` — the WebUI reads this from the bootstrap
+        # payload so it knows where to send mutating workflow requests
+        # (``websockets`` only parses GET, so they can't live here).
+        self._workflow_api_port = workflow_api_port
         # Throttle state for WS broadcasts (per spec: 1 update / 1s per key).
         # Maps ``(event, scope)`` → monotonic timestamp of last emission.
         self._broadcast_last_emit: dict[tuple[str, str], float] = {}
@@ -726,6 +732,27 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/dashboard/asset-cluster":
             return await self._handle_dashboard_asset_cluster(request)
 
+        # Phishing detection dashboard (PRD §R6 + spec/backend/phishing-dashboard.md).
+        # Read-only views over ``detection_results.db`` written by the phishing
+        # workflow's step3 script. Missing/empty DB returns zeroed payload.
+        if got == "/api/dashboard/phishing/summary":
+            return await self._handle_dashboard_phishing_summary(request)
+
+        if got == "/api/dashboard/phishing/stats":
+            return await self._handle_dashboard_phishing_stats(request)
+
+        if got == "/api/dashboard/phishing/history":
+            return await self._handle_dashboard_phishing_history(request)
+
+        if got == "/api/dashboard/phishing/trend":
+            return await self._handle_dashboard_phishing_trend(request)
+
+        if got == "/api/dashboard/phishing/top-senders":
+            return await self._handle_dashboard_phishing_top_senders(request)
+
+        if got == "/api/dashboard/phishing/health":
+            return await self._handle_dashboard_phishing_health(request)
+
         # Report metadata surface (spec: `.trellis/spec/backend/report-meta.md`).
         # List + single-row detail endpoints read from the ``report_meta`` table
         # populated by the report skill handlers.
@@ -879,6 +906,7 @@ class WebSocketChannel(BaseChannel):
                 "ws_path": self._expected_path(),
                 "expires_in": self.config.token_ttl_s,
                 "model_name": _read_webui_model_name(),
+                "workflow_api_port": self._workflow_api_port,
             }
         )
 
@@ -1269,6 +1297,134 @@ class WebSocketChannel(BaseChannel):
             for system, levels in cluster.items()
         ]
         return _http_json_response({"clusters": clusters})
+
+    # -- Phishing detection dashboard ---------------------------------------
+    #
+    # PRD §R6 + spec/backend/phishing-dashboard.md. The underlying SQLite is
+    # written by the phishing workflow's step3 script; these endpoints are
+    # strictly read-only. Each handler delegates to
+    # :mod:`secbot.api.phishing_dashboard` which already swallows missing-DB
+    # / sqlite errors into empty payloads, so we only translate truly
+    # unexpected exceptions into 500.
+
+    async def _handle_dashboard_phishing_summary(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        try:
+            payload = phishing_dashboard.summary()
+        except Exception:
+            self.logger.exception("dashboard.phishing.summary: error")
+            return _http_error(500, "phishing summary unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_phishing_stats(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        try:
+            payload = phishing_dashboard.stats()
+        except Exception:
+            self.logger.exception("dashboard.phishing.stats: error")
+            return _http_error(500, "phishing stats unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_phishing_history(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        query = _parse_query(request.path)
+
+        def _int(key: str, default: int, *, lo: int, hi: int) -> int:
+            raw = _query_first(query, key)
+            if raw is None or raw == "":
+                return default
+            try:
+                v = int(raw)
+            except ValueError:
+                return default
+            return max(lo, min(hi, v))
+
+        page = _int("page", 1, lo=1, hi=10_000)
+        page_size = _int("page_size", 20, lo=1, hi=200)
+        search = (_query_first(query, "search") or "").strip()
+        filter_ = (_query_first(query, "filter") or "all").strip().lower() or "all"
+
+        try:
+            payload = phishing_dashboard.history(
+                page=page,
+                page_size=page_size,
+                search=search or None,
+                filter_=filter_,
+            )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("dashboard.phishing.history: error")
+            return _http_error(500, "phishing history unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_phishing_trend(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        query = _parse_query(request.path)
+        raw = (_query_first(query, "range") or "7d").strip().lower()
+        # Accept "7d" / "30d" / "90d" — clamp to allowed set.
+        mapping = {"7d": 7, "30d": 30, "90d": 90}
+        days = mapping.get(raw, 7)
+
+        try:
+            payload = phishing_dashboard.trend(days=days)
+        except Exception:
+            self.logger.exception("dashboard.phishing.trend: error")
+            return _http_error(500, "phishing trend unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_phishing_top_senders(
+        self, request: WsRequest
+    ) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        query = _parse_query(request.path)
+
+        def _int(key: str, default: int, *, lo: int, hi: int) -> int:
+            raw = _query_first(query, key)
+            if raw is None or raw == "":
+                return default
+            try:
+                v = int(raw)
+            except ValueError:
+                return default
+            return max(lo, min(hi, v))
+
+        limit = _int("limit", 8, lo=1, hi=50)
+        days = _int("days", 7, lo=1, hi=90)
+
+        try:
+            payload = phishing_dashboard.top_senders(limit=limit, days=days)
+        except Exception:
+            self.logger.exception("dashboard.phishing.top_senders: error")
+            return _http_error(500, "phishing top-senders unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_phishing_health(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import phishing_dashboard
+
+        try:
+            payload = phishing_dashboard.health()
+        except Exception:
+            self.logger.exception("dashboard.phishing.health: error")
+            return _http_error(500, "phishing health unavailable")
+        return _http_json_response(payload)
 
     # -- Report metadata surface --------------------------------------------
     #

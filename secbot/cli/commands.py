@@ -506,6 +506,59 @@ def _migrate_cron_store(config: "Config") -> None:
         shutil.move(str(legacy_path), str(new_path))
 
 
+def _build_api_workflow_kwargs(
+    config: "Config", agent_loop: Any
+) -> dict[str, Any]:
+    """Return ``create_app`` kwargs that wire the workflow REST surface.
+
+    The ``secbot api`` command serves the OpenAI-compatible endpoint AND
+    the ``/api/workflows*`` surface so integration tests / headless
+    automation can drive the workflow engine without spinning up the
+    full gateway. A failure to bootstrap the service is logged and
+    swallowed — the caller still gets a working OpenAI endpoint.
+    """
+    try:
+        from secbot.agents.registry import (
+            AgentRegistry,
+            AgentRegistryError,
+            load_agent_registry,
+        )
+        from secbot.workflow import WorkflowService
+    except Exception:
+        logger.exception("serve: workflow imports failed; REST surface disabled")
+        return {}
+
+    agents_dir = Path(__file__).resolve().parents[1] / "agents"
+    agent_registry: Any
+    if agents_dir.is_dir():
+        try:
+            agent_registry = load_agent_registry(agents_dir, skill_names=None)
+        except AgentRegistryError:
+            logger.exception(
+                "serve: agent registry failed to load; continuing with empty registry"
+            )
+            agent_registry = AgentRegistry()
+    else:
+        agent_registry = AgentRegistry()
+
+    try:
+        service = WorkflowService(
+            store_root=config.workspace_path / "workflows",
+            tool_registry=agent_loop.tools,
+            agent_registry=agent_registry,
+            llm_provider=agent_loop.provider,
+        )
+    except Exception:
+        logger.exception("serve: WorkflowService wiring failed; REST surface disabled")
+        return {}
+
+    return {
+        "workflow_service": service,
+        "workflow_tool_registry": agent_loop.tools,
+        "workflow_agent_registry": agent_registry,
+    }
+
+
 # ============================================================================
 # OpenAI-Compatible API Server
 # ============================================================================
@@ -586,7 +639,12 @@ def serve(
         )
     console.print()
 
-    api_app = create_app(agent_loop, model_name=model_name, request_timeout=timeout)
+    api_app = create_app(
+        agent_loop,
+        model_name=model_name,
+        request_timeout=timeout,
+        **_build_api_workflow_kwargs(runtime_config, agent_loop),
+    )
 
     async def on_startup(_app):
         await agent_loop._connect_mcp()
@@ -669,6 +727,13 @@ def _run_gateway(
     # Create cron service with workspace-scoped store
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
+
+    # Workflow engine wiring is deferred to AFTER the agent is built so we
+    # can reuse ``agent.tools`` / ``agent.subagents`` without a second
+    # registry instance. The service and agent-registry references are
+    # initialised here as ``None`` so type-checkers see them in scope.
+    workflow_service: Any = None
+    workflow_agent_registry: Any = None
 
     # Create agent with cron service
     agent = AgentLoop(
@@ -781,9 +846,96 @@ def _run_gateway(
     if isinstance(message_tool, MessageTool):
         message_tool.set_send_callback(_deliver_to_channel)
 
+    # ------------------------------------------------------------------
+    # Workflow engine wiring
+    # ------------------------------------------------------------------
+    # Reuse the agent's ``ToolRegistry`` so kind=tool / kind=script steps
+    # see the exact same tool surface the LLM does (shell, file_read,
+    # web, etc.). The YAML agent registry is loaded lazily from
+    # ``secbot/agents/*.yaml``; failure is tolerated because PR1 only
+    # needs the workflow surface to stay usable with tool+script+llm
+    # kinds even when subagent YAMLs fail to load (spec: dev-guide.md
+    # §2.1).
+    try:
+        from secbot.agents.registry import (
+            AgentRegistry,
+            AgentRegistryError,
+            load_agent_registry,
+        )
+
+        agents_dir = Path(__file__).resolve().parents[1] / "agents"
+        if agents_dir.is_dir():
+            try:
+                workflow_agent_registry = load_agent_registry(
+                    agents_dir, skill_names=None,
+                )
+            except AgentRegistryError:
+                logger.exception(
+                    "workflow: agent registry failed to load; kind=agent "
+                    "steps will surface workflow.executor.agent_not_found"
+                )
+                workflow_agent_registry = AgentRegistry()
+        else:
+            workflow_agent_registry = AgentRegistry()
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("workflow: agent registry bootstrap crashed")
+        workflow_agent_registry = None
+
+    try:
+        from secbot.workflow import WorkflowService
+        from secbot.workflow.skill_adapter import SkillToolRegistryAdapter
+
+        workflow_store_root = config.workspace_path / "workflows"
+        # The ``tool_registry`` surfaced to workflow ``kind=tool`` steps
+        # is the on-disk skill catalogue (secbot/skills/*), NOT
+        # ``agent.tools``: users asked for the builder dropdown to show
+        # the existing skills (fscan-/nmap-/nuclei-/report-*).
+        # ``fallback_registry=agent.tools`` keeps the dropdown clean
+        # while letting ``kind=script`` steps still resolve the built-in
+        # ``exec`` tool that the ``ScriptExecutor`` shells out through.
+        workflow_tool_registry = SkillToolRegistryAdapter(
+            scan_root=config.workspace_path / "workflow_scans",
+            fallback_registry=getattr(agent, "tools", None),
+        )
+        workflow_service = WorkflowService(
+            store_root=workflow_store_root,
+            tool_registry=workflow_tool_registry,
+            agent_registry=workflow_agent_registry,
+            llm_provider=provider,
+            cron_service=cron,
+        )
+        logger.info(
+            "Workflow engine wired (store={}, skills={}, agents={})",
+            workflow_store_root,
+            len(workflow_tool_registry.tool_names),
+            len(workflow_agent_registry) if workflow_agent_registry is not None else 0,
+        )
+    except Exception:
+        logger.exception("workflow: service wiring failed; REST surface disabled")
+        workflow_service = None
+        workflow_tool_registry = None
+
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
+        # Workflow dispatch: messages with the ``__workflow__:`` prefix
+        # are synthetic jobs created by :meth:`WorkflowService.attach_schedule`
+        # and MUST bypass the agent turn. Returning ``None`` signals the
+        # cron loop that the job is already handled (no delivery).
+        if (
+            workflow_service is not None
+            and WorkflowService.is_cron_workflow_message(job.payload.message)
+        ):
+            try:
+                await workflow_service.handle_cron_message(job.payload.message)
+            except Exception:
+                logger.exception(
+                    "workflow cron dispatch failed job={} message={}",
+                    job.id,
+                    job.payload.message,
+                )
+            return None
+
         # Dream is an internal job — run directly, not through the agent loop.
         if job.name == "dream":
             try:
@@ -857,12 +1009,16 @@ def _run_gateway(
     # can serve the embedded webui's REST surface, and the SubagentManager so
     # ``/api/dashboard/summary`` + ``/api/agents?include_status=true`` can
     # surface runtime state).
+    workflow_api_port: int | None = (
+        config.gateway.port + 1 if workflow_service is not None else None
+    )
     channels = ChannelManager(
         config,
         bus,
         session_manager=session_manager,
         subagent_manager=getattr(agent, "subagents", None),
         blackboard_registry=getattr(agent, "blackboard_registry", None),
+        workflow_api_port=workflow_api_port,
     )
 
     def _pick_heartbeat_target() -> tuple[str, str]:
@@ -1035,6 +1191,34 @@ def _run_gateway(
         except Exception as e:
             console.print(f"[yellow]Could not open browser ({e}); visit {open_browser_url}[/yellow]")
 
+    async def _workflow_api_server(host: str, wf_port: int):
+        """Serve ``/api/workflows/*`` on its own aiohttp listener.
+
+        The WebSocket channel can't host mutating verbs (``websockets``
+        only parses GET), so workflow POST/PUT/DELETE + CORS pre-flight
+        requests live on a dedicated port next to the gateway.
+        """
+        from aiohttp import web
+
+        from secbot.api.server import create_workflow_app
+
+        wf_app = create_workflow_app(
+            workflow_service,
+            tool_registry=workflow_tool_registry,
+            agent_registry=workflow_agent_registry,
+        )
+        runner = web.AppRunner(wf_app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, wf_port)
+        await site.start()
+        console.print(
+            f"[green]✓[/green] Workflow REST: http://{host}:{wf_port}/api/workflows"
+        )
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await runner.cleanup()
+
     async def run():
         try:
             await cron.start()
@@ -1044,6 +1228,10 @@ def _run_gateway(
                 channels.start_all(),
                 _health_server(config.gateway.host, port),
             ]
+            if workflow_service is not None and workflow_api_port is not None:
+                tasks.append(
+                    _workflow_api_server(config.gateway.host, workflow_api_port)
+                )
             if open_browser_url:
                 tasks.append(_open_browser_when_ready())
             await asyncio.gather(*tasks)

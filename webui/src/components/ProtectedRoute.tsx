@@ -16,6 +16,7 @@ export type BootStatus =
       client: SecbotClient;
       token: string;
       modelName: string | null;
+      workflowApiBase: string;
     };
 
 export interface ProtectedRouteProps {

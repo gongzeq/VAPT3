@@ -1,0 +1,20 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端 spec 入口与 Pre-Development Checklist，进入实现前必读"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "secbot 后端模块边界：workflow/api/cmdb/providers，新增 dashboard 路由需遵循"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "workflow run 同步执行/状态落盘契约，Per-Mail 触发模型对齐"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "WorkflowTemplate 注册契约，新增 templates.py 须遵循"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "新增 /api/dashboard/phishing/* 6 个聚合端点必须符合现有 dashboard 聚合规范"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "step3 与 dashboard 端点直读 /opt/mail-gateway/data/sqlite/detection_results.db，DB 访问要符合规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "R5 容错策略：LLM 不可用兜底 add_score=0、step3 必须输出有效 JSON"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "workflow run 双写 runs.jsonl 与业务库的日志规范对齐"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "实现完成前自检清单"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "ScriptExecutor 60s 超时与外部 I/O（Redis/SQLite/Ollama）调用边界"}
+{"file": ".trellis/spec/backend/prompts-config.md", "reason": "step2 LLM 提示词集中到 prompts.yaml 的方式，迁移自 ai_detector.build_prompt"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端入口：DashboardPage 概要卡 + 详情页改造前的必读"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "L1 概要卡 + L2 详情页组件分层、KPI/Sparkline/明细表组件复用约定"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "趋势复合图、饼图、Top 8 柱图等图表库选型一致性"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "概要卡/详情页配色、链路状态徽章使用统一 token"}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "WebUI 大屏整体导航与页面切换规范（/dashboard/phishing 路由方案）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务跨 Lua/postfix→后端 workflow→前端大屏，多层数据流一致性思考指南"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "step1/step3 与现有 ScriptExecutor、模板与现有 asset_discovery/port_scan 模板复用"}
+{"file": ".trellis/spec/vapt3/index.md", "reason": "项目顶层规范，模板 tags 风格与现有模板（asset_discovery/port_scan/...）保持一致"}
+{"file": ".trellis/tasks/05-13-phishing-email-workflow/prototype.html", "reason": "L1 概要卡 + L2 详情页 UI 原型，前端实现的视觉对齐基准"}

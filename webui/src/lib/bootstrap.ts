@@ -74,3 +74,26 @@ export function deriveWsUrl(wsPath: string, token: string): string {
   const host = window.location.host;
   return `${scheme}://${host}${path}${query}`;
 }
+
+/** Build the absolute base URL for the workflow REST sub-service.
+ *
+ * The server advertises its port via the ``workflow_api_port`` field in
+ * the bootstrap payload. We pair it with the current window hostname so
+ * the same code path works whether the page was loaded over vite
+ * (``127.0.0.1:5173``) or directly from the gateway.
+ *
+ * Returns an empty string when ``port`` is nullish — the caller then
+ * falls back to same-origin paths (``/api/workflows…``) which is the
+ * expected behaviour in tests that don't run the standalone listener.
+ */
+export function deriveWorkflowApiBase(
+  port: number | null | undefined,
+): string {
+  if (!port) return "";
+  if (typeof window === "undefined") {
+    return `http://127.0.0.1:${port}`;
+  }
+  const scheme = window.location.protocol === "https:" ? "https" : "http";
+  const host = window.location.hostname || "127.0.0.1";
+  return `${scheme}://${host}:${port}`;
+}

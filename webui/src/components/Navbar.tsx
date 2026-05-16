@@ -8,23 +8,34 @@ import {
   Menu,
   MessageSquare,
   Settings,
+  Workflow,
 } from "lucide-react";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NotificationPanel } from "@/components/NotificationPanel";
 import { useClient, useUnread } from "@/providers/ClientProvider";
 import { cn } from "@/lib/utils";
+import { WORKFLOW_BUILDER_ENABLED } from "@/lib/workflow-client";
 import type { ConnectionStatus } from "@/lib/types";
 
-const NAV_ITEMS = [
-  { to: "/", label: "智能助手", icon: MessageSquare },
-  { to: "/dashboard", label: "大屏分析", icon: LayoutDashboard },
-  { to: "/tasks", label: "任务详情", icon: ListChecks },
-  { to: "/settings", label: "设置", icon: Settings },
+const NAV_ITEMS: Array<{
+  to: string;
+  labelKey: string;
+  fallback: string;
+  icon: typeof MessageSquare;
+  enabled?: boolean;
+}> = [
+  { to: "/", labelKey: "nav.home", fallback: "智能助手", icon: MessageSquare },
+  { to: "/dashboard", labelKey: "nav.dashboard", fallback: "大屏分析", icon: LayoutDashboard },
+  { to: "/tasks", labelKey: "nav.tasks", fallback: "任务详情", icon: ListChecks },
+  {
+    to: "/workflows",
+    labelKey: "nav.workflows",
+    fallback: "工作流",
+    icon: Workflow,
+    enabled: WORKFLOW_BUILDER_ENABLED,
+  },
+  { to: "/settings", labelKey: "nav.settings", fallback: "设置", icon: Settings },
 ];
 
 export interface NavbarProps {
@@ -85,12 +96,13 @@ export function Navbar(_props: NavbarProps) {
 
         {/* Nav links */}
         <nav className="ml-4 hidden items-center gap-1 md:flex">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => item.enabled !== false).map((item) => {
             const Icon = item.icon;
             const active =
               item.to === "/"
                 ? location.pathname === "/"
                 : location.pathname.startsWith(item.to);
+            const label = t(item.labelKey, { defaultValue: item.fallback });
             return (
               <NavLink
                 key={item.to}
@@ -103,7 +115,7 @@ export function Navbar(_props: NavbarProps) {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.label}
+                {label}
               </NavLink>
             );
           })}

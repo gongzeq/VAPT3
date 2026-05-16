@@ -11,6 +11,13 @@ interface ClientContextValue {
   token: string;
   modelName: string | null;
   /**
+   * Absolute base URL (``http://host:port``) of the workflow REST
+   * sub-service advertised by the gateway's bootstrap payload. Empty
+   * string means "fall back to same-origin" (test env / legacy build
+   * without the sub-service).
+   */
+  workflowApiBase: string;
+  /**
    * App-level unread-notifications badge state. Mounted once here so the
    * 30s REST poll is singleton (multiple copies would multiply traffic);
    * consumers like the Navbar bell read from context rather than calling
@@ -25,17 +32,19 @@ export function ClientProvider({
   client,
   token,
   modelName = null,
+  workflowApiBase = "",
   children,
 }: {
   client: SecbotClient;
   token: string;
   modelName?: string | null;
+  workflowApiBase?: string;
   children: ReactNode;
 }) {
   const unread = useUnreadCount(token);
   const value = useMemo<ClientContextValue>(
-    () => ({ client, token, modelName, unread }),
-    [client, token, modelName, unread],
+    () => ({ client, token, modelName, workflowApiBase, unread }),
+    [client, token, modelName, workflowApiBase, unread],
   );
   return (
     <ClientContext.Provider value={value}>{children}</ClientContext.Provider>

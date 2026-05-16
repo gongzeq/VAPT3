@@ -33,11 +33,24 @@ function toModelBadgeLabel(modelName: string | null): string | null {
   return leaf || trimmed;
 }
 
+// Quick-action definitions removed — no longer rendered by this
+// shell. Re-introduce alongside the UI if/when hero actions come back.
+
+
 export function ThreadShell({
   session,
   onCreateChat,
   onTurnEnd,
 }: ThreadShellProps) {
+  // Props kept for backwards-compat with callers; not yet consumed by
+  // this shell. Silence ``noUnusedParameters`` without altering the
+  // public interface.
+  void title;
+  void onToggleSidebar;
+  void onOpenSettings;
+  void hideSidebarToggleOnDesktop;
+  void onToggleRightRail;
+  void rightRailOpen;
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
@@ -159,6 +172,7 @@ export function ThreadShell({
     },
     [booting, onCreateChat],
   );
+
 
   const composer = (
     <>
