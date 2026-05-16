@@ -368,6 +368,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         reasoning_as_content=True,
     ),
     # Xiaomi MIMO (小米): OpenAI-compatible API
+    # MiMo prefers max_completion_tokens; the legacy max_tokens field can
+    # silently produce empty SSE streams on long multi-turn histories.
     ProviderSpec(
         name="xiaomi_mimo",
         keywords=("xiaomi_mimo", "mimo"),
@@ -375,6 +377,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Xiaomi MIMO",
         backend="openai_compat",
         default_api_base="https://api.xiaomimimo.com/v1",
+        supports_max_completion_tokens=True,
+        thinking_style="thinking_type",
     ),
     # LongCat: OpenAI-compatible API
     ProviderSpec(

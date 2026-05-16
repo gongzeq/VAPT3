@@ -39,14 +39,24 @@ function toModelBadgeLabel(modelName: string | null): string | null {
 
 export function ThreadShell({
   session,
+  title,
+  onToggleSidebar,
+  onGoHome,
+  onNewChat,
   onCreateChat,
   onTurnEnd,
+  onOpenSettings,
+  hideSidebarToggleOnDesktop,
+  onToggleRightRail,
+  rightRailOpen,
 }: ThreadShellProps) {
   // Props kept for backwards-compat with callers; not yet consumed by
   // this shell. Silence ``noUnusedParameters`` without altering the
   // public interface.
   void title;
   void onToggleSidebar;
+  void onGoHome;
+  void onNewChat;
   void onOpenSettings;
   void hideSidebarToggleOnDesktop;
   void onToggleRightRail;

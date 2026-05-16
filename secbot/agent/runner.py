@@ -1121,9 +1121,9 @@ class AgentRunner:
         if not messages or not spec.context_window_tokens:
             return messages
 
-        provider_max_tokens = getattr(getattr(self.provider, "generation", None), "max_tokens", 4096)
+        provider_max_tokens = getattr(getattr(self.provider, "generation", None), "max_tokens", 40960)
         max_output = spec.max_tokens if isinstance(spec.max_tokens, int) else (
-            provider_max_tokens if isinstance(provider_max_tokens, int) else 4096
+            provider_max_tokens if isinstance(provider_max_tokens, int) else 40960
         )
         budget = spec.context_block_limit or (
             spec.context_window_tokens - max_output - _SNIP_SAFETY_BUFFER

@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index for agent, skill, sandbox, and orchestration conventions."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Defines the two-layer orchestrator/expert-agent/skill architecture and forbids agent-to-agent calls."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Defines expert agent YAML registration, schema, scoped skills, and registry constraints."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Defines skill package layout, metadata, handler contract, schemas, and test expectations."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Defines sandbox-only external binary execution, whitelist updates, argv validation, and tests."}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "Defines orchestrator routing behavior and prompt constraints relevant to crawl_web handoff."}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "Guides bounded summaries versus raw log paths for scanner output."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Guides concise blackboard notes from expert agents."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "General backend quality bar and forbidden patterns."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Backend error handling conventions for structured skill failures."}
+{"file": ".trellis/tasks/05-16-crawl-web-katana-skill/research/crawl-web-integration.md", "reason": "Task-specific integration map, files to edit, patterns, Katana command details, and tests."}

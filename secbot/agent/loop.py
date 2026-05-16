@@ -663,10 +663,10 @@ class AgentLoop:
         for cls in (GlobTool, GrepTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
         self.tools.register(NotebookEditTool(workspace=self.workspace, allowed_dir=allowed_dir))
-        # Hard-disabled: ExecTool is never registered, even on non-orchestrator
-        # operational loops. All shell access MUST go through SkillTool. See
-        # subagent.py for the matching block and .trellis/tasks/archive/2026-05/
-        # 05-11-security-tools-as-tools/prd.md §D4.
+        # Hard-disabled: operational (non-orchestrator) loops never register
+        # ExecTool. Subagents MAY receive ExecTool only when spawned with an
+        # expert-agent spec that has allow_exec=True AND exec_config.enable.
+        # See subagent.py for the conditional gate.
         if self.web_config.enable:
             self.tools.register(
                 WebSearchTool(

@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index for verification scope."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify the implementation preserves two-layer architecture and avoids agent-to-agent calls."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Verify the crawl_web YAML and registry behavior comply with the agent contract."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Verify the katana-crawl-web skill package, metadata, schemas, and handler contract."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Verify sandbox-only Katana execution, whitelist/spec sync, and argv safety."}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "Verify routing and prompt changes, if any, remain consistent with orchestrator constraints."}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "Verify scanner output is summarized and raw output is persisted rather than inlined."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Verify blackboard guidance in the crawl_web prompt is concise and useful."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "General backend quality checks."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify structured error and failure behavior."}
+{"file": ".trellis/tasks/05-16-crawl-web-katana-skill/research/crawl-web-integration.md", "reason": "Task-specific checklist of files, patterns, constraints, and tests to verify."}

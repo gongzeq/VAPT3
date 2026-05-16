@@ -1,0 +1,59 @@
+name: vuln_detec
+display_name: 漏洞手工验证
+description: |
+  Perform quick manual vulnerability verification tests against a Web
+  endpoint. Runs baseline, special-character, XSS reflection, SQLi
+  error/time-based, numeric arithmetic, template injection and command
+  injection probes using curl. Use AFTER vuln_scan to confirm suspected
+  findings.
+
+system_prompt_file: ./prompts/vuln_detec.md
+
+scoped_skills:
+  - vuln-detec-manual
+
+max_iterations: 10
+emit_plan_steps: true
+allow_exec: true
+
+input_schema:
+  type: object
+  required: [url]
+  properties:
+    url:
+      type: string
+      format: uri
+      description: Target URL to test
+    method:
+      type: string
+      enum: [GET, POST]
+      default: GET
+    params:
+      type: object
+      description: Query parameters or POST body fields to inject
+    headers:
+      type: object
+      description: Additional HTTP headers
+    cookies:
+      type: string
+      description: Cookie string to include
+
+output_schema:
+  type: object
+  required: [findings]
+  properties:
+    findings:
+      type: array
+      items:
+        type: object
+        required: [test_name, result, confidence]
+        properties:
+          test_name: {type: string}
+          result:
+            type: string
+            enum: [positive, negative, inconclusive]
+          confidence:
+            type: string
+            enum: [low, medium, high]
+          evidence: {type: string}
+          payload: {type: string}

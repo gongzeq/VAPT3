@@ -685,6 +685,21 @@ def gateway(
             colorize=None,
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
+
+    # Persist all DEBUG logs to a rolling file so operators can inspect full
+    # LLM request/response bodies (e.g. MiMo raw streams) without losing them
+    # to terminal scrollback.
+    _log_dir = Path.home() / ".secbot" / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    logger.add(
+        _log_dir / "secbot.log",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <5} | {extra[channel]} | {message}",
+        level="DEBUG",
+        rotation="10 MB",
+        retention="1 week",
+        encoding="utf-8",
+    )
+
     cfg = _load_runtime_config(config, workspace)
     _run_gateway(cfg, port=port)
 

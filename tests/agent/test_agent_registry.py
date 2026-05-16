@@ -34,6 +34,8 @@ REAL_SKILL_NAMES = {
     "hydra-bruteforce",
     # report
     "report-html",
+    # vuln_detec
+    "vuln-detec-manual",
 }
 
 
@@ -50,6 +52,7 @@ def test_real_registry_loads_with_skill_set():
         "vuln_scan",
         "weak_password",
         "report",
+        "vuln_detec",
     }
 
 
@@ -347,3 +350,23 @@ def test_negative_max_iterations_aborts(tmp_path):
     _write_yaml(tmp_path, "alpha", body)
     with pytest.raises(AgentRegistryError, match="positive int"):
         load_agent_registry(tmp_path)
+
+
+def test_allow_exec_defaults_false(tmp_path):
+    _write_yaml(tmp_path, "alpha", _VALID)
+    reg = load_agent_registry(tmp_path, skill_names={"skill-x"})
+    assert reg.get("alpha").allow_exec is False
+
+
+def test_allow_exec_parsed_when_true(tmp_path):
+    body = _VALID + "allow_exec: true\n"
+    _write_yaml(tmp_path, "alpha", body)
+    reg = load_agent_registry(tmp_path, skill_names={"skill-x"})
+    assert reg.get("alpha").allow_exec is True
+
+
+def test_invalid_allow_exec_type_aborts(tmp_path):
+    body = _VALID + "allow_exec: yesplease\n"
+    _write_yaml(tmp_path, "alpha", body)
+    with pytest.raises(AgentRegistryError, match="allow_exec.*must be a bool"):
+        load_agent_registry(tmp_path, skill_names={"skill-x"})

@@ -19,6 +19,7 @@ from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteToo
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
+from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
 from secbot.bus.events import InboundMessage
@@ -444,13 +445,21 @@ class SubagentManager:
             tools.register(AskUserTool())
             tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=label))
             tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
-            # Hard-disabled: subagents must NEVER receive ExecTool. All shell
-            # access for security workflows MUST go through SkillTool (sandbox
-            # + argv parsing + risk gate). This block was previously gated on
-            # ``self.exec_config.enable`` but operator misconfiguration kept
-            # leaking ``exec`` back to the LLM, so the registration is now
-            # removed unconditionally. Do NOT re-enable without an explicit
-            # PRD update — see .trellis/tasks/archive/2026-05/05-11-security-tools-as-tools/prd.md §D4.
+            # ExecTool is gated by BOTH global exec_config.enable AND per-agent
+            # allow_exec. Default-deny: subagents without an explicit opt-in
+            # ExpertAgentSpec, or with allow_exec=False, NEVER receive exec.
+            if self.exec_config.enable and spec is not None and spec.allow_exec:
+                tools.register(
+                    ExecTool(
+                        timeout=self.exec_config.timeout,
+                        deny_patterns=self.exec_config.deny_patterns,
+                        allow_patterns=self.exec_config.allow_patterns,
+                        restrict_to_workspace=self.restrict_to_workspace,
+                        sandbox=self.exec_config.sandbox,
+                        path_append=self.exec_config.path_append,
+                        allowed_env_keys=self.exec_config.allowed_env_keys,
+                    )
+                )
             if self.web_config.enable:
                 tools.register(
                     WebSearchTool(

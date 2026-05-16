@@ -226,7 +226,7 @@ class WebToolsConfig(Base):
 class ExecToolConfig(Base):
     """Shell exec tool configuration."""
 
-    enable: bool = False  # PRD 05-11-security-tools-as-tools §D4: LLM 不再直调 shell; 所有安全 binary 通过 SkillTool / sandbox 路径。进阶用户可显式 enable=True 重新暴露。
+    enable: bool = True  # 默认启用; 子智能体仍需 per-agent allow_exec=True 才能注册 ExecTool (双层授权)
     timeout: int = 60
     path_append: str = ""
     sandbox: str = ""  # sandbox backend: "" (none) or "bwrap"

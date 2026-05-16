@@ -55,6 +55,7 @@ class ExpertAgentSpec:
     # binary resolution.
     required_binaries: tuple[str, ...] = ()
     missing_binaries: tuple[str, ...] = ()
+    allow_exec: bool = False
 
     @property
     def available(self) -> bool:
@@ -211,6 +212,7 @@ def load_agent_registry(
                 source_path=spec.source_path,
                 required_binaries=tuple(required),
                 missing_binaries=tuple(missing),
+                allow_exec=spec.allow_exec,
             )
 
         registry.agents[spec.name] = spec
@@ -287,6 +289,10 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
     if not isinstance(emit, bool):
         raise AgentRegistryError(f"{yaml_path}: 'emit_plan_steps' must be a bool")
 
+    allow_exec = raw.get("allow_exec", False)
+    if not isinstance(allow_exec, bool):
+        raise AgentRegistryError(f"{yaml_path}: 'allow_exec' must be a bool")
+
     display_name = raw["display_name"]
     if not isinstance(display_name, str) or not display_name.strip():
         raise AgentRegistryError(f"{yaml_path}: 'display_name' must be a non-empty string")
@@ -307,6 +313,7 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
         max_iterations=max_iter,
         emit_plan_steps=emit,
         source_path=yaml_path,
+        allow_exec=allow_exec,
     )
 
 

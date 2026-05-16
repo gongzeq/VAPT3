@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import secrets
 import string
 import time
@@ -114,6 +115,61 @@ def _float_env(name: str, default: float) -> float:
 def _short_tool_id() -> str:
     """9-char alphanumeric ID compatible with all providers (incl. Mistral)."""
     return "".join(secrets.choice(_ALNUM) for _ in range(9))
+
+
+def _dump(obj: Any, max_len: int = 8192) -> str:
+    """Compact JSON for DEBUG logging; never raises."""
+    try:
+        text = json.dumps(obj, ensure_ascii=False, default=str)
+    except Exception:
+        text = repr(obj)
+    if len(text) > max_len:
+        return text[:max_len] + f"...<{len(text) - max_len} more>"
+    return text
+
+
+def _extract_xml_tool_calls(content: str | None) -> tuple[str | None, list[ToolCallRequest]]:
+    """Parse Llama3/Hermes-style XML tool calls embedded in *content*.
+
+    MiMo v2-pro (and some other models) emit tool calls as XML text instead
+    of the OpenAI ``tool_calls`` JSON structure::
+
+        <tool_call>
+        <function=delegate_task>
+        <parameter=task>description</parameter>
+        <parameter=agent>asset_discovery</parameter>
+        </function>
+        </tool_call>
+
+    Returns ``(remaining_content, tool_calls)``.  *remaining_content* has the
+    XML blocks stripped so downstream logic does not surface raw markup to
+    the user.
+    """
+    if not content:
+        return content, []
+    pattern = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+    blocks = pattern.findall(content)
+    if not blocks:
+        return content, []
+
+    tool_calls: list[ToolCallRequest] = []
+    for block in blocks:
+        fn_match = re.search(r"<function=([^>]+)>(.*?)</function>", block, re.DOTALL)
+        if not fn_match:
+            continue
+        fn_name = fn_match.group(1).strip()
+        fn_body = fn_match.group(2)
+        params: dict[str, Any] = {}
+        for pm in re.finditer(r"<parameter=([^>]+)>(.*?)</parameter>", fn_body, re.DOTALL):
+            params[pm.group(1).strip()] = pm.group(2).strip()
+        tool_calls.append(ToolCallRequest(
+            id=_short_tool_id(),
+            name=fn_name,
+            arguments=params,
+        ))
+
+    remaining = pattern.sub("", content).strip()
+    return remaining or None, tool_calls
 
 
 def _get(obj: Any, key: str) -> Any:
@@ -501,6 +557,9 @@ class OpenAICompatProvider(LLMProvider):
 
         if spec and getattr(spec, "supports_max_completion_tokens", False):
             kwargs["max_completion_tokens"] = max(1, max_tokens)
+        elif "xiaomimimo" in (getattr(self, "_effective_base", "") or "").lower():
+            # Custom provider wired to MiMo — same max_completion_tokens requirement.
+            kwargs["max_completion_tokens"] = max(1, max_tokens)
         else:
             kwargs["max_tokens"] = max(1, max_tokens)
 
@@ -539,6 +598,15 @@ class OpenAICompatProvider(LLMProvider):
             if extra:
                 kwargs.setdefault("extra_body", {}).update(extra)
 
+        # Xiaomi MIMO: thinking is native; always declare it explicitly so
+        # the API knows to return (and later expect) reasoning_content.
+        # Without this flag MiMo may still return reasoning_content on some
+        # models but can silently drop structured tool_calls on long multi-turn
+        # histories.  See the official function-calling sample at
+        # https://platform.xiaomimimo.com/docs/zh-CN/api/chat/openai-api
+        if spec and spec.name == "xiaomi_mimo":
+            kwargs.setdefault("extra_body", {}).update({"thinking": {"type": "enabled"}})
+
         # Model-level thinking injection for Kimi thinking-capable models.
         # Strip any provider prefix (e.g. "moonshotai/") before the set lookup
         # so that OpenRouter-style names like "moonshotai/kimi-k2.5" are handled
@@ -551,7 +619,13 @@ class OpenAICompatProvider(LLMProvider):
 
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = tool_choice or "auto"
+            # MiMo tends to emit natural-language descriptions instead of
+            # structured tool_calls under tool_choice="auto"; "required"
+            # forces at least one tool invocation when tools are present.
+            if spec and spec.name == "xiaomi_mimo" and tool_choice is None:
+                kwargs["tool_choice"] = "required"
+            else:
+                kwargs["tool_choice"] = tool_choice or "auto"
 
         # Backfill reasoning_content="" on assistants missing it: DeepSeek
         # thinking mode rejects history otherwise (#3554, #3584); "" reads
@@ -581,7 +655,7 @@ class OpenAICompatProvider(LLMProvider):
         )
         if explicit_thinking or implicit_deepseek_thinking or implicit_xiaomi_mimo_thinking:
             for msg in kwargs["messages"]:
-                if msg.get("role") == "assistant" and "reasoning_content" not in msg:
+                if msg.get("role") == "assistant" and msg.get("reasoning_content") is None:
                     msg["reasoning_content"] = ""
 
         # Merge user-configured extra_body last so it can override or
@@ -880,6 +954,13 @@ class OpenAICompatProvider(LLMProvider):
                     function_provider_specific_fields=fn_prov,
                 ))
 
+            if not parsed_tool_calls and content:
+                content, xml_tools = _extract_xml_tool_calls(content)
+                if xml_tools:
+                    parsed_tool_calls = xml_tools
+                    if finish_reason == "stop":
+                        finish_reason = "tool_calls"
+
             return LLMResponse(
                 content=content,
                 tool_calls=parsed_tool_calls,
@@ -926,6 +1007,13 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_content = getattr(msg, "reasoning_content", None) or None
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
+
+        if not tool_calls and content:
+            content, xml_tools = _extract_xml_tool_calls(content)
+            if xml_tools:
+                tool_calls = xml_tools
+                if finish_reason == "stop":
+                    finish_reason = "tool_calls"
 
         return LLMResponse(
             content=content,
@@ -1020,19 +1108,28 @@ class OpenAICompatProvider(LLMProvider):
             for tc in (delta.tool_calls or []) if delta else []:
                 _accum_tc(tc, getattr(tc, "index", 0))
 
+        content = "".join(content_parts) or None
+        tool_calls = [
+            ToolCallRequest(
+                id=b["id"] or _short_tool_id(),
+                name=b["name"],
+                arguments=json_repair.loads(b["arguments"]) if b["arguments"] else {},
+                extra_content=b.get("extra_content"),
+                provider_specific_fields=b.get("prov"),
+                function_provider_specific_fields=b.get("fn_prov"),
+            )
+            for b in tc_bufs.values()
+        ]
+        if not tool_calls and content:
+            content, xml_tools = _extract_xml_tool_calls(content)
+            if xml_tools:
+                tool_calls = xml_tools
+                if finish_reason == "stop":
+                    finish_reason = "tool_calls"
+
         return LLMResponse(
-            content="".join(content_parts) or None,
-            tool_calls=[
-                ToolCallRequest(
-                    id=b["id"] or _short_tool_id(),
-                    name=b["name"],
-                    arguments=json_repair.loads(b["arguments"]) if b["arguments"] else {},
-                    extra_content=b.get("extra_content"),
-                    provider_specific_fields=b.get("prov"),
-                    function_provider_specific_fields=b.get("fn_prov"),
-                )
-                for b in tc_bufs.values()
-            ],
+            content=content,
+            tool_calls=tool_calls,
             finish_reason=finish_reason,
             usage=usage,
             reasoning_content="".join(reasoning_parts) or None,
@@ -1101,6 +1198,12 @@ class OpenAICompatProvider(LLMProvider):
         body_text = body if isinstance(body, str) else str(body) if body is not None else ""
         msg = f"Error: {body_text.strip()[:500]}" if body_text.strip() else f"Error calling LLM: {e}"
 
+        logger.opt(lazy=True).debug(
+            "LLM error body (type={}): {}",
+            lambda: type(e).__name__,
+            lambda: _dump(body if body is not None else str(e)),
+        )
+
         text = f"{body_text} {e}".lower()
         if spec and spec.is_local and ("502" in text or "connection" in text or "refused" in text):
             msg += (
@@ -1158,7 +1261,11 @@ class OpenAICompatProvider(LLMProvider):
                 messages, tools, model, max_tokens, temperature,
                 reasoning_effort, tool_choice,
             )
-            return self._parse(await self._client.chat.completions.create(**kwargs))
+            resp = await self._client.chat.completions.create(**kwargs)
+            logger.opt(lazy=True).debug(
+                "LLM raw response: {}", lambda: _dump(getattr(resp, "model_dump", lambda: resp)()),
+            )
+            return self._parse(resp)
         except Exception as e:
             return self._handle_error(e, spec=self._spec, api_base=self.api_base)
 
@@ -1239,6 +1346,11 @@ class OpenAICompatProvider(LLMProvider):
                     text = getattr(chunk.choices[0].delta, "content", None)
                     if text:
                         await on_content_delta(text)
+            logger.opt(lazy=True).debug(
+                "LLM raw stream chunks={}: {}",
+                lambda: len(chunks),
+                lambda: _dump([getattr(c, "model_dump", lambda: c)() for c in chunks]),
+            )
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
             return LLMResponse(

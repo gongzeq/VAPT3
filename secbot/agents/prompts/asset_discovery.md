@@ -40,6 +40,5 @@ step. Prefer one short sentence per write; pick whichever tag fits:
 - `[milestone] asset_discovery: live-host enumeration done (12 hosts).`
 - `[blocker]   asset_discovery: target domain does not resolve, need a new scope.`
 - `[finding]   asset_discovery: www.target.tld fronted by Cloudflare — origin not in scope.`
-- `[progress]  asset_discovery: nmap sweep 3/8 subnets complete.`
 
 Never paste raw scanner output; that belongs in `summary_json`.
