@@ -603,3 +603,37 @@ PRD 四 PR 中前三 PR 代码已落地（SkillTool / 7 新 skill / AgentRegistr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Persistent teammate communication
+
+**Date**: 2026-05-16
+**Task**: Persistent teammate communication
+**Branch**: `main`
+
+### Summary
+
+Implemented persistent teammate communication with JSONL inboxes, teammate lifecycle management, orchestrator tools, tests, and Trellis task context.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec6f06b97` | (see git log) |
+| `edf48880f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
