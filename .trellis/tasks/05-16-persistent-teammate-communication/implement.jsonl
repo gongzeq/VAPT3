@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/05-16-persistent-teammate-communication/prd.md", "reason": "Task requirements, MVP boundary, acceptance criteria, and recommended approach."}
+{"file": ".trellis/tasks/05-16-persistent-teammate-communication/research/reference-team-model.md", "reason": "Reference project patterns for isolated subagents, JSONL mailboxes, config state, and lifecycle."}
+{"file": ".trellis/tasks/05-16-persistent-teammate-communication/research/current-code.md", "reason": "Current secbot integration points and constraints for agent/subagent/message systems."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Layering and summary-only LLM context boundaries that teammate design must respect."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Existing inter-agent shared-state contract to keep distinct from drain-on-read mailboxes."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Tool safety expectations for any teammate loop that can invoke operational tools."}

@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-16-persistent-teammate-communication/prd.md", "reason": "Acceptance criteria and out-of-scope boundaries for verification."}
+{"file": ".trellis/tasks/05-16-persistent-teammate-communication/research/current-code.md", "reason": "Risks and integration points to verify after implementation."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Ensure implementation does not add a forbidden orchestration layer or bypass expert/skill boundaries."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Ensure mailbox behavior remains separate from blackboard semantics."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality gate placeholder and testing expectations."}
