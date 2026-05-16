@@ -22,6 +22,7 @@ from secbot.agent.memory import Consolidator, Dream
 from secbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.subagent import SubagentManager
+from secbot.agent.teammate import TeammateManager
 from secbot.agent.tools.approval import RequestApprovalTool
 from secbot.agent.tools.ask import (
     AskUserTool,
@@ -40,11 +41,19 @@ from secbot.agent.tools.plan import WritePlanTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.self import MyTool
+
 # NOTE: ExecTool intentionally not imported here. ExecTool is hard-disabled —
 # all shell access for security workflows MUST go through SkillTool. See
 # _register_operational_tools and subagent.py for the matching policy.
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
+from secbot.agent.tools.teammate import (
+    ListTeammatesTool,
+    ReadTeammateInboxTool,
+    SendTeammateMessageTool,
+    ShutdownTeammateTool,
+    SpawnTeammateTool,
+)
 from secbot.agent.tools.web import WebFetchTool, WebSearchTool
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
@@ -518,6 +527,13 @@ class AgentLoop:
             blackboard=self.blackboard,
             blackboard_registry=self.blackboard_registry,
         )
+        self.teammates = TeammateManager(
+            provider=provider,
+            workspace=workspace,
+            model=self.model,
+            max_tool_result_chars=self.max_tool_result_chars,
+            max_iterations=self.max_iterations,
+        )
         self._unified_session = unified_session
         self._max_messages = max_messages if max_messages > 0 else 120
         self._running = False
@@ -572,6 +588,7 @@ class AgentLoop:
     def _sync_subagent_runtime_limits(self) -> None:
         """Keep subagent runtime limits aligned with mutable loop settings."""
         self.subagents.max_iterations = self.max_iterations
+        self.teammates.max_iterations = self.max_iterations
 
     def _apply_provider_snapshot(self, snapshot: ProviderSnapshot) -> None:
         """Swap model/provider for future turns without disturbing an active one."""
@@ -586,6 +603,7 @@ class AgentLoop:
         self.context_window_tokens = context_window_tokens
         self.runner.provider = provider
         self.subagents.set_provider(provider, model)
+        self.teammates.set_provider(provider, model)
         self.consolidator.set_provider(provider, model, context_window_tokens)
         self.dream.set_provider(provider, model)
         self._provider_signature = snapshot.signature
@@ -614,6 +632,11 @@ class AgentLoop:
     def _register_orchestrator_tools(self) -> None:
         """Register the orchestrator's coordination + message tool surface."""
         self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(SpawnTeammateTool(self.teammates))
+        self.tools.register(ListTeammatesTool(self.teammates))
+        self.tools.register(SendTeammateMessageTool(self.teammates))
+        self.tools.register(ReadTeammateInboxTool(self.teammates))
+        self.tools.register(ShutdownTeammateTool(self.teammates))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         self.tools.register(RequestApprovalTool())
         self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))

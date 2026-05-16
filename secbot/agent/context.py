@@ -10,7 +10,12 @@ from typing import Any
 
 from secbot.agent.memory import MemoryStore
 from secbot.agent.skills import SkillsLoader
-from secbot.utils.helpers import build_assistant_message, current_time_str, detect_image_mime, truncate_text
+from secbot.utils.helpers import (
+    build_assistant_message,
+    current_time_str,
+    detect_image_mime,
+    truncate_text,
+)
 from secbot.utils.prompt_templates import render_template
 
 
@@ -42,9 +47,9 @@ class ContextBuilder:
         locked orchestrator prompt (role + hard rules + expert-agent table +
         working style) is rendered in place of the generic secbot prompt.
         ``skills_summary`` is intentionally omitted for the orchestrator since
-        its tool surface is ``delegate_task / read_blackboard /
-        write_plan / request_approval / message`` — listing skills there would mislead the
-        LLM into synthesising shell commands it has no tool to run.
+        its tool surface is coordination plus teammate tools — listing skills
+        there would mislead the LLM into synthesising shell commands it has no
+        tool to run.
         """
         parts = [self._get_identity(channel=channel)]
 

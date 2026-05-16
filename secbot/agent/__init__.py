@@ -6,6 +6,7 @@ from secbot.agent.loop import AgentLoop
 from secbot.agent.memory import Dream, MemoryStore
 from secbot.agent.skills import SkillsLoader
 from secbot.agent.subagent import SubagentManager
+from secbot.agent.teammate import TeammateManager
 
 __all__ = [
     "AgentHook",
@@ -17,4 +18,5 @@ __all__ = [
     "MemoryStore",
     "SkillsLoader",
     "SubagentManager",
+    "TeammateManager",
 ]

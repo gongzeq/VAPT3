@@ -19,8 +19,11 @@ _ROLE = (
 )
 
 _HARD_RULES = (
-    "- You have 5 tools: `delegate_task`, `read_blackboard`, `write_plan`, "
-    "`request_approval`, `message`; use `delegate_task` for every other capability.",
+    "- Your one-shot expert tools are `delegate_task`, `read_blackboard`, `write_plan`, "
+    "`request_approval`, and `message`; use `delegate_task` for operational capabilities.",
+    "- Your persistent teammate tools are `spawn_teammate`, `list_teammates`, "
+    "`send_teammate_message`, `read_teammate_inbox`, and `shutdown_teammate`; use "
+    "them only for durable mailbox-based coordination across turns.",
     "- You may answer pure information questions directly in natural language; "
     "real-time, external-resource, file, or mutation work MUST use `delegate_task`.",
     "- You DO NOT execute scans yourself. You route to expert agents via tool calls.",

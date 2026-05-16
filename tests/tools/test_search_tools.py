@@ -297,9 +297,15 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
 
     assert set(loop.tools.tool_names) == {
         "delegate_task",
+        "list_teammates",
         "read_blackboard",
+        "read_teammate_inbox",
         "request_approval",
+        "send_teammate_message",
+        "shutdown_teammate",
+        "spawn_teammate",
         "write_plan",
+        "message",
     }
     assert "grep" not in loop.tools.tool_names
     assert "glob" not in loop.tools.tool_names

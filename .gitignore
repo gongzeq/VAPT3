@@ -92,4 +92,5 @@ nano.*.save
 logs/
 tmp/
 temp/
+.team/
 *.tmp
