@@ -1,7 +1,7 @@
 # Tool Invocation Safety
 
-> Hard contract for any code path that shells out to an external binary (nmap, fscan, nuclei, hydra, httpx, ffuf, sqlmap, weasyprint, …).
-> Implementation: `secbot/agent/tools/sandbox.py` is the **only** legal entry point.
+> Hard contract for any code path that shells out to an external binary (nmap, fscan, nuclei, hydra, httpx, ffuf, katana, sqlmap, …).
+> Implementation: `secbot/skills/_shared/sandbox.py` is the **only** legal entry point.
 > **`exec` tool is disabled by default** (PRD `05-11-security-tools-as-tools` §D4) — LLMs reach security binaries exclusively via SkillTool adapters.
 
 ---
@@ -29,7 +29,7 @@ Consequences:
 All `subprocess` calls inside skills MUST go through:
 
 ```python
-from secbot.agent.tools.sandbox import run_command
+from secbot.skills._shared.sandbox import run_command
 
 result = await run_command(
     binary="nmap",                       # MUST be in BINARY_WHITELIST
@@ -51,17 +51,98 @@ Direct use of `subprocess.run`, `subprocess.Popen`, `os.system`, `asyncio.create
 
 ```python
 BINARY_WHITELIST = frozenset({
-    "nmap", "fscan", "nuclei", "hydra", "masscan",
-    "weasyprint",          # PR10 PDF rendering
+    "nmap", "fscan", "nuclei", "hydra", "httpx", "ffuf",
+    "katana", "sqlmap", "ghauri",
     "python3", "git",       # internal helper use only
 })
 ```
 
 To add a binary:
 
-1. Open a spec PR amending this list AND `secbot/agent/tools/sandbox.py` constant.
+1. Open a spec PR amending this list AND the `secbot/skills/_shared/sandbox.py` constant.
 2. Document the binary's `--version` flag, the minimum version, and its install instructions in the same PR.
 3. The `external_binary` field in the corresponding [SKILL.md](./skill-contract.md#2-skillmd-front-matter-schema) MUST match exactly.
+
+Katana is installed with `go install github.com/projectdiscovery/katana/cmd/katana@latest`;
+verify availability with `katana -version`. The `katana-crawl-web` skill declares
+`external_binary: katana` and a minimum version of `1.0.0`.
+
+---
+
+## Scenario: Katana Crawl Skill
+
+### 1. Scope / Trigger
+
+- Trigger: `katana-crawl-web` is an external scanner skill and therefore changes the sandbox whitelist, skill schema contract, and orchestrator stage ordering.
+- Scope: crawl only authorized HTTP/HTTPS web targets and return bounded crawl candidates; do not run exploit payloads.
+
+### 2. Signatures
+
+- Skill directory: `secbot/skills/katana-crawl-web/`.
+- Handler signature: `async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult`.
+- Sandbox command: `run_command(binary="katana", args=["-u", target, "-d", str(depth), "-jc", "-ef", "css,png,jpg,gif,svg,woff,ttf,js", "-aff", "-o", raw_urls_path, "-silent", "-no-color"], network=NetworkPolicy.REQUIRED, capture="file", raw_log_path=ctx.raw_log_dir / "katana-crawl-web.log")`.
+
+### 3. Contracts
+
+- Request fields:
+  - `target` string, required, must be an HTTP/HTTPS URL without credentials or shell metacharacters.
+  - `depth` integer, optional, `1..10`, default `5`.
+  - `max_candidates` integer, optional, `1..500`, default `100`.
+  - `timeout_sec` integer, optional, `30..7200`, default `600`.
+- Response fields:
+  - `total_urls`, `deduped_urls`, `filtered_urls`, `candidate_count` are non-negative integers.
+  - `candidates[]` entries include `url`, `priority`, `parameters[]`, `guessed_vulnerabilities[]`, `reasons[]`, and `recommended_action`.
+  - `parameters[].risk` is one of `critical`, `high`, `neutral`, or `skipped`.
+  - `raw_urls_path` points to `ctx.scan_dir / "katana" / "katana_urls.txt"`; raw subprocess output stays in `raw_log_path`.
+- Environment/config:
+  - Optional binary override is `tools.skillBinaries.katana`; otherwise the handler resolves `katana` from `PATH`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+|-----------|-------------------|
+| `target` is not HTTP/HTTPS, has credentials, has invalid port, or contains forbidden characters | Raise `InvalidSkillArg` before calling the sandbox |
+| `depth`, `max_candidates`, or `timeout_sec` is outside bounds | Raise `InvalidSkillArg` before calling the sandbox |
+| Katana is not configured and not on `PATH` | Raise `SkillBinaryMissing` |
+| Katana times out | Return `SkillResult(summary={"error": "timeout"}, raw_log_path=...)` |
+| Cancellation token fires | Return `SkillResult(summary={"cancelled": true}, raw_log_path=...)` |
+| Katana emits off-scope, malformed, duplicate, static-asset, or static dictionary URLs | Filter them before building `candidates` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `https://example.com/export?file=report.pdf` becomes a critical candidate with path traversal/access-control hypotheses.
+- Base: `https://example.com/admin/login` becomes a medium candidate even without query parameters.
+- Bad: `https://evil.example.net/api?cmd=id`, `https://example.com/app.js`, and `https://example.com/region-list?lang=zh` are filtered from candidates.
+
+### 6. Tests Required
+
+- Agent registry test asserts `crawl_web` loads and requires `katana`.
+- Skill metadata test asserts `katana-crawl-web` is discovered and validates.
+- Sandbox test asserts `katana` is in `BINARY_WHITELIST`.
+- Handler tests mock Katana and assert argv construction, target validation, deduplication, static/noisy filtering, off-scope filtering, parameter risk classification, JSON/XML hints, schema-valid summary, timeout handling, and missing-binary handling.
+- Orchestrator prompt test asserts `crawl_web` appears in the hard-rule stage order before `vuln_scan`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+subprocess.run(f"katana -u {target} -d 5 -jc -o ./katana_urls.txt 2>/dev/null", shell=True)
+```
+
+#### Correct
+
+```python
+result = await run_command(
+    binary="katana",
+    args=["-u", target, "-d", "5", "-jc", "-ef", "css,png,jpg,gif,svg,woff,ttf,js", "-aff", "-o", str(urls_file), "-silent", "-no-color"],
+    timeout_sec=600,
+    network=NetworkPolicy.REQUIRED,
+    capture="file",
+    raw_log_path=raw_log,
+    cancel_token=ctx.cancel_token,
+)
+```
 
 ---
 

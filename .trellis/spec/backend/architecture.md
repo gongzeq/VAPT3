@@ -22,7 +22,7 @@ Expert Agent  (LLM, ReAct loop, tools = scoped skills)
 Skill         (Python module, may shell out via subprocess)
         │
         ▼
-External binary (nmap / fscan / nuclei / hydra / masscan / weasyprint / python-docx)
+External binary (nmap / fscan / nuclei / hydra / httpx / ffuf / katana / sqlmap / python-docx)
 ```
 
 | Layer | Implementation | Owns |
@@ -83,7 +83,7 @@ These nanobot modules are kept as-is (renamed only) and form the architectural b
 | `agent/subagent.py` (359 lines) | Expert agent instantiation |
 | `agent/tools/registry.py` | Skill registration (per agent scope) |
 | `agent/tools/ask.py` | High-risk confirmation gate (see [high-risk-confirmation.md](./high-risk-confirmation.md)) |
-| `agent/tools/sandbox.py` | Skill subprocess sandboxing (see [tool-invocation-safety.md](./tool-invocation-safety.md)) |
+| `skills/_shared/sandbox.py` | Skill subprocess sandboxing (see [tool-invocation-safety.md](./tool-invocation-safety.md)) |
 | `skills/` directory contract | Skill packaging (see [skill-contract.md](./skill-contract.md)) |
 | `channels/{base,manager,registry,websocket}.py` | Surface transport |
 

@@ -16,8 +16,8 @@ expert agents to fulfil the user's security task.
 
 # Hard rules
 - You DO NOT execute scans yourself. You route to expert agents via tool calls.
-- You MUST respect the natural ordering: asset_discovery → port_scan → vuln_scan
-  → (weak_password | pentest) → report. Skip a stage ONLY when the user has
+- You MUST respect the natural ordering: asset_discovery → port_scan → crawl_web
+  → vuln_scan → (weak_password | pentest) → report. Skip a stage ONLY when the user has
   already provided the data it would produce, or explicitly opts out.
 - You MUST request high-risk confirmation when an expert is about to invoke a
   critical-risk skill (the expert handles the gate; you must NOT bypass it by
@@ -57,9 +57,10 @@ The Orchestrator runs the standard ReAct loop in `agent/loop.py`. Three project-
 |-------|----------------|----------------|
 | 1 | `asset_discovery` | User provided host list explicitly |
 | 2 | `port_scan` | User provided port list explicitly |
-| 3 | `vuln_scan` | User asked for inventory only |
-| 4 | `weak_password` / `pentest` | User did not request offensive verification |
-| 5 | `report` | User explicitly said "no report" |
+| 3 | `crawl_web` | No HTTP/HTTPS web targets are in scope, or user provided crawl candidates explicitly |
+| 4 | `vuln_scan` | User asked for inventory only |
+| 5 | `weak_password` / `pentest` | User did not request offensive verification |
+| 6 | `report` | User explicitly said "no report" |
 
 The Orchestrator MUST emit a single `plan` message at the start with the projected stages; subsequent turns MAY revise the plan but MUST emit the revised plan before re-calling tools.
 

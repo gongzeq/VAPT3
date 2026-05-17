@@ -91,7 +91,7 @@ async def run(args: dict, ctx: SkillContext) -> SkillResult:
 ## 4. Hard Rules
 
 1. **No `print()`**. Use `ctx.write_progress` for UX, structured logging for diagnostics. (See [logging-guidelines.md](./logging-guidelines.md).)
-2. **No bare subprocess**. All external command execution goes through `secbot/agent/tools/sandbox.py`. (See [tool-invocation-safety.md](./tool-invocation-safety.md).)
+2. **No bare subprocess**. All external command execution goes through `secbot/skills/_shared/sandbox.py`. (See [tool-invocation-safety.md](./tool-invocation-safety.md).)
 3. **No raw stdout in `summary`**. The summary is for the LLM; raw bytes go to `raw_log_path`.
 4. **Idempotent reruns**. Re-invoking a skill with the same args + scan_id MUST be safe; no double CMDB inserts (use `INSERT OR IGNORE` or upsert).
 5. **No skill-to-skill calls**. If logic needs to be shared, factor it into `secbot/skills/_shared/`.
