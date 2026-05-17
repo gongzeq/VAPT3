@@ -1,8 +1,52 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
+  "required": ["findings"],
   "additionalProperties": true,
   "properties": {
-    "message": {"type": "string"}
+    "findings": {
+      "type": "array",
+      "description": "Structured findings from the 8-test sweep",
+      "items": {
+        "type": "object",
+        "required": ["test_name", "result", "confidence"],
+        "properties": {
+          "test_name": {
+            "type": "string",
+            "description": "Human-readable test name (e.g. XSS Reflection)"
+          },
+          "result": {
+            "type": "string",
+            "enum": ["positive", "negative", "inconclusive"]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Relevant response snippet, timing data, or diff summary"
+          },
+          "payload": {
+            "type": "string",
+            "description": "Exact payload that produced this result"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Target URL for this finding"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate statistics",
+      "properties": {
+        "targets": {"type": "integer"},
+        "findings": {"type": "integer"},
+        "high_confidence": {"type": "integer"}
+      }
+    }
   }
 }

@@ -1,6 +1,55 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
+  "required": ["targets"],
   "additionalProperties": false,
-  "properties": {}
+  "properties": {
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "description": "List of Web endpoints to probe. Each entry describes one URL plus optional per-target headers/cookies/parameters.",
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Full target URL (e.g. https://example.com/api/user)"
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST"],
+            "default": "GET",
+            "description": "HTTP method"
+          },
+          "params": {
+            "type": "object",
+            "description": "Query parameters (GET) or form body fields (POST) to inject payloads into"
+          },
+          "headers": {
+            "type": "object",
+            "description": "Additional HTTP headers for this target only"
+          },
+          "cookies": {
+            "type": "string",
+            "description": "Cookie string for this target only"
+          }
+        }
+      }
+    },
+    "global_headers": {
+      "type": "object",
+      "description": "Headers applied to every target (merged with per-target headers, per-target wins on conflict)"
+    },
+    "timeout_sec": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 120,
+      "default": 30,
+      "description": "HTTP request timeout in seconds"
+    }
+  }
 }
