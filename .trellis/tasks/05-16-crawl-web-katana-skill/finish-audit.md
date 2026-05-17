@@ -40,7 +40,7 @@ Continue and finish `.trellis/tasks/05-16-crawl-web-katana-skill`: add a `crawl_
 | Preserve two-layer architecture; no direct `vuln_scan` call | Prompt says return candidates only; handler only returns `recommended_action`; no agent-to-agent call path | Complete |
 | Relevant spec/docs updated | `.trellis/spec/backend/tool-invocation-safety.md`, `.trellis/spec/backend/orchestrator-prompt.md`, `.trellis/spec/backend/architecture.md`, `.trellis/spec/backend/skill-contract.md` | Complete |
 | Lint/type/test gate | Commands below rerun on 2026-05-17 | Complete |
-| Trellis Phase 3.4 commit | Commit plan below requires user confirmation because unrelated dirty files exist | Blocked |
+| Trellis Phase 3.4 commit | Work and audit commits are present in `git log` | Complete |
 
 ## Verification Performed
 
@@ -55,15 +55,16 @@ Used Python 3.11 because the default Anaconda Python is too old for this repo's 
 
 The warning is in `tests/agent/tools/test_subagent_tools.py::test_spawn_tool_rejects_unknown_agent`: `RuntimeWarning: coroutine 'Queue.get' was never awaited`. It is not introduced by the Katana handler path and the targeted tests all passed.
 
-## Commit Gate
+## Commit Evidence
 
-Trellis Phase 3.4 remains blocked pending user confirmation because unrelated dirty files are present in the worktree.
+Trellis Phase 3.4 was completed after explicit user confirmation.
 
-Proposed commit:
+Commits:
 
-`feat(agent): add crawl_web katana crawler`
+- `ee61e391e feat(agent): add crawl_web katana crawler`
+- `61033ce9e docs(trellis): update crawl_web katana finish audit`
 
-Files to include:
+Work commit files:
 
 - `secbot/agents/orchestrator.py`
 - `secbot/agents/crawl_web.yaml`
@@ -77,6 +78,7 @@ Files to include:
 - `tests/security/test_sandbox.py`
 - `tests/skills/test_metadata.py`
 - `tests/skills/test_katana_crawl_web_handler.py`
+- `.trellis/tasks/05-16-crawl-web-katana-skill/finish-audit.md`
 
 Already present in HEAD from earlier related commits and not currently dirty:
 
@@ -95,10 +97,3 @@ Unrelated dirty files must not be included without explicit user direction:
 - `secbot/resource/fuzzDicts`
 - `secbot/skills/ctf-web/`
 - `secbot/skills/ffuf-skill/`
-
-## Current Blocker
-
-Awaiting one explicit user choice:
-
-- `ok` / `行`: stage and commit only the crawl_web/Katana files listed above.
-- `manual` / `我自己来`: skip commit execution and leave it for the user.
