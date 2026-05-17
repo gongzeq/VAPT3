@@ -11,6 +11,7 @@ from typing import Any
 
 from secbot.cmdb.db import get_session
 from secbot.cmdb.models import DEFAULT_ACTOR
+from secbot.cmdb.repo import create_scan, get_scan
 from secbot.report.builder import build_report_model, record_report_meta
 from secbot.report.render import render_html
 from secbot.skills.types import SkillContext, SkillResult
@@ -23,6 +24,14 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     report_type: str = args.get("type", "custom")
 
     async with get_session() as session:
+        # Ensure the scan row exists so build_report_model never raises.
+        # Prior stages may have skipped CMDB writes (e.g. empty results or
+        # early failure), but the report must still be renderable.
+        scan = await get_scan(session, actor_id, scan_id)
+        if scan is None:
+            target = args.get("target") or report_title or scan_id
+            await create_scan(session, actor_id, target=target, scan_id=scan_id)
+
         model = await build_report_model(session, scan_id, actor_id=actor_id)
 
     if model.is_empty():
