@@ -637,3 +637,39 @@ Implemented persistent teammate communication with JSONL inboxes, teammate lifec
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: bb-realtime-notify: split blackboard from per-asset feed + real-time WS panel
+
+**Date**: 2026-05-17
+**Task**: bb-realtime-notify: split blackboard from per-asset feed + real-time WS panel
+**Branch**: `main`
+
+### Summary
+
+Implemented all 4 PRs of 05-17-bb-realtime-notify: (PR-1) per-chat AssetFeed/AssetFeedRegistry + asset_push/read_assets tools registered on operational loop and SubagentManager; (PR-2) blackboard semantics tightened to aggregate-only and 5 expert prompts (asset_discovery/port_scan/vuln_scan/vuln_detec/weak_password) re-routed to asset_push; (PR-3) GET /api/assets aiohttp route + WebSocket asset_pushed broadcast wired through ChannelManager + AssetsPanel.tsx right-rail panel with HTTP replay + WS subscribe + kind filter chips; (PR-4) spec deltas (architecture/orchestrator-prompt/skill-contract/tool-invocation-safety) and trellis task artifacts persisted. Tests: 30 new unit/route tests + 35 blackboard regressions all green; full suite 1312 pass with 5 pre-existing failures unrelated to this task. Tooling: AssetFeed.set_on_append callback hook mirrors Blackboard.set_on_write; loop.py rebinds active feed per turn so callable tool registrations resolve to the right chat-scoped instance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8395677fe` | (see git log) |
+| `874b8d5ec` | (see git log) |
+| `7ee690136` | (see git log) |
+| `d283c2969` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

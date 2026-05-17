@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
-- **Last Active**: 2026-05-16
+- **Total Sessions**: 12
+- **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~639 | Active |
+| `journal-1.md` | ~675 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-05-17 | bb-realtime-notify: split blackboard from per-asset feed + real-time WS panel | `8395677fe`, `874b8d5ec`, `7ee690136`, `d283c2969` | `main` |
 | 11 | 2026-05-16 | Persistent teammate communication | `ec6f06b97`, `edf48880f` | `main` |
 | 10 | 2026-05-13 | 收尾 05-11-security-tools-as-tools：exec 默关 + Skill-as-Tool 文档 | `ad9dff69`, `9e1d277e` | `main` |
 | 9 | 2026-05-13 | 05-11-frontend-agent-display-gap (P2 前端思维链/子智能体/黑板缺口) | `06956e94` | `main` |
