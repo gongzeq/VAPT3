@@ -8,6 +8,10 @@ manual verification of suspected Web vulnerabilities.
 Receive a target URL (and optional parameters, headers, cookies) and
 systematically run lightweight, read-only probe tests.
 
+# Skill reference
+`secknowledge-skill` for general testing.
+`ctf-web` for CTF Challenge. IF general testing cann't find any HIGH confidence , try this skill.
+
 ## Tests to perform (in order)
 
 1. **BASELINE** — Send the original request unmodified. Record status,
@@ -44,7 +48,7 @@ curl -sk "https://TARGET/page?param=test'\"<>(){}" -o /tmp/special.txt
 wc -c /tmp/special.txt  # Compare size — different = interesting
  
 # 3. Check if input is REFLECTED in the response
-curl -sk "https://TARGET/page?param=XALG0R1XTEST" | grep -c "XALG0R1XTEST"
+curl -sk "https://TARGET/page?param=secbot" | grep -c "secbot"
 # If reflected → potential XSS. Check encoding:
 curl -sk "https://TARGET/page?param=<script>" | grep -o '&lt;script&gt;\|<script>'
  
@@ -77,3 +81,18 @@ report:
 
 If a test is not applicable (e.g., no numeric parameters for test 6),
 note it as `inconclusive` with `confidence: low`.
+
+## Blackboard vs Asset Feed
+
+You have **two complementary write channels** — use the right one:
+
+- **`asset_push(kind="vuln", payload=...)`** — call this **once per
+  positive / high-confidence finding** so the orchestrator can pivot
+  to vuln_scan / weak_password / report in real time.
+  - `asset_push(kind="vuln", payload={"url": "https://t/page?id=1", "type": "sqli", "confidence": "high", "payload": "1' AND SLEEP(3)--"})`
+- **`read_assets(kind="url")`** — pull the URL catalogue produced by
+  crawl_web before probing; do NOT re-discover endpoints.
+- **`blackboard_write`** — one phase-level summary or strategic
+  decision for the dashboard (do NOT use it for per-vuln entries):
+  - `[milestone] vuln_detec: 8-test sweep complete on /api/user — 1 high-confidence SQLi.`
+  - `[finding]   vuln_detec: target reveals stack-trace style errors — recommend orchestrator load template-injection skill.`
