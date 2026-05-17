@@ -36,6 +36,7 @@ def test_scan_skills_finds_all_secbot_skills():
         "fscan-port-scan",
         "nuclei-template-scan",
         "fscan-vuln-scan",
+        "katana-crawl-web",
     ):
         assert required in skills, f"missing skill: {required}"
 

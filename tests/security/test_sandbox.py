@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +27,7 @@ def test_binary_whitelist_contains_required_tools():
         "hydra",
         "httpx",
         "ffuf",
+        "katana",
         "sqlmap",
         "python3",
     ):
@@ -134,7 +134,7 @@ async def test_timeout_kills_process(tmp_path: Path):
     with pytest.raises(SkillTimeout):
         await run_command(
             binary="python3",
-            args=["-m", "http.server", "0", "--bind", "127.0.0.1"],
+            args=["-c", "while True: pass"],
             timeout_sec=1,
             network=NetworkPolicy.NONE,
             capture="file",
@@ -155,7 +155,7 @@ async def test_cancel_token_terminates(tmp_path: Path):
     with pytest.raises(SkillCancelled):
         await run_command(
             binary="python3",
-            args=["-m", "http.server", "0", "--bind", "127.0.0.1"],
+            args=["-c", "while True: pass"],
             timeout_sec=10,
             network=NetworkPolicy.NONE,
             capture="file",

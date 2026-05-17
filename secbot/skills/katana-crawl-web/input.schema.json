@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target"],
+  "properties": {
+    "target": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 2048,
+      "pattern": "^https?://[A-Za-z0-9][A-Za-z0-9._~:/?#\\[\\]@!()*+,=%-]{0,2047}$",
+      "description": "Authorized HTTP/HTTPS URL to crawl."
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 5
+    },
+    "max_candidates": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 100
+    },
+    "timeout_sec": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 7200,
+      "default": 600
+    }
+  }
+}

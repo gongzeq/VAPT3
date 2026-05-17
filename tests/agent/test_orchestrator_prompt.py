@@ -49,6 +49,7 @@ def test_hard_rules_mention_confirmation_and_ordering():
     assert "high-risk confirmation" in rendered
     assert "asset_discovery" in rendered
     assert "port_scan" in rendered
+    assert "crawl_web" in rendered
 
 
 def test_prompt_requires_auto_report_after_scan():

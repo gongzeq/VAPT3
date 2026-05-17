@@ -10,7 +10,7 @@ import enum
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, cast
 
 from secbot.skills.types import (
     SkillBinaryMissing,
@@ -19,7 +19,6 @@ from secbot.skills.types import (
     SkillTimeout,
 )
 
-
 BINARY_WHITELIST = frozenset({
     "nmap",
     "fscan",
@@ -27,6 +26,7 @@ BINARY_WHITELIST = frozenset({
     "hydra",
     "httpx",
     "ffuf",
+    "katana",
     "sqlmap",
     "ghauri",
     "python3",
@@ -37,11 +37,11 @@ BINARY_WHITELIST = frozenset({
 FORBIDDEN_CHARS = frozenset(";&|$`<>\n\r\\\"'")
 
 
-class BinaryNotAllowed(SkillError):
+class BinaryNotAllowed(SkillError):  # noqa: N818 - public API predates Ruff naming rule.
     """``binary`` is not in :data:`BINARY_WHITELIST`."""
 
 
-class InvalidArgvCharacter(SkillError):
+class InvalidArgvCharacter(SkillError):  # noqa: N818 - public API predates Ruff naming rule.
     """A forbidden character was found in an argv element."""
 
 
@@ -86,7 +86,8 @@ async def run_command(
 
     See spec §1 for the canonical call signature.
     """
-    if binary not in BINARY_WHITELIST:
+    binary_name = Path(binary).name
+    if binary_name not in BINARY_WHITELIST:
         raise BinaryNotAllowed(
             f"binary {binary!r} is not in BINARY_WHITELIST "
             "(see .trellis/spec/backend/tool-invocation-safety.md §2)"
@@ -119,8 +120,9 @@ async def run_command(
 
     log_handle = None
     if capture == "file":
-        raw_log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_handle = raw_log_path.open("wb")
+        log_path = cast(Path, raw_log_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = log_path.open("wb")
 
     captured = bytearray() if capture == "memory_capped" else None
     cap_bytes = memory_cap_mb * 1024 * 1024
@@ -151,7 +153,7 @@ async def run_command(
 
     try:
         wait_task = asyncio.create_task(proc.wait())
-        watchers = [wait_task]
+        watchers: list[asyncio.Task[object]] = [wait_task]
         if cancel_task is not None:
             watchers.append(cancel_task)
 

@@ -1,0 +1,77 @@
+name: crawl_web
+display_name: Web 爬虫
+description: |
+  Crawl an authorized HTTP/HTTPS web target with Katana, deduplicate discovered
+  URLs, classify risky parameters and business-sensitive paths, and return
+  structured vulnerability hypotheses for later vuln_scan routing.
+
+system_prompt_file: ./prompts/crawl_web.md
+
+scoped_skills:
+  - katana-crawl-web
+
+max_iterations: 4
+emit_plan_steps: true
+
+input_schema:
+  type: object
+  required: [target]
+  properties:
+    target:
+      type: string
+      format: uri
+      description: Authorized HTTP/HTTPS URL to crawl.
+    depth:
+      type: integer
+      minimum: 1
+      maximum: 10
+      default: 5
+    max_candidates:
+      type: integer
+      minimum: 1
+      maximum: 500
+      default: 100
+    timeout_sec:
+      type: integer
+      minimum: 30
+      maximum: 7200
+      default: 600
+
+output_schema:
+  type: object
+  required: [candidates]
+  properties:
+    total_urls: {type: integer}
+    deduped_urls: {type: integer}
+    filtered_urls: {type: integer}
+    candidate_count: {type: integer}
+    candidates:
+      type: array
+      items:
+        type: object
+        required: [url, parameters, guessed_vulnerabilities, reasons, recommended_action]
+        properties:
+          url: {type: string}
+          priority:
+            type: string
+            enum: [critical, high, medium, low]
+          parameters:
+            type: array
+            items:
+              type: object
+              required: [name, risk]
+              properties:
+                name: {type: string}
+                risk:
+                  type: string
+                  enum: [critical, high, neutral, skipped]
+          guessed_vulnerabilities:
+            type: array
+            items: {type: string}
+          reasons:
+            type: array
+            items: {type: string}
+          recommended_action: {type: string}
+    raw_urls_path: {type: string}
+    error: {type: string}
+    cancelled: {type: boolean}

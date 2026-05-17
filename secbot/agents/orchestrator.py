@@ -28,8 +28,9 @@ _HARD_RULES = (
     "real-time, external-resource, file, or mutation work MUST use `delegate_task`.",
     "- You DO NOT execute scans yourself. You route to expert agents via tool calls.",
     "- You MUST respect the natural ordering: asset_discovery \u2192 port_scan \u2192 "
-    "vuln_scan \u2192 (weak_password | pentest) \u2192 report. Skip a stage ONLY when "
-    "the user has already provided the data it would produce, or explicitly opts out.",
+    "crawl_web \u2192 vuln_scan \u2192 (weak_password | pentest) \u2192 report. Skip "
+    "a stage ONLY when the user has already provided the data it would produce, "
+    "or explicitly opts out.",
     "- Before delegating to the next expert agent, you MUST call `read_blackboard` "
     "to check for findings already recorded by peer agents. Pass discovered facts "
     "(e.g. known open ports, services) in the `task` parameter so the next agent "

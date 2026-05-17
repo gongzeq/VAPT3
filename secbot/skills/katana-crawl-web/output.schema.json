@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "total_urls": {"type": "integer", "minimum": 0},
+    "deduped_urls": {"type": "integer", "minimum": 0},
+    "filtered_urls": {"type": "integer", "minimum": 0},
+    "candidate_count": {"type": "integer", "minimum": 0},
+    "elapsed_sec": {"type": "number"},
+    "raw_urls_path": {"type": "string"},
+    "error": {"type": "string"},
+    "cancelled": {"type": "boolean"},
+    "_truncated": {"type": "object"},
+    "candidates": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url",
+          "priority",
+          "parameters",
+          "guessed_vulnerabilities",
+          "reasons",
+          "recommended_action"
+        ],
+        "properties": {
+          "url": {"type": "string"},
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "risk"],
+              "properties": {
+                "name": {"type": "string"},
+                "risk": {
+                  "type": "string",
+                  "enum": ["critical", "high", "neutral", "skipped"]
+                }
+              }
+            }
+          },
+          "guessed_vulnerabilities": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "reasons": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "recommended_action": {"type": "string"}
+        }
+      }
+    }
+  }
+}
