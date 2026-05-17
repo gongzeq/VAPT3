@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Skill handler contract: SkillResult structure, cmdb_writes format, schema conventions"}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "CMDB vulnerabilities table schema for cmdb_writes generation"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Scan lifecycle and asset feed integration"}
+{"file": ".trellis/spec/vapt3/index.md", "reason": "VAPT3 vulnerability detection domain conventions"}
