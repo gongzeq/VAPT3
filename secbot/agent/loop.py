@@ -16,6 +16,7 @@ from loguru import logger
 
 from secbot.agent.autocompact import AutoCompact
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
+from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.context import ContextBuilder
 from secbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
@@ -32,6 +33,7 @@ from secbot.agent.tools.ask import (
     pending_ask_user_call,
 )
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
+from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.cron import CronTool
 from secbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -491,6 +493,16 @@ class AgentLoop:
         # ``on_write`` is bound per-turn in _run_agent_loop when channel == "websocket".
         self.blackboard_registry = BlackboardRegistry()
         self.blackboard = Blackboard()
+        # PR-1 (asset-feed): chat-scoped real-time discovery channel,
+        # complementary to (and decoupled from) the blackboard. The
+        # blackboard is for aggregated summaries; the asset feed is for
+        # one entry per discrete asset push, with orchestrator wake-up.
+        self.asset_feed_registry = AssetFeedRegistry()
+        # Active per-turn asset feed pointer (rebound in ``_run_agent_loop``).
+        # Initialised to a default feed so tools registered with a
+        # ``lambda: self.asset_feed`` callable always resolve to a valid
+        # instance even before the first turn rebinds it.
+        self.asset_feed: AssetFeed = AssetFeed()
         # PR3: lazy-load the expert-agent registry so SpawnTool can validate
         # ``agent=`` and SubagentManager can filter scoped skills. A broken
         # YAML MUST NOT crash the loop — we log and fall through to ``None``,
@@ -526,6 +538,7 @@ class AgentLoop:
             agent_registry=self._agent_registry,
             blackboard=self.blackboard,
             blackboard_registry=self.blackboard_registry,
+            asset_feed_registry=self.asset_feed_registry,
         )
         self.teammates = TeammateManager(
             provider=provider,
@@ -638,6 +651,7 @@ class AgentLoop:
         self.tools.register(ReadTeammateInboxTool(self.teammates))
         self.tools.register(ShutdownTeammateTool(self.teammates))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
+        self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
         self.tools.register(RequestApprovalTool())
         self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))
         self.tools.register(
@@ -686,6 +700,21 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         self.tools.register(BlackboardWriteTool(blackboard=lambda: self.blackboard, agent_name="orchestrator"))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
+        # Asset feed: register both push (write) and read tools on the
+        # operational loop so a chat-driven non-orchestrator agent can
+        # also append discoveries without going through a sub-agent.
+        self.tools.register(
+            AssetPushTool(
+                feed=lambda: self.asset_feed,
+                bus=self.bus,
+                origin=lambda: {
+                    "channel": "system",
+                    "chat_id": self._current_chat_id or "",
+                },
+                agent_name="operational",
+            )
+        )
+        self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
         # Register every valid secbot skill as a first-class tool so the LLM
         # can invoke nmap / fscan / hydra / nuclei etc. with typed parameters
         # instead of synthesising shell commands via ``exec``. Skills whose
@@ -978,6 +1007,13 @@ class AgentLoop:
         active_blackboard = await self.blackboard_registry.get_or_create(chat_id)
         self.blackboard = active_blackboard
 
+        # PR-1: rebind the active asset feed for the current chat. The
+        # registered AssetPushTool / ReadAssetsTool resolve via a
+        # callable that returns ``self.asset_feed``, so this single
+        # assignment redirects every subsequent tool invocation in this
+        # turn (and any sub-agents spawned from it) to the right feed.
+        self.asset_feed = await self.asset_feed_registry.get_or_create(chat_id)
+
         # Bind blackboard write callback for websocket channels so entries
         # are broadcast to the chat surface in real-time.
         if channel == "websocket":
@@ -994,10 +1030,22 @@ class AgentLoop:
                         )
                     )
                 active_blackboard.set_on_write(_on_bb_write)
+
+                def _on_asset_push(entry) -> None:
+                    asyncio.create_task(
+                        ws_channel.broadcast_agent_event(
+                            chat_id=chat_id,
+                            type="asset_pushed",
+                            payload=entry.to_dict(),
+                        )
+                    )
+                self.asset_feed.set_on_append(_on_asset_push)
             else:
                 active_blackboard.set_on_write(None)
+                self.asset_feed.set_on_append(None)
         else:
             active_blackboard.set_on_write(None)
+            self.asset_feed.set_on_append(None)
 
         try:
             result = await self.runner.run(AgentRunSpec(

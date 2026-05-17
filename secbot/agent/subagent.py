@@ -10,11 +10,13 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
+from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
 from secbot.agent.hook import AgentHook, AgentHookContext
 from secbot.agent.runner import AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.tools.ask import AskUserTool
+from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
@@ -214,6 +216,7 @@ class SubagentManager:
         agent_registry: "AgentRegistry | None" = None,
         blackboard: Blackboard | None = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
+        asset_feed_registry: "AssetFeedRegistry | None" = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -238,6 +241,10 @@ class SubagentManager:
         # ``_run_subagent`` resolves the chat-scoped board from it instead.
         self.blackboard = blackboard or Blackboard()
         self.blackboard_registry = blackboard_registry
+        # ``asset_feed_registry`` is the chat-scoped real-time discovery
+        # channel (URL / port / vuln / ...). When None, sub-agents still
+        # boot but ``asset_push`` / ``read_assets`` are not registered.
+        self.asset_feed_registry = asset_feed_registry
         # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
         # resolves the named spec and ``_run_subagent`` filters the skill tool
         # set down to ``spec.scoped_skills``.
@@ -402,6 +409,12 @@ class SubagentManager:
             resolved_blackboard = await self.blackboard_registry.get_or_create(chat_id)
         else:
             resolved_blackboard = self.blackboard
+        if self.asset_feed_registry is not None:
+            resolved_asset_feed: AssetFeed | None = (
+                await self.asset_feed_registry.get_or_create(chat_id)
+            )
+        else:
+            resolved_asset_feed = None
 
         async def _on_checkpoint(payload: dict) -> None:
             status.phase = payload.get("phase", status.phase)
@@ -445,6 +458,16 @@ class SubagentManager:
             tools.register(AskUserTool())
             tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=label))
             tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
+            if resolved_asset_feed is not None:
+                tools.register(
+                    AssetPushTool(
+                        feed=resolved_asset_feed,
+                        bus=self.bus,
+                        origin=origin,
+                        agent_name=label,
+                    )
+                )
+                tools.register(ReadAssetsTool(feed=resolved_asset_feed))
             # ExecTool is gated by BOTH global exec_config.enable AND per-agent
             # allow_exec. Default-deny: subagents without an explicit opt-in
             # ExpertAgentSpec, or with allow_exec=False, NEVER receive exec.

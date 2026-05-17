@@ -636,7 +636,7 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
 
     agents_dir = _Path(__file__).resolve().parents[3] / "secbot" / "agents"
     registry = load_agent_registry(agents_dir, skill_names=None)
-    spec = registry.get("port_scan")
+    spec = registry.get("crawl_web")
 
     bus = MessageBus()
     provider = MagicMock()
@@ -677,12 +677,13 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
         spec,
     )
 
-    # Only port_scan's 3 scoped skills must appear; others are excluded.
+    # Only crawl_web's scoped skill must appear; others are excluded.
     assert "delegate_task" not in captured["tool_names"]
     assert "blackboard_write" in captured["tool_names"]
     assert "read_blackboard" in captured["tool_names"]
     for skill in spec.scoped_skills:
         assert skill in captured["tool_names"], f"missing {skill}"
+    assert "katana-crawl-web" in captured["tool_names"]
     for skill in ("nmap-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
         assert skill not in captured["tool_names"], f"{skill} must be scoped out"
 

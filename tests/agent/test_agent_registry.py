@@ -36,6 +36,8 @@ REAL_SKILL_NAMES = {
     "report-html",
     # vuln_detec
     "vuln-detec-manual",
+    # crawl_web
+    "katana-crawl-web",
 }
 
 
@@ -50,6 +52,7 @@ def test_real_registry_loads_with_skill_set():
         "asset_discovery",
         "port_scan",
         "vuln_scan",
+        "crawl_web",
         "weak_password",
         "report",
         "vuln_detec",
@@ -120,6 +123,11 @@ def test_availability_all_present(monkeypatch):
     assert report.missing_binaries == ()
     assert report.available is True
 
+    crawl = reg.get("crawl_web")
+    assert crawl.required_binaries == ("katana",)
+    assert crawl.missing_binaries == ()
+    assert crawl.available is True
+
 
 def test_availability_some_missing(monkeypatch):
     # Only nmap exists; everything else is missing.
@@ -143,6 +151,11 @@ def test_availability_some_missing(monkeypatch):
     assert weak.required_binaries == ("hydra",)
     assert weak.missing_binaries == ("hydra",)
     assert weak.available is False
+
+    crawl = reg.get("crawl_web")
+    assert crawl.required_binaries == ("katana",)
+    assert crawl.missing_binaries == ("katana",)
+    assert crawl.available is False
 
 
 def test_skill_binary_overrides_resolve_when_path_missing(monkeypatch, tmp_path):
