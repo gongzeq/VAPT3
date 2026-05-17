@@ -1033,6 +1033,7 @@ def _run_gateway(
         session_manager=session_manager,
         subagent_manager=getattr(agent, "subagents", None),
         blackboard_registry=getattr(agent, "blackboard_registry", None),
+        asset_feed_registry=getattr(agent, "asset_feed_registry", None),
         workflow_api_port=workflow_api_port,
     )
 

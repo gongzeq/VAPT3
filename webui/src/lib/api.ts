@@ -1,6 +1,7 @@
 import type {
   ActivityEventListResponse,
   AgentRegistryRow,
+  AssetSnapshotResponse,
   BlackboardEntry,
   ChatSummary,
   NotificationListResponse,
@@ -478,4 +479,33 @@ export async function fetchBlackboard(
     token,
   );
   return body.entries ?? [];
+}
+
+/** Fetch the asset feed snapshot for ``chatId``. Mirrors
+ * :func:`fetchBlackboard`: a missing feed degrades to an empty list rather
+ * than 404. ``sinceId`` lets a polling client request just the deltas
+ * since its last cursor; ``kind`` filters server-side. */
+export async function fetchAssetFeed(
+  token: string,
+  chatId: string,
+  options: { sinceId?: number; kind?: string } = {},
+  base: string = "",
+): Promise<AssetSnapshotResponse> {
+  const params = new URLSearchParams({ chat_id: chatId });
+  if (options.sinceId !== undefined) {
+    params.set("since_id", String(options.sinceId));
+  }
+  if (options.kind) {
+    params.set("kind", options.kind);
+  }
+  const body = await request<AssetSnapshotResponse>(
+    `${base}/api/assets?${params.toString()}`,
+    token,
+  );
+  return {
+    chat_id: body.chat_id ?? chatId,
+    entries: body.entries ?? [],
+    latest_id: body.latest_id ?? 0,
+    counts: body.counts ?? {},
+  };
 }

@@ -11,6 +11,7 @@ export type AgentEventType =
   | "subagent_status"
   | "subagent_done"
   | "blackboard_entry"
+  | "asset_pushed"
   | "agent_status"
   | "tool_call"
   | "high_risk_confirm";
@@ -105,6 +106,38 @@ export type BlackboardEntry = Pick<
   AgentEventPayload,
   "id" | "agent_name" | "text" | "timestamp" | "kind"
 >;
+
+/** Recognised asset feed kinds. Mirrors backend
+ * ``secbot/agent/asset_feed.py`` ``KNOWN_ASSET_KINDS``. The list is
+ * open: an unknown ``kind`` from the backend should still render
+ * (degrade-don't-crash) under a generic chip. */
+export type AssetKind =
+  | "url"
+  | "port"
+  | "service"
+  | "credential"
+  | "vuln"
+  | "tech";
+
+/** One entry of the per-chat asset feed. ``payload`` is whatever the
+ * sub-agent decided to push (a small JSON object); the front-end picks
+ * a few well-known keys (host / port / url / status / title / service /
+ * version / username / severity / cve) for display. */
+export interface AssetEntry {
+  id: number;
+  kind: string;
+  agent_name: string;
+  payload: Record<string, unknown>;
+  created_at: number;
+}
+
+/** ``GET /api/assets`` response shape. */
+export interface AssetSnapshotResponse {
+  chat_id: string;
+  entries: AssetEntry[];
+  latest_id: number;
+  counts: Record<string, number>;
+}
 
 /** Expert-agent registry row enriched with optional runtime fields, returned
  * by ``GET /api/agents`` (with or without ``?include_status=true``). The

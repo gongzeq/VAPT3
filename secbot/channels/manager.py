@@ -17,6 +17,7 @@ from secbot.config.schema import Config
 from secbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
 
 if TYPE_CHECKING:
+    from secbot.agent.asset_feed import AssetFeedRegistry
     from secbot.agent.blackboard import BlackboardRegistry
     from secbot.agent.subagent import SubagentManager
     from secbot.agents.registry import AgentRegistry
@@ -60,6 +61,7 @@ class ChannelManager:
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
+        asset_feed_registry: "AssetFeedRegistry | None" = None,
         workflow_api_port: int | None = None,
     ):
         self.config = config
@@ -68,6 +70,7 @@ class ChannelManager:
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
         self._blackboard_registry = blackboard_registry
+        self._asset_feed_registry = asset_feed_registry
         self._workflow_api_port = workflow_api_port
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
@@ -115,6 +118,8 @@ class ChannelManager:
                         kwargs["agent_registry"] = self._agent_registry
                     if self._blackboard_registry is not None:
                         kwargs["blackboard_registry"] = self._blackboard_registry
+                    if self._asset_feed_registry is not None:
+                        kwargs["asset_feed_registry"] = self._asset_feed_registry
                     if self._workflow_api_port is not None:
                         kwargs["workflow_api_port"] = self._workflow_api_port
                 channel = cls(section, self.bus, **kwargs)

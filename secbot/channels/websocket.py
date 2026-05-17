@@ -43,6 +43,7 @@ from secbot.utils.media_decode import (
 )
 
 if TYPE_CHECKING:
+    from secbot.agent.asset_feed import AssetFeedRegistry
     from secbot.agent.blackboard import BlackboardRegistry
     from secbot.agent.subagent import SubagentManager
     from secbot.agents.registry import AgentRegistry
@@ -513,6 +514,7 @@ class WebSocketChannel(BaseChannel):
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
+        asset_feed_registry: "AssetFeedRegistry | None" = None,
         workflow_api_port: int | None = None,
     ):
         if isinstance(config, dict):
@@ -549,6 +551,7 @@ class WebSocketChannel(BaseChannel):
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
         self._blackboard_registry = blackboard_registry
+        self._asset_feed_registry = asset_feed_registry
         # Port of the standalone aiohttp workflow sub-service started by
         # ``secbot gateway`` — the WebUI reads this from the bootstrap
         # payload so it knows where to send mutating workflow requests
@@ -773,6 +776,13 @@ class WebSocketChannel(BaseChannel):
         # backfill on mount or refresh. Spec: dashboard-aggregation.md §2.7.
         if got == "/api/blackboard":
             return await self._handle_blackboard(request)
+
+        # Per-chat asset feed snapshot — companion to /api/blackboard.
+        # Returns ``AssetFeedRegistry`` entries with optional ``kind`` and
+        # ``since_id`` query filters so the WebUI Asset Feed tab can
+        # backfill / poll without reading the WS event stream.
+        if got == "/api/assets":
+            return await self._handle_assets(request)
 
         # Quick-command prompts (P1/R3). Spec:
         # `.trellis/spec/backend/prompts-config.md`. YAML-backed, hot-reloaded
@@ -1659,6 +1669,71 @@ class WebSocketChannel(BaseChannel):
             self.logger.exception("blackboard.to_dict_list failed for {}", chat_id)
             entries = []
         return _http_json_response({"chat_id": chat_id, "entries": entries})
+
+    # -- Per-chat asset feed snapshot -------------------------------------
+
+    async def _handle_assets(self, request: WsRequest) -> Response:
+        """Return ``AssetFeedRegistry`` entries for ``?chat_id=``.
+
+        Companion to :meth:`_handle_blackboard`. Supports optional
+        ``kind`` (filter by asset kind) and ``since_id`` (cursor) query
+        parameters.
+
+        Behavior:
+
+        * 401 when bearer token missing/invalid.
+        * 400 when ``chat_id`` query is missing.
+        * 200 with ``{"chat_id", "entries", "latest_id", "counts"}`` —
+          empty when no feed exists yet (no implicit creation).
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        chat_id = _query_first(query, "chat_id")
+        if not chat_id:
+            return _http_error(400, "missing chat_id")
+
+        kind_raw = _query_first(query, "kind") or ""
+        kind = kind_raw.strip().lower() or None
+
+        since_raw = _query_first(query, "since_id") or ""
+        since_id: int | None = None
+        if since_raw:
+            try:
+                parsed = int(since_raw)
+                if parsed >= 0:
+                    since_id = parsed
+            except ValueError:
+                pass
+
+        empty = {"chat_id": chat_id, "entries": [], "latest_id": 0, "counts": {}}
+
+        if self._asset_feed_registry is None:
+            return _http_json_response(empty)
+
+        try:
+            feed = await self._asset_feed_registry.get(chat_id)
+        except Exception:
+            self.logger.exception("asset feed registry lookup failed for {}", chat_id)
+            return _http_json_response(empty)
+        if feed is None:
+            return _http_json_response(empty)
+
+        try:
+            entries = await feed.since(since_id=since_id, kind=kind, limit=500)
+            counts = await feed.counts_by_kind()
+        except Exception:
+            self.logger.exception("asset feed read failed for {}", chat_id)
+            return _http_json_response(empty)
+
+        return _http_json_response(
+            {
+                "chat_id": chat_id,
+                "entries": [e.to_dict() for e in entries],
+                "latest_id": feed.latest_id,
+                "counts": counts,
+            }
+        )
 
     def _load_agent_registry_cached(self) -> "AgentRegistry":
         """Return the injected registry, or lazy-load from ``secbot/agents/``.

@@ -412,6 +412,7 @@ def create_app(
     # AgentLoop test doubles working without a hard breakage.
     app["subagent_manager"] = getattr(agent_loop, "subagents", None)
     app["blackboard_registry"] = getattr(agent_loop, "blackboard_registry", None)
+    app["asset_feed_registry"] = getattr(agent_loop, "asset_feed_registry", None)
 
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
@@ -423,6 +424,10 @@ def create_app(
     from secbot.api.blackboard import register_blackboard_routes
 
     register_blackboard_routes(app)
+
+    from secbot.api.asset_feed import register_asset_feed_routes
+
+    register_asset_feed_routes(app)
 
     if workflow_service is not None:
         # Late import keeps the workflow module out of the hot path for
