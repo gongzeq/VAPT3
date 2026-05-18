@@ -58,8 +58,15 @@ def _collect_runtime_status(
         prev = by_agent.get(agent_name)
         if prev is not None and prev.get("_hb", 0.0) >= last_hb:
             continue
+        stop_reason = getattr(status, "stop_reason", None)
+        if stop_reason in ("completed", "empty_final_response", "max_iterations"):
+            status_str = "completed"
+        elif stop_reason in ("error", "tool_error"):
+            status_str = "error"
+        else:
+            status_str = "running"
         by_agent[agent_name] = {
-            "status": "running",
+            "status": status_str,
             "current_task_id": status.task_id,
             "last_heartbeat_at": _format_iso(last_hb),
             "_hb": last_hb,

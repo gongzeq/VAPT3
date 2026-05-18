@@ -356,7 +356,10 @@ class SubagentManager:
 
         def _cleanup(_: asyncio.Task) -> None:
             self._running_tasks.pop(task_id, None)
-            self._task_statuses.pop(task_id, None)
+            # Delay removal from _task_statuses so that completed/error
+            # snapshots remain visible in HTTP polls for a short window.
+            loop = asyncio.get_running_loop()
+            loop.call_later(60, self._task_statuses.pop, task_id, None)
             if session_key and (ids := self._session_tasks.get(session_key)):
                 ids.discard(task_id)
                 if not ids:
@@ -602,12 +605,13 @@ class SubagentManager:
                 await self._broadcast_agent_status(
                     origin=origin,
                     agent_name=resolved_agent_name,
-                    status="idle",
+                    status="completed",
                     current_task_id=None,
                 )
 
         except Exception as e:
             status.phase = "error"
+            status.stop_reason = "error"
             status.error = str(e)
             logger.exception("Subagent [{}] failed", task_id)
             await self._announce_result(

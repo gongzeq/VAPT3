@@ -1573,7 +1573,7 @@ class WebSocketChannel(BaseChannel):
             # SubagentManager. Tests construct the channel without one — keep
             # the documented ``offline`` fallback so the UI surface stays
             # stable until the wiring lands. Spec: dashboard-aggregation.md
-            # §2.6 (status enum: idle | running | queued | offline).
+            # §2.6 (status enum: idle | running | queued | offline | completed | error).
             statuses_by_agent: dict[str, dict[str, Any]] = {}
             if self._subagent_manager is not None:
                 try:
@@ -1590,8 +1590,15 @@ class WebSocketChannel(BaseChannel):
                     last_hb = getattr(sub_status, "last_heartbeat_at", 0.0)
                     if prev is not None and prev.get("_hb", 0.0) >= last_hb:
                         continue
+                    stop_reason = getattr(sub_status, "stop_reason", None)
+                    if stop_reason in ("completed", "empty_final_response", "max_iterations"):
+                        status_str = "completed"
+                    elif stop_reason in ("error", "tool_error"):
+                        status_str = "error"
+                    else:
+                        status_str = "running"
                     statuses_by_agent[agent_name] = {
-                        "status": "running",
+                        "status": status_str,
                         "current_task_id": sub_status.task_id,
                         "last_heartbeat_at": _format_heartbeat(last_hb),
                         "_hb": last_hb,

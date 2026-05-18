@@ -26,8 +26,9 @@ export type BlackboardKind = "milestone" | "blocker" | "finding" | "progress";
 /** Runtime status enum for an expert agent. Mirrors the backend
  * ``dashboard-aggregation.md §2.6`` enum. ``offline`` means "no manager
  * wired" or "binary missing"; ``idle`` means the manager is up but the agent
- * has no running task. */
-export type AgentRuntimeStatus = "idle" | "running" | "queued" | "offline";
+ * has no running task. ``completed`` means the agent finished its last task
+ * successfully within the retention window. */
+export type AgentRuntimeStatus = "idle" | "running" | "queued" | "offline" | "completed" | "error";
 
 export interface OrchestratorPlanStep {
   title: string;
@@ -97,6 +98,8 @@ export interface AgentEventPayload {
   skill?: string;
   /** Human-readable summary for the confirmation card. */
   summary_for_user?: string;
+  /** Tool arguments (backend sends ``args``; ``tool_args`` is legacy alias). */
+  args?: Record<string, unknown>;
   /** Timeout in seconds before auto-deny. */
   timeout_sec?: number;
 }
