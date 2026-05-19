@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["code"],
+  "required": [],
   "additionalProperties": false,
   "properties": {
     "code": {
@@ -9,6 +9,12 @@
       "minLength": 1,
       "maxLength": 32768,
       "description": "Python 3 source code to execute. Runs once, no arguments, no stdin. Limit 32KB."
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32768,
+      "description": "[DEPRECATED] Use 'code' instead. Backwards-compatible alias that is treated exactly like 'code'."
     },
     "timeout_sec": {
       "type": "integer",

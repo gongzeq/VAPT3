@@ -20,7 +20,7 @@ Execute a short, one-shot Python 3 script that you write yourself, for tasks whe
 
 ## When NOT to use
 
-- Anything an existing skill already handles (nmap, sqlmap, fscan, nuclei, …). Prefer the dedicated skill — it has bespoke parsers, CMDB writes, and tuned args.
+- Anything an existing skill already handles (qscan, sqlmap, fscan, nuclei, …). Prefer the dedicated skill — it has bespoke parsers, CMDB writes, and tuned args.
 - Long-running or interactive sessions. This is one-shot, no persistent kernel, no `pip install`.
 - Storing large artefacts. Keep output small; use `write_file` for bulk data.
 

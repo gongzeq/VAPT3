@@ -49,7 +49,7 @@ def _read_tail(path: Path, cap: int) -> tuple[str, int, bool]:
 
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
-    code = args.get("code")
+    code = args.get("code") or args.get("request")
     if not isinstance(code, str) or not code:
         raise InvalidSkillArg("'code' must be a non-empty string")
     # JSON Schema already enforces this via maxLength, but the schema counts
