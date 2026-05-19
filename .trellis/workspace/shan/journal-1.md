@@ -673,3 +673,38 @@ Implemented all 4 PRs of 05-17-bb-realtime-notify: (PR-1) per-chat AssetFeed/Ass
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: Finish crawl_web Katana crawler
+
+**Date**: 2026-05-17
+**Task**: Finish crawl_web Katana crawler
+**Branch**: `main`
+
+### Summary
+
+Added crawl_web expert agent and katana-crawl-web skill, verified targeted backend checks, committed implementation and finish audit, then archived the task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee61e391e` | (see git log) |
+| `61033ce9e` | (see git log) |
+| `706508508` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
