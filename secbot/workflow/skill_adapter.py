@@ -1,7 +1,7 @@
 """Skill registry adapter for the workflow engine.
 
 Exposes ``secbot/skills/<name>/handler.py`` so ``kind=tool`` workflow
-steps can invoke the pentest skills (fscan / nmap / nuclei / report /
+steps can invoke the pentest skills (fscan / qscan / nuclei / report /
 …) from the UI. The adapter implements the subset of the
 ``ToolRegistry`` protocol the workflow layer consumes:
 

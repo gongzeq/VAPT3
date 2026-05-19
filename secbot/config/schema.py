@@ -214,7 +214,7 @@ class WebFetchConfig(Base):
 class WebToolsConfig(Base):
     """Web tools configuration."""
 
-    enable: bool = True
+    enable: bool = False
     proxy: str | None = (
         None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
     )

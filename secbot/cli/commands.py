@@ -904,7 +904,7 @@ def _run_gateway(
         # The ``tool_registry`` surfaced to workflow ``kind=tool`` steps
         # is the on-disk skill catalogue (secbot/skills/*), NOT
         # ``agent.tools``: users asked for the builder dropdown to show
-        # the existing skills (fscan-/nmap-/nuclei-/report-*).
+        # the existing skills (fscan-/qscan-/nuclei-/report-*).
         # ``fallback_registry=agent.tools`` keeps the dropdown clean
         # while letting ``kind=script`` steps still resolve the built-in
         # ``exec`` tool that the ``ScriptExecutor`` shells out through.
