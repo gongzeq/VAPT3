@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence, cast
 
+from loguru import logger
+
 from secbot.skills.types import (
     SkillBinaryMissing,
     SkillCancelled,
@@ -20,7 +22,7 @@ from secbot.skills.types import (
 )
 
 BINARY_WHITELIST = frozenset({
-    "nmap",
+    "qscan",
     "fscan",
     "nuclei",
     "hydra",
@@ -99,6 +101,8 @@ async def run_command(
     binary_path = shutil.which(binary)
     if binary_path is None:
         raise SkillBinaryMissing(f"binary {binary!r} not on PATH")
+
+    logger.debug("run_command: {} {}", binary, " ".join(args))
 
     if capture not in ("file", "memory_capped", "discard"):
         raise ValueError(f"unknown capture mode: {capture!r}")
