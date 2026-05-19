@@ -64,6 +64,7 @@ class WorkflowService:
         tool_registry: Any,
         agent_registry: Any = None,
         llm_provider: Any = None,
+        provider_loader: Callable[[], Any] | None = None,
         cron_service: Any = None,
         progress_cb: ProgressCallback | None = None,
         executors: dict[str, StepExecutor] | None = None,
@@ -73,6 +74,7 @@ class WorkflowService:
             tool_registry=tool_registry,
             agent_registry=agent_registry,
             llm_provider=llm_provider,
+            provider_loader=provider_loader,
         )
         self._cron = cron_service
         self._progress_cb = progress_cb

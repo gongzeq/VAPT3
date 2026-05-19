@@ -32,7 +32,8 @@ tool-loop path is a follow-up PR (tracked in dev-guide §7 TODOs).
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+from typing import Any, Callable
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
@@ -40,9 +41,17 @@ from jsonschema.exceptions import ValidationError
 from secbot.workflow.executors.base import ExecutorError, StepContext, StepExecutor
 from secbot.workflow.types import WorkflowStep
 
+logger = logging.getLogger(__name__)
+
 
 class AgentExecutor(StepExecutor):
-    """Resolve + run an expert-agent YAML spec with strict schema checks."""
+    """Resolve + run an expert-agent YAML spec with strict schema checks.
+
+    See :class:`secbot.workflow.executors.llm.LlmExecutor` for the
+    ``provider_loader`` hot-reload contract — we mirror it here so
+    ``kind=agent`` steps also pick up config-driven apiKey changes
+    without a gateway restart.
+    """
 
     kind = "agent"
 
@@ -51,9 +60,26 @@ class AgentExecutor(StepExecutor):
         *,
         agent_registry: Any = None,
         llm_provider: Any = None,
+        provider_loader: Callable[[], Any] | None = None,
     ) -> None:
         self._registry = agent_registry
         self._provider = llm_provider
+        self._provider_loader = provider_loader
+
+    def _resolve_provider(self) -> Any:
+        """Return the freshest provider; fall back to the cached one on error."""
+        if self._provider_loader is not None:
+            try:
+                fresh = self._provider_loader()
+            except Exception:
+                logger.warning(
+                    "workflow.agent: provider_loader failed; falling back to cached provider",
+                    exc_info=True,
+                )
+            else:
+                if fresh is not None:
+                    return fresh
+        return self._provider
 
     async def _run(
         self,
@@ -65,7 +91,8 @@ class AgentExecutor(StepExecutor):
             raise ExecutorError(
                 "workflow.validation.agent_config: no agent registry is configured"
             )
-        if self._provider is None:
+        provider = self._resolve_provider()
+        if provider is None:
             raise ExecutorError(
                 "workflow.validation.llm_config: no LLM provider is configured"
             )
@@ -92,7 +119,7 @@ class AgentExecutor(StepExecutor):
         ]
 
         try:
-            resp = await self._provider.chat(
+            resp = await provider.chat(
                 messages,
                 max_tokens=4096,
                 temperature=0.2,

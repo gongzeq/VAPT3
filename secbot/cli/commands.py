@@ -451,6 +451,27 @@ def _make_provider(config: Config):
         raise typer.Exit(1) from exc
 
 
+def _workflow_provider_loader():
+    """Return the *current* LLM provider, re-reading config on each call.
+
+    Wired into ``WorkflowService`` so ``kind=llm`` / ``kind=agent``
+    workflow steps pick up apiKey / model / provider edits saved via
+    the WebUI settings page without restarting the gateway. Mirrors the
+    AgentLoop hot-reload behaviour
+    (``secbot/agent/loop.py::_refresh_provider_snapshot``).
+
+    Returns ``None`` on any error — the executor then falls back to the
+    cached provider injected at startup, so a transient config-read
+    failure never breaks an in-flight workflow.
+    """
+    try:
+        from secbot.providers.factory import load_provider_snapshot
+
+        return load_provider_snapshot().provider
+    except Exception:
+        logger.exception("workflow: provider hot-reload failed")
+        return None
+
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
     from secbot.config.loader import load_config, resolve_config_env_vars, set_config_path
@@ -547,6 +568,7 @@ def _build_api_workflow_kwargs(
             tool_registry=agent_loop.tools,
             agent_registry=agent_registry,
             llm_provider=agent_loop.provider,
+            provider_loader=_workflow_provider_loader,
         )
     except Exception:
         logger.exception("serve: WorkflowService wiring failed; REST surface disabled")
@@ -685,21 +707,6 @@ def gateway(
             colorize=None,
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
-
-    # Persist all DEBUG logs to a rolling file so operators can inspect full
-    # LLM request/response bodies (e.g. MiMo raw streams) without losing them
-    # to terminal scrollback.
-    _log_dir = Path.home() / ".secbot" / "logs"
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    logger.add(
-        _log_dir / "secbot.log",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <5} | {extra[channel]} | {message}",
-        level="DEBUG",
-        rotation="10 MB",
-        retention="1 week",
-        encoding="utf-8",
-    )
-
     cfg = _load_runtime_config(config, workspace)
     _run_gateway(cfg, port=port)
 
@@ -905,18 +912,43 @@ def _run_gateway(
         # is the on-disk skill catalogue (secbot/skills/*), NOT
         # ``agent.tools``: users asked for the builder dropdown to show
         # the existing skills (fscan-/qscan-/nuclei-/report-*).
-        # ``fallback_registry=agent.tools`` keeps the dropdown clean
-        # while letting ``kind=script`` steps still resolve the built-in
-        # ``exec`` tool that the ``ScriptExecutor`` shells out through.
+        #
+        # ``kind=script`` steps shell out through the ``exec`` tool. The
+        # main agent loop is hard-disabled from registering ExecTool
+        # (see agent/loop.py:_register_operational_tools), so we build a
+        # workflow-private ToolRegistry that owns its own ExecTool
+        # instance and pass it as ``fallback_registry``. The builder
+        # dropdown still iterates over real skills only, but
+        # ``ScriptExecutor.has("exec")`` resolves through the fallback.
+        from secbot.agent.tools.registry import ToolRegistry as _WfToolRegistry
+        from secbot.agent.tools.shell import ExecTool as _WfExecTool
+
+        _wf_exec_registry = _WfToolRegistry()
+        try:
+            _wf_exec_registry.register(
+                _WfExecTool(
+                    timeout=config.tools.exec.timeout,
+                    deny_patterns=config.tools.exec.deny_patterns,
+                    allow_patterns=config.tools.exec.allow_patterns,
+                    restrict_to_workspace=config.tools.restrict_to_workspace,
+                    sandbox=config.tools.exec.sandbox,
+                    path_append=config.tools.exec.path_append,
+                    allowed_env_keys=config.tools.exec.allowed_env_keys,
+                )
+            )
+        except Exception:
+            logger.exception("workflow: ExecTool init failed; script steps will fail")
+
         workflow_tool_registry = SkillToolRegistryAdapter(
             scan_root=config.workspace_path / "workflow_scans",
-            fallback_registry=getattr(agent, "tools", None),
+            fallback_registry=_wf_exec_registry,
         )
         workflow_service = WorkflowService(
             store_root=workflow_store_root,
             tool_registry=workflow_tool_registry,
             agent_registry=workflow_agent_registry,
             llm_provider=provider,
+            provider_loader=_workflow_provider_loader,
             cron_service=cron,
         )
         logger.info(
@@ -1032,8 +1064,6 @@ def _run_gateway(
         bus,
         session_manager=session_manager,
         subagent_manager=getattr(agent, "subagents", None),
-        blackboard_registry=getattr(agent, "blackboard_registry", None),
-        asset_feed_registry=getattr(agent, "asset_feed_registry", None),
         workflow_api_port=workflow_api_port,
     )
 
