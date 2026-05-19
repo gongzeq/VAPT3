@@ -16,12 +16,12 @@ from secbot.skills.metadata import (
 _SKILLS_ROOT = Path(__file__).resolve().parents[2] / "secbot" / "skills"
 
 
-def test_load_nmap_host_discovery():
-    meta = load_skill_metadata(_SKILLS_ROOT / "nmap-host-discovery")
+def test_load_qscan_host_discovery():
+    meta = load_skill_metadata(_SKILLS_ROOT / "qscan-host-discovery")
     assert isinstance(meta, SkillMetadata)
-    assert meta.name == "nmap-host-discovery"
+    assert meta.name == "qscan-host-discovery"
     assert meta.risk_level == "medium"
-    assert meta.external_binary == "nmap"
+    assert meta.external_binary == "qscan"
     assert meta.network_egress == "required"
     assert meta.expected_runtime_sec > 0
     assert not meta.is_critical()
@@ -30,9 +30,9 @@ def test_load_nmap_host_discovery():
 def test_scan_skills_finds_all_secbot_skills():
     skills = scan_skills(_SKILLS_ROOT)
     for required in (
-        "nmap-host-discovery",
+        "qscan-host-discovery",
         "fscan-asset-discovery",
-        "nmap-port-scan",
+        "qscan-port-scan",
         "fscan-port-scan",
         "nuclei-template-scan",
         "fscan-vuln-scan",

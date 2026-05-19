@@ -52,6 +52,20 @@ def test_hard_rules_mention_confirmation_and_ordering():
     assert "crawl_web" in rendered
 
 
+def test_hard_rules_mention_protocol_routing():
+    """PR contract: vuln_detec must ONLY be used for HTTP/HTTPS endpoints;
+    non-HTTP services (Redis, FTP, SSH, etc.) must be routed to vuln_scan
+    which uses fscan-vuln-scan for generic service checks.
+    """
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    assert "Protocol-aware routing" in rendered
+    assert "vuln_detec" in rendered
+    assert "ONLY for HTTP / HTTPS Web endpoints" in rendered
+    assert "NEVER route non-HTTP services" in rendered
+    assert "fscan-vuln-scan" in rendered
+
+
 def test_prompt_requires_auto_report_after_scan():
     """PR2 contract: the orchestrator MUST auto-spawn report after the
     final scan stage via the ``report-html`` skill. This behaviour is
@@ -80,7 +94,7 @@ description: {name} description
 system_prompt_file: prompts/{name}.md
 scoped_skills:
   - skill-{name}-{idx}
-input_schema:
+legacy_input_schema:
   type: object
 output_schema:
   type: object

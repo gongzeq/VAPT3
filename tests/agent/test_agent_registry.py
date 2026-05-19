@@ -16,13 +16,11 @@ REPO_SKILLS_DIR = Path(__file__).resolve().parents[2] / "secbot" / "skills"
 
 REAL_SKILL_NAMES = {
     # asset_discovery
-    "nmap-host-discovery",
+    "qscan-host-discovery",
     "fscan-asset-discovery",
     "httpx-probe",
     # port_scan
-    "nmap-port-scan",
-    "nmap-service-fingerprint",
-    "fscan-port-scan",
+    "qscan-port-scan",
     # vuln_scan
     "nuclei-template-scan",
     "fscan-vuln-scan",
@@ -80,7 +78,7 @@ def test_real_registry_tool_surface_shape():
 
 def test_real_registry_unknown_skill_aborts():
     with pytest.raises(AgentRegistryError, match="unknown skill"):
-        load_agent_registry(REPO_AGENTS_DIR, skill_names={"nmap-host-discovery"})
+        load_agent_registry(REPO_AGENTS_DIR, skill_names={"qscan-host-discovery"})
 
 
 def test_real_registry_skill_check_skipped_when_none():
@@ -112,8 +110,8 @@ def test_availability_all_present(monkeypatch):
         skills_root=REPO_SKILLS_DIR,
     )
     asset = reg.get("asset_discovery")
-    # asset_discovery uses nmap + fscan + httpx
-    assert set(asset.required_binaries) == {"nmap", "fscan", "httpx"}
+    # asset_discovery uses qscan + fscan + httpx
+    assert set(asset.required_binaries) == {"qscan", "fscan", "httpx"}
     assert asset.missing_binaries == ()
     assert asset.available is True
 
@@ -130,9 +128,9 @@ def test_availability_all_present(monkeypatch):
 
 
 def test_availability_some_missing(monkeypatch):
-    # Only nmap exists; everything else is missing.
+    # Only qscan exists; everything else is missing.
     def which(name: str):
-        return "/usr/bin/nmap" if name == "nmap" else None
+        return "/usr/bin/qscan" if name == "qscan" else None
 
     monkeypatch.setattr("secbot.agents.registry.shutil.which", which)
     reg = load_agent_registry(
@@ -143,7 +141,7 @@ def test_availability_some_missing(monkeypatch):
     asset = reg.get("asset_discovery")
     assert "fscan" in asset.missing_binaries
     assert "httpx" in asset.missing_binaries
-    assert "nmap" not in asset.missing_binaries
+    assert "qscan" not in asset.missing_binaries
     assert asset.available is False
 
     # weak_password only needs hydra which is missing.
@@ -178,7 +176,7 @@ def test_skill_binary_overrides_resolve_when_path_missing(monkeypatch, tmp_path)
     asset = reg.get("asset_discovery")
     assert "httpx" in asset.required_binaries
     assert "httpx" not in asset.missing_binaries
-    # nmap and fscan are still missing — agent stays offline overall, but
+    # fscan is still missing — agent stays offline overall, but
     # the override took effect for httpx.
     assert "fscan" in asset.missing_binaries
 
@@ -290,7 +288,7 @@ display_name: Alpha
 description: a description
 system_prompt_file: ./prompts/alpha.md
 scoped_skills: [skill-x]
-input_schema:
+legacy_input_schema:
   type: object
 output_schema:
   type: object
@@ -342,11 +340,47 @@ def test_missing_prompt_file_aborts(tmp_path):
 
 def test_invalid_input_schema_aborts(tmp_path):
     body = _VALID.replace(
-        "input_schema:\n  type: object",
-        "input_schema:\n  type: not-a-real-type",
+        "legacy_input_schema:\n  type: object",
+        "legacy_input_schema:\n  type: not-a-real-type",
     )
     _write_yaml(tmp_path, "alpha", body)
     with pytest.raises(AgentRegistryError, match="not a valid JSON Schema"):
+        load_agent_registry(tmp_path)
+
+
+def test_legacy_input_schema_alias_emits_deprecation_warning(tmp_path):
+    """``input_schema`` is the old name; loader accepts it with a warning (D7)."""
+    import warnings
+
+    body = _VALID.replace("legacy_input_schema:", "input_schema:")
+    _write_yaml(tmp_path, "alpha", body)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reg = load_agent_registry(tmp_path)
+    assert "alpha" in reg
+    assert any(
+        issubclass(w.category, DeprecationWarning) and "legacy_input_schema" in str(w.message)
+        for w in caught
+    ), [str(w.message) for w in caught]
+
+
+def test_endpoint_bound_defaults_false(tmp_path):
+    _write_yaml(tmp_path, "alpha", _VALID)
+    reg = load_agent_registry(tmp_path)
+    assert reg.get("alpha").endpoint_bound is False
+
+
+def test_endpoint_bound_true_loads(tmp_path):
+    body = _VALID + "endpoint_bound: true\n"
+    _write_yaml(tmp_path, "alpha", body)
+    reg = load_agent_registry(tmp_path)
+    assert reg.get("alpha").endpoint_bound is True
+
+
+def test_endpoint_bound_non_bool_aborts(tmp_path):
+    body = _VALID + "endpoint_bound: \"yes\"\n"
+    _write_yaml(tmp_path, "alpha", body)
+    with pytest.raises(AgentRegistryError, match="endpoint_bound"):
         load_agent_registry(tmp_path)
 
 

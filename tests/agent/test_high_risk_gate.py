@@ -50,7 +50,7 @@ async def test_low_risk_skill_passes_through(tmp_path: Path):
         raise AssertionError("should not be called for low-risk skills")
 
     gate = HighRiskGate()
-    meta = _make_meta("nmap-host-discovery", "medium")
+    meta = _make_meta("qscan-host-discovery", "medium")
     res = await gate.guard(meta, {"target": "x"}, _ctx(tmp_path, _confirm), _run)
 
     assert res.summary["ok"] is True

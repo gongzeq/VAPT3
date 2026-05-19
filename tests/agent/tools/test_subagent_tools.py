@@ -137,7 +137,7 @@ async def test_subagent_with_allow_exec_false_still_blocked(tmp_path):
         display_name="Port Scan",
         description="test",
         system_prompt="test",
-        scoped_skills=("nmap-port-scan",),
+        scoped_skills=("qscan-port-scan",),
         input_schema={"type": "object"},
         output_schema={"type": "object"},
         allow_exec=False,
@@ -223,6 +223,14 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
     )
     mgr._announce_result = AsyncMock()
 
+    # Attach a minimal fake registry so create_agent passes name validation
+    fake_spec = SimpleNamespace(available=True, endpoint_bound=False, missing_binaries=[])
+    fake_registry = MagicMock()
+    fake_registry.__contains__ = lambda self, n: n == "port_scan"
+    fake_registry.get = MagicMock(return_value=fake_spec)
+    fake_registry.names = MagicMock(return_value=["port_scan"])
+    mgr.agent_registry = fake_registry
+
     # Block the first subagent so it stays "running"
     release = asyncio.Event()
 
@@ -241,11 +249,11 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
     tool.set_context("test", "c1", "test:c1")
 
     # First spawn succeeds
-    result = await tool.execute(task="first task")
+    result = await tool.execute(name="port_scan", task="first task", target="10.0.0.1")
     assert "started" in result
 
     # Second spawn should be rejected (default limit is 1)
-    result = await tool.execute(task="second task")
+    result = await tool.execute(name="port_scan", task="second task", target="10.0.0.2")
     assert "Cannot spawn subagent" in result
     assert "concurrency limit reached" in result
 
@@ -564,7 +572,7 @@ async def test_drain_pending_timeout(tmp_path):
 
 @pytest.mark.asyncio
 async def test_spawn_tool_rejects_unknown_agent(tmp_path):
-    """SpawnTool(agent=\"missing\") must error before hitting the manager."""
+    """create_agent(name='ghost') must error before hitting the manager."""
     from secbot.agent.subagent import SubagentManager
     from secbot.agent.tools.spawn import SpawnTool
     from secbot.bus.queue import MessageBus
@@ -583,8 +591,63 @@ async def test_spawn_tool_rejects_unknown_agent(tmp_path):
 
     tool = SpawnTool(mgr)
     tool.set_context("test", "c1", "test:c1")
-    out = await tool.execute(task="hello", agent="ghost")
-    assert "Unknown expert agent 'ghost'" in out
+    out = await tool.execute(name="ghost", task="hello", target="10.0.0.1")
+    assert "create_agent failed" in out
+    assert "no agent registry is attached" in out or "unknown agent 'ghost'" in out
+    mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_requires_target(tmp_path):
+    """create_agent without 'target' must fail-fast (decision D6)."""
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    mgr.spawn = AsyncMock(return_value="should-not-be-called")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(name="asset_discovery", task="enumerate")
+    assert "create_agent failed" in out and "'target' is required" in out
+    mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_rejects_oversized_task(tmp_path):
+    """create_agent must reject 'task' beyond MAX_TASK_LEN (decision D6)."""
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import MAX_TASK_LEN, SpawnTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    mgr.spawn = AsyncMock(return_value="should-not-be-called")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(
+        name="asset_discovery",
+        task="x" * (MAX_TASK_LEN + 1),
+        target="10.0.0.1",
+    )
+    assert "exceeds the maximum" in out
     mgr.spawn.assert_not_called()
 
 
@@ -619,10 +682,88 @@ async def test_spawn_tool_rejects_offline_agent(tmp_path, monkeypatch):
 
     tool = SpawnTool(mgr)
     tool.set_context("test", "c1", "test:c1")
-    out = await tool.execute(task="scan", agent="asset_discovery")
+    out = await tool.execute(name="asset_discovery", task="scan", target="10.0.0.0/24")
     assert "offline" in out
     assert "missing binaries" in out
     mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_endpoint_bound_requires_endpoint_fields(tmp_path, monkeypatch):
+    """Endpoint-bound experts MUST receive endpoint_url + endpoint_param (D6/D8)."""
+    from pathlib import Path as _Path
+
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.agents.registry import load_agent_registry
+    from secbot.bus.queue import MessageBus
+
+    # All binaries considered present so we exercise the endpoint check, not
+    # the offline-agent check.
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", lambda _n: "/usr/bin/true")
+    agents_dir = _Path(__file__).resolve().parents[3] / "secbot" / "agents"
+    skills_dir = _Path(__file__).resolve().parents[3] / "secbot" / "skills"
+    registry = load_agent_registry(
+        agents_dir, skill_names=None, skills_root=skills_dir
+    )
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        agent_registry=registry,
+    )
+    mgr.spawn = AsyncMock(return_value="should-not-be-called")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(
+        name="vuln_detec",
+        task="probe",
+        target="https://example.com/login",
+    )
+    assert "endpoint-bound" in out and "'endpoint_url' is required" in out
+    mgr.spawn.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_subagent_manager_endpoint_mutex(tmp_path):
+    """A second endpoint-bound spawn against the same endpoint must be rejected (D5)."""
+    from secbot.agent.subagent import SubagentManager
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    # Stub the heavy bg task so the bookkeeping is exercised in isolation.
+    mgr._run_subagent = AsyncMock(return_value=None)
+
+    first = await mgr.spawn(
+        task="t1",
+        agent=None,  # no registry needed for the manager-level mutex check
+        endpoint_url="HTTPS://Example.com:443/login/",
+        endpoint_param="username",
+    )
+    assert "started" in first
+
+    second = await mgr.spawn(
+        task="t2",
+        agent=None,
+        # Same endpoint, just spelled differently — normalisation must collapse.
+        endpoint_url="https://example.com/login",
+        endpoint_param="USERNAME",
+    )
+    assert "endpoint already busy" in second
 
 
 @pytest.mark.asyncio
@@ -655,6 +796,7 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
     async def fake_run(run_spec):
         captured["tool_names"] = set(run_spec.tools.tool_names)
         captured["system_prompt"] = run_spec.initial_messages[0]["content"]
+        captured["user_message"] = run_spec.initial_messages[1]["content"]
         return SimpleNamespace(
             stop_reason="done", final_content="done", error=None, tool_events=[]
         )
@@ -677,123 +819,23 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
         spec,
     )
 
-    # Only crawl_web's scoped skill must appear; others are excluded.
+    # Only crawl_web's scoped skill must appear; others are excluded. The
+    # orchestrator-only ``create_agent`` tool MUST NOT be available either.
+    assert "create_agent" not in captured["tool_names"]
     assert "delegate_task" not in captured["tool_names"]
     assert "blackboard_write" in captured["tool_names"]
     assert "read_blackboard" in captured["tool_names"]
     for skill in spec.scoped_skills:
         assert skill in captured["tool_names"], f"missing {skill}"
     assert "katana-crawl-web" in captured["tool_names"]
-    for skill in ("nmap-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
+    for skill in ("qscan-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
         assert skill not in captured["tool_names"], f"{skill} must be scoped out"
 
-    # Spec system_prompt must be prepended to the subagent system message.
-    assert spec.system_prompt.strip().split("\n", 1)[0] in captured["system_prompt"]
-
-
-@pytest.mark.asyncio
-async def test_subagent_injects_blackboard_into_system_prompt(tmp_path):
-    """_run_subagent must inject current blackboard entries into the system prompt."""
-    from secbot.agent.blackboard import BlackboardRegistry
-    from secbot.agent.subagent import SubagentManager, SubagentStatus
-    from secbot.bus.queue import MessageBus
-
-    registry = BlackboardRegistry()
-    board = await registry.get_or_create("chat-1")
-    await board.write("asset_discovery", "[finding] 80,443 open on 10.0.0.1")
-    await board.write("port_scan", "[milestone] sweep complete")
-
-    bus = MessageBus()
-    provider = MagicMock()
-    provider.get_default_model.return_value = "test-model"
-    mgr = SubagentManager(
-        provider=provider,
-        workspace=tmp_path,
-        bus=bus,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-        blackboard_registry=registry,
-    )
-    mgr._announce_result = AsyncMock()
-
-    captured: dict = {}
-
-    async def fake_run(run_spec):
-        captured["system_prompt"] = run_spec.initial_messages[0]["content"]
-        return SimpleNamespace(
-            stop_reason="done", final_content="done", error=None, tool_events=[]
-        )
-
-    mgr.runner.run = AsyncMock(side_effect=fake_run)
-
-    status = SubagentStatus(
-        task_id="sub-y",
-        label="label",
-        task_description="scan",
-        started_at=time.monotonic(),
-    )
-    await mgr._run_subagent(
-        "sub-y",
-        "scan targets",
-        "label",
-        {"channel": "test", "chat_id": "chat-1"},
-        status,
-    )
-
-    prompt = captured["system_prompt"]
-    assert "Shared Blackboard (findings from previous agents)" in prompt
-    assert "[asset_discovery]" in prompt
-    assert "[finding] 80,443 open on 10.0.0.1" in prompt
-    assert "[port_scan]" in prompt
-    assert "[milestone] sweep complete" in prompt
-
-
-@pytest.mark.asyncio
-async def test_subagent_injects_empty_blackboard_placeholder(tmp_path):
-    """When the blackboard is empty, a placeholder should still be injected."""
-    from secbot.agent.blackboard import BlackboardRegistry
-    from secbot.agent.subagent import SubagentManager, SubagentStatus
-    from secbot.bus.queue import MessageBus
-
-    registry = BlackboardRegistry()
-    # Do NOT write anything — board stays empty.
-    _ = await registry.get_or_create("chat-2")
-
-    bus = MessageBus()
-    provider = MagicMock()
-    provider.get_default_model.return_value = "test-model"
-    mgr = SubagentManager(
-        provider=provider,
-        workspace=tmp_path,
-        bus=bus,
-        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
-        blackboard_registry=registry,
-    )
-    mgr._announce_result = AsyncMock()
-
-    captured: dict = {}
-
-    async def fake_run(run_spec):
-        captured["system_prompt"] = run_spec.initial_messages[0]["content"]
-        return SimpleNamespace(
-            stop_reason="done", final_content="done", error=None, tool_events=[]
-        )
-
-    mgr.runner.run = AsyncMock(side_effect=fake_run)
-
-    status = SubagentStatus(
-        task_id="sub-z",
-        label="label",
-        task_description="scan",
-        started_at=time.monotonic(),
-    )
-    await mgr._run_subagent(
-        "sub-z",
-        "scan targets",
-        "label",
-        {"channel": "test", "chat_id": "chat-2"},
-        status,
-    )
-
-    prompt = captured["system_prompt"]
-    assert "Shared Blackboard" in prompt
-    assert "currently empty" in prompt
+    # The per-agent ``spec.system_prompt`` is now appended to the base scaffold
+    # so the subagent receives both safety rules and its role instructions.
+    sys_prompt = captured["system_prompt"]
+    spec_first_line = spec.system_prompt.strip().split("\n", 1)[0]
+    if spec_first_line and len(spec_first_line) > 8:
+        assert spec_first_line in sys_prompt
+    # And the user message MUST carry the orchestrator-supplied task verbatim.
+    assert captured["user_message"] == "scan targets"

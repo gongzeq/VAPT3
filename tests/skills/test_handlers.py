@@ -36,36 +36,44 @@ def load_handler(skill_name: str) -> ModuleType:
 
 
 # --------------------------------------------------------------------------
-# nmap-host-discovery
+# qscan-host-discovery
 # --------------------------------------------------------------------------
 
-_NMAP_SN_OUT = b"""\
-# Nmap 7.94 scan initiated
-Host: 10.0.0.1 (gw.example)	Status: Up
-Host: 10.0.0.7 (ws7.example)	Status: Up
-Host: 10.0.0.8 (off.example)	Status: Down
-# Nmap done
+_QSCAN_SN_OUT = b"""\
+http://10.0.0.1/
+http://10.0.0.7/some-page
 """
 
 
-async def test_nmap_host_discovery_happy(make_ctx, fake_run_command):
-    mod = load_handler("nmap-host-discovery")
-    fake_run_command(mod, stdout=_NMAP_SN_OUT, exit_code=0)
+async def test_qscan_host_discovery_happy(make_ctx, fake_run_command, monkeypatch):
+    import shutil
+
+    mod = load_handler("qscan-host-discovery")
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
+    )
+    fake_run_command(mod, stdout=b"", exit_code=0)
     ctx = make_ctx()
-    res = await mod.run({"target": "10.0.0.0/24", "rate": "normal"}, ctx)
+    (ctx.raw_log_dir / "qscan-host-discovery.log").write_bytes(_QSCAN_SN_OUT)
+    res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     assert isinstance(res, SkillResult)
     assert res.summary["hosts_up"] == ["10.0.0.1", "10.0.0.7"]
     assert "elapsed_sec" in res.summary
 
 
-async def test_nmap_host_discovery_invalid_target(make_ctx):
-    mod = load_handler("nmap-host-discovery")
+async def test_qscan_host_discovery_invalid_target(make_ctx):
+    mod = load_handler("qscan-host-discovery")
     with pytest.raises(InvalidSkillArg):
         await mod.run({"target": "not a target"}, make_ctx())
 
 
-async def test_nmap_host_discovery_timeout(make_ctx, fake_run_command):
-    mod = load_handler("nmap-host-discovery")
+async def test_qscan_host_discovery_timeout(make_ctx, fake_run_command, monkeypatch):
+    import shutil
+
+    mod = load_handler("qscan-host-discovery")
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
+    )
     fake_run_command(mod, exc=SkillTimeout("timeout"))
     res = await mod.run({"target": "10.0.0.0/24"}, make_ctx())
     assert res.summary.get("error") == "timeout"
@@ -106,34 +114,40 @@ async def test_fscan_asset_discovery_invalid_target(make_ctx):
 
 
 # --------------------------------------------------------------------------
-# nmap-port-scan
+# qscan-port-scan
 # --------------------------------------------------------------------------
 
-_NMAP_PS_OUT = b"""\
-Host: 10.0.0.1 ()	Ports: 22/open/tcp//ssh///, 80/open/tcp//http///	Ignored State: closed
-Host: 10.0.0.7 ()	Ports: 443/open/tcp//https///
+_QSCAN_PS_OUT = b"""\
+http://10.0.0.1/	Title	Port:22,FingerPrint:ssh,Digest:...,Length:2567
+http://10.0.0.1/	Title	Port:80,FingerPrint:http,Digest:...,Length:2567
+http://10.0.0.7/	Title	Port:443,FingerPrint:https,Digest:...,Length:2567
 """
 
 
-async def test_nmap_port_scan_happy(make_ctx, fake_run_command):
-    mod = load_handler("nmap-port-scan")
-    from secbot.skills._shared import runner as runner_mod
+async def test_qscan_port_scan_happy(make_ctx, fake_run_command, monkeypatch):
+    import shutil
 
-    fake_run_command(runner_mod, stdout=_NMAP_PS_OUT, exit_code=0)
-    res = await mod.run({"targets": ["10.0.0.0/24"], "ports": "22,80,443"}, make_ctx())
+    mod = load_handler("qscan-port-scan")
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
+    )
+    fake_run_command(mod, stdout=b"", exit_code=0)
+    ctx = make_ctx()
+    (ctx.raw_log_dir / "qscan-port-scan.log").write_bytes(_QSCAN_PS_OUT)
+    res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     svcs = res.summary["services"]
     hp = {(s["host"], s["port"]) for s in svcs}
     assert ("10.0.0.1", 22) in hp
     assert ("10.0.0.1", 80) in hp
     assert ("10.0.0.7", 443) in hp
-
-
-async def test_nmap_port_scan_bad_portspec(make_ctx):
-    mod = load_handler("nmap-port-scan")
-    with pytest.raises(InvalidSkillArg):
-        await mod.run(
-            {"targets": ["10.0.0.1"], "ports": "22;rm -rf /"}, make_ctx()
-        )
+    assert len(svcs) == 3
+    assert len(res.cmdb_writes) == 3
+    assert all(w["table"] == "services" for w in res.cmdb_writes)
+    assert {(w["data"]["target"], w["data"]["port"]) for w in res.cmdb_writes} == {
+        ("10.0.0.1", 22),
+        ("10.0.0.1", 80),
+        ("10.0.0.7", 443),
+    }
 
 
 # --------------------------------------------------------------------------

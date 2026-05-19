@@ -558,7 +558,7 @@ class TestActivityEventMirror:
         await channel.broadcast_activity_event(
             category="tool_call",
             agent="port_scan",
-            step="nmap 10.0.0.1",
+            step="qscan 10.0.0.1",
             chat_id="chat-X",
         )
         items = get_event_buffer().filter(chat_id="chat-X")
@@ -567,7 +567,7 @@ class TestActivityEventMirror:
         assert entry["category"] == "tool_call"
         assert entry["source"] == "port_scan"
         assert entry["chat_id"] == "chat-X"
-        assert "nmap 10.0.0.1" in entry["message"]
+        assert entry["message"] == "调用 port_scan"
 
     @pytest.mark.asyncio
     async def test_broadcast_mirror_respects_throttle(
@@ -590,7 +590,7 @@ class TestActivityEventMirror:
         )
         items = get_event_buffer().filter(chat_id="chat-Y")
         assert len(items) == 1
-        assert "first" in items[0]["message"]
+        assert items[0]["message"] == "调用 port_scan"
 
     @pytest.mark.asyncio
     async def test_broadcast_mirror_tool_result_uses_ok_level(

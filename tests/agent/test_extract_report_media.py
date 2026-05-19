@@ -13,7 +13,7 @@ def test_extract_from_tool_result_json(tmp_path: Path) -> None:
         {
             "role": "tool",
             "tool_call_id": "call_1",
-            "name": "delegate_task",
+            "name": "create_agent",
             "content": f'{{"report_path": "{report_file}", "status": "ok"}}',
         }
     ]

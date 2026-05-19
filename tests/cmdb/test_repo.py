@@ -223,7 +223,7 @@ async def test_list_vulnerabilities_severity_filter(tmp_cmdb):
             severity=sev,
             category="misconfig",
             title=title,
-            discovered_by="nmap-port-scan",
+            discovered_by="qscan-port-scan",
         )
 
     high_or_above = await repo.list_vulnerabilities(

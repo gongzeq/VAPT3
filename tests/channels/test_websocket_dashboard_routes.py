@@ -533,10 +533,10 @@ async def test_agents_availability_surfaced_when_binaries_missing(
     body = _body(resp)
     by_name = {entry["name"]: entry for entry in body["agents"]}
 
-    # asset_discovery needs nmap/fscan/httpx — all missing.
+    # asset_discovery needs qscan/fscan/httpx — all missing.
     asset = by_name["asset_discovery"]
     assert asset["available"] is False
-    assert set(asset["missing_binaries"]) == {"nmap", "fscan", "httpx"}
+    assert set(asset["missing_binaries"]) == {"qscan", "fscan", "httpx"}
 
     # report agent has no external binary requirement, so it stays available.
     report = by_name["report"]

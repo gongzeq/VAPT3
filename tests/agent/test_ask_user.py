@@ -52,9 +52,9 @@ def test_request_approval_tool_schema_and_interrupt():
     assert schema["parameters"]["properties"]["options"]["type"] == "array"
 
     with pytest.raises(AskUserInterrupt) as exc:
-        asyncio.run(tool.execute("Run nmap", detail="Target: 10.0.0.5"))
+        asyncio.run(tool.execute("Run qscan", detail="Target: 10.0.0.5"))
 
-    assert exc.value.question == "Run nmap\n\nTarget: 10.0.0.5"
+    assert exc.value.question == "Run qscan\n\nTarget: 10.0.0.5"
     assert exc.value.options == ["Approve", "Deny"]
 
 
@@ -140,7 +140,7 @@ async def test_runner_pauses_on_request_approval_without_executing_later_tools()
                 ToolCallRequest(
                     id="call_approval",
                     name="request_approval",
-                    arguments={"title": "Run nmap", "options": ["Approve", "Deny"]},
+                    arguments={"title": "Run qscan", "options": ["Approve", "Deny"]},
                 ),
                 ToolCallRequest(id="call_later", name="later", arguments={}),
             ],
@@ -161,7 +161,7 @@ async def test_runner_pauses_on_request_approval_without_executing_later_tools()
     ))
 
     assert result.stop_reason == "ask_user"
-    assert result.final_content == "Run nmap"
+    assert result.final_content == "Run qscan"
     assert "request_approval" in result.tools_used
     assert later.called is False
     tool_calls = result.messages[-1]["tool_calls"]

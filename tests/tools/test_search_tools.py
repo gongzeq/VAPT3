@@ -296,8 +296,9 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
     loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
 
     assert set(loop.tools.tool_names) == {
-        "delegate_task",
+        "create_agent",
         "list_teammates",
+        "read_assets",
         "read_blackboard",
         "read_teammate_inbox",
         "request_approval",
@@ -343,28 +344,58 @@ async def test_subagent_registers_grep_and_glob(tmp_path: Path) -> None:
     assert "glob" in captured["tool_names"]
     assert "blackboard_write" in captured["tool_names"]
     assert "read_blackboard" in captured["tool_names"]
-    assert "delegate_task" not in captured["tool_names"]
+    assert "create_agent" not in captured["tool_names"]
 
 
-def test_subagent_prompt_respects_disabled_skills(tmp_path: Path) -> None:
+def test_subagent_prompt_contains_runtime_metadata(tmp_path: Path) -> None:
+    """Subagent prompt includes time context and workspace."""
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
-    skills_dir = tmp_path / "skills"
-    (skills_dir / "alpha").mkdir(parents=True)
-    (skills_dir / "alpha" / "SKILL.md").write_text("# Alpha\n\nhidden\n", encoding="utf-8")
-    (skills_dir / "beta").mkdir(parents=True)
-    (skills_dir / "beta" / "SKILL.md").write_text("# Beta\n\nshown\n", encoding="utf-8")
 
     mgr = SubagentManager(
         provider=provider,
         workspace=tmp_path,
         bus=bus,
         max_tool_result_chars=4096,
-        disabled_skills=["alpha"],
     )
 
     prompt = mgr._build_subagent_prompt()
 
-    assert "alpha" not in prompt
-    assert "beta" in prompt
+    # Should contain runtime metadata
+    assert "Subagent" in prompt
+    assert str(tmp_path) in prompt
+
+
+def test_subagent_prompt_appends_spec_system_prompt(tmp_path: Path) -> None:
+    """When a spec is provided, its system_prompt is appended to the base scaffold."""
+    from secbot.agents.registry import ExpertAgentSpec
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=4096,
+    )
+
+    spec = ExpertAgentSpec(
+        name="test_agent",
+        display_name="Test Agent",
+        description="A test agent.",
+        system_prompt="# Custom Instructions\nRun the `test-skill` tool.",
+        scoped_skills=("test-skill",),
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+    )
+
+    prompt = mgr._build_subagent_prompt(spec)
+
+    assert "Subagent" in prompt
+    assert "# Custom Instructions" in prompt
+    assert "Run the `test-skill` tool." in prompt
+    # Base scaffold comes first, then the custom instructions
+    assert prompt.index("Subagent") < prompt.index("# Custom Instructions")

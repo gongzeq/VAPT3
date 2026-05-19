@@ -78,7 +78,7 @@ async def test_subagent_announces_only_summary_not_child_history(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_delegate_task_parent_history_gets_only_child_summary(tmp_path):
+async def test_create_agent_parent_history_gets_only_child_summary(tmp_path):
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"

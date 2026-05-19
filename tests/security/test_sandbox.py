@@ -21,7 +21,7 @@ def test_binary_whitelist_contains_required_tools():
     # PR2: report pipeline no longer uses weasyprint (HTML-only export);
     # hydra / httpx / ffuf / sqlmap are now first-class scan binaries.
     for required in (
-        "nmap",
+        "qscan",
         "fscan",
         "nuclei",
         "hydra",
@@ -79,8 +79,8 @@ async def test_missing_binary_raises_binary_missing(tmp_path: Path, monkeypatch)
     monkeypatch.setattr("secbot.skills._shared.sandbox.shutil.which", lambda _b: None)
     with pytest.raises(SkillBinaryMissing):
         await run_command(
-            binary="nmap",
-            args=["-V"],
+            binary="qscan",
+            args=["-v"],
             timeout_sec=1,
             network=NetworkPolicy.NONE,
             capture="discard",
