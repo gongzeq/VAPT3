@@ -158,6 +158,10 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
       // inline cards on historical replay.
       if (m._kind === "agent_event" && m.agent_event) {
         const payload = m.agent_event as unknown as AgentEventPayload;
+        // 过滤纯 sidebar 状态心跳和交互式确认，它们不应出现在消息流中
+        if (payload.type === "agent_status" || payload.type === "subagent_status") {
+          return;
+        }
         const agentName =
           inferAgentName(m) || payload.agent_name || payload.agent || "assistant";
         flushPending(idx);

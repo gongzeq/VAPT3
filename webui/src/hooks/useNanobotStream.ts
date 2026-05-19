@@ -379,8 +379,9 @@ export function useNanobotStream(
         if (payload.type === "high_risk_confirm") {
           const skill = payload.skill ?? payload.tool_name ?? "unknown";
           const summary = payload.summary_for_user ?? `⦁安全确认：${skill} 将执行高风险操作`;
-          const detail = payload.tool_args
-            ? JSON.stringify(payload.tool_args, null, 2)
+          const rawArgs = payload.tool_args ?? payload.args;
+          const detail = rawArgs
+            ? JSON.stringify(rawArgs, null, 2)
             : undefined;
           setMessages((prev) => [
             ...prev,
@@ -402,6 +403,11 @@ export function useNanobotStream(
 
         // 隐藏子智能体中间状态（工具调用过程）不在前端展示
         if (payload.type === "subagent_status") {
+          return;
+        }
+
+        // agent_status 是纯 sidebar 状态心跳，不应出现在消息流中
+        if (payload.type === "agent_status") {
           return;
         }
 

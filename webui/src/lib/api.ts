@@ -10,6 +10,8 @@ import type {
   SlashCommand,
 } from "./types";
 
+import { fetchBootstrap, loadSavedSecret } from "./bootstrap";
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -19,19 +21,51 @@ export class ApiError extends Error {
   }
 }
 
+/** In-flight token refresh so parallel 401s don't multiply bootstrap calls. */
+let _refreshPromise: Promise<string> | null = null;
+
+async function _refreshToken(): Promise<string> {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    try {
+      const secret = loadSavedSecret();
+      const boot = await fetchBootstrap("", secret);
+      return boot.token;
+    } finally {
+      _refreshPromise = null;
+    }
+  })();
+  return _refreshPromise;
+}
+
 async function request<T>(
   url: string,
   token: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(url, {
-    ...(init ?? {}),
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-    },
-    credentials: "same-origin",
-  });
+  const doFetch = async (t: string) =>
+    fetch(url, {
+      ...(init ?? {}),
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${t}`,
+      },
+      credentials: "same-origin",
+    });
+
+  let res = await doFetch(token);
+
+  // Automatic token refresh on 401 (token expired after TTL).
+  if (res.status === 401) {
+    try {
+      const newToken = await _refreshToken();
+      res = await doFetch(newToken);
+    } catch {
+      // Refresh failed — surface the original 401.
+      throw new ApiError(401, "HTTP 401");
+    }
+  }
+
   if (!res.ok) {
     throw new ApiError(res.status, `HTTP ${res.status}`);
   }

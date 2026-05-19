@@ -28,6 +28,7 @@ export function AskUserPrompt({
 }: AskUserPromptProps) {
   const [customOpen, setCustomOpen] = useState(false);
   const [custom, setCustom] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const options = buttons.flat().filter(Boolean);
   const isApproval = variant === "approval";
@@ -51,42 +52,61 @@ export function AskUserPrompt({
   const submitCustom = useCallback(() => {
     const answer = custom.trim();
     if (!answer) return;
+    setSubmitted(true);
     onAnswer(answer);
     setCustom("");
     setCustomOpen(false);
   }, [custom, onAnswer]);
+
+  const handleOptionClick = useCallback((option: string) => {
+    setSubmitted(true);
+    onAnswer(option);
+  }, [onAnswer]);
 
   if (options.length === 0) return null;
 
   return (
     <div
       className={cn(
-        "mx-auto mb-2 w-full max-w-[49.5rem] rounded-[16px] border border-primary/30",
-        "bg-card/95 p-3 shadow-sm backdrop-blur",
-        isApproval && "border-destructive/40 bg-destructive/5",
+        "relative z-10 mx-auto mb-3 w-full max-w-[49.5rem] rounded-[16px] border",
+        isApproval
+          ? "border-destructive/40 bg-destructive/[0.08] shadow-[0_2px_12px_rgba(239,68,68,0.08)]"
+          : "border-primary/30 bg-card shadow-sm",
+        "p-3",
+        submitted && "opacity-60",
       )}
       role="group"
       aria-label={isApproval ? "Approval request" : "Question"}
     >
+      {/* Approval header */}
       <div className="mb-2 flex items-start gap-2">
-        <div className={cn(
-          "mt-0.5 rounded-full p-1.5",
-          isApproval ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary",
-        )}>
-          <Icon className="h-3.5 w-3.5" aria-hidden />
+        <div
+          className={cn(
+            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+            isApproval ? "bg-destructive/15 text-destructive" : "bg-primary/10 text-primary",
+          )}
+        >
+          <Icon className="h-4 w-4" aria-hidden />
         </div>
-        <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground">
-          {question}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold leading-5 text-foreground">
+            {isApproval ? "需要您的确认" : question}
+          </p>
+          {isApproval && (
+            <p className="mt-0.5 text-[12.5px] leading-4 text-muted-foreground">
+              {question}
+            </p>
+          )}
+        </div>
       </div>
 
       {isApproval && detail ? (
-        <pre className="mb-2 max-h-40 overflow-auto rounded-md border border-destructive/20 bg-muted/50 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <pre className="mb-2.5 max-h-40 overflow-auto rounded-lg border border-destructive/15 bg-background/60 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
           {detail}
         </pre>
       ) : null}
 
-      <div className="grid gap-1.5 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {options.map((option) => {
           const isApproveBtn = isApproval && option.toLowerCase().includes("approve");
           const isDenyBtn = isApproval && option.toLowerCase().includes("deny");
@@ -94,13 +114,14 @@ export function AskUserPrompt({
             <Button
               key={option}
               type="button"
-              variant={isDenyBtn ? "destructive" : "outline"}
+              variant={isDenyBtn ? "destructive" : isApproveBtn ? "default" : "outline"}
               size="sm"
-              disabled={isApproveBtn && !armed}
-              onClick={() => onAnswer(option)}
+              disabled={(isApproveBtn && !armed) || submitted}
+              onClick={() => handleOptionClick(option)}
               className={cn(
-                "justify-start rounded-[10px] px-3 text-left",
-                isApproveBtn && "border-green-500/50 text-green-600 hover:bg-green-500/10",
+                "h-9 justify-start rounded-[10px] px-3 text-left font-medium transition-all active:scale-[0.98]",
+                isApproveBtn &&
+                  "bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow",
               )}
             >
               <span className="truncate">{option}</span>
@@ -111,8 +132,9 @@ export function AskUserPrompt({
           type="button"
           variant="ghost"
           size="sm"
+          disabled={submitted}
           onClick={() => setCustomOpen((open) => !open)}
-          className="justify-start rounded-[10px] px-3 text-muted-foreground"
+          className="h-9 justify-start rounded-[10px] px-3 text-muted-foreground hover:text-foreground"
         >
           Other...
         </Button>
