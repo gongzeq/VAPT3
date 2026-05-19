@@ -18,7 +18,7 @@ scoped_skills:
 max_iterations: 6
 emit_plan_steps: true
 
-input_schema:
+legacy_input_schema:
   type: object
   required: [services]
   properties:
@@ -37,6 +37,22 @@ input_schema:
       type: string
       enum: [info, low, medium, high, critical]
       default: medium
+    hypotheses:
+      type: array
+      description: Optional vulnerability hypotheses from a prior vuln_detec pre-screening, each with a confidence rating.
+      items:
+        type: object
+        required: [test_name, confidence, url]
+        properties:
+          test_name: {type: string}
+          confidence:
+            type: string
+            enum: [low, medium, high]
+          url:
+            type: string
+            format: uri
+          payload: {type: string}
+          evidence: {type: string}
 
 output_schema:
   type: object

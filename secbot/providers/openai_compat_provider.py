@@ -135,9 +135,9 @@ def _extract_xml_tool_calls(content: str | None) -> tuple[str | None, list[ToolC
     of the OpenAI ``tool_calls`` JSON structure::
 
         <tool_call>
-        <function=delegate_task>
+        <function=create_agent>
         <parameter=task>description</parameter>
-        <parameter=agent>asset_discovery</parameter>
+        <parameter=name>asset_discovery</parameter>
         </function>
         </tool_call>
 

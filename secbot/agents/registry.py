@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
@@ -20,13 +21,18 @@ from jsonschema.exceptions import SchemaError
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
+# D7 (see .trellis/tasks/05-18-subagent-prompt-minimal-create-agent/prd.md):
+# ``input_schema`` is being phased out in favour of ``legacy_input_schema``
+# (kept for compatibility/diagnostics only — the LLM tool surface for expert
+# agents has collapsed to a single ``create_agent`` tool). ``input_schema``
+# is therefore no longer in REQUIRED_FIELDS; ``_load_one`` accepts either
+# name and emits a DeprecationWarning when the old one is used.
 REQUIRED_FIELDS = (
     "name",
     "display_name",
     "description",
     "system_prompt_file",
     "scoped_skills",
-    "input_schema",
     "output_schema",
 )
 
@@ -56,6 +62,11 @@ class ExpertAgentSpec:
     required_binaries: tuple[str, ...] = ()
     missing_binaries: tuple[str, ...] = ()
     allow_exec: bool = False
+    # D5/D8: when True, the agent operates on a single (endpoint_url,
+    # endpoint_param) pair and the SubagentManager enforces endpoint-level
+    # mutual exclusion at spawn time. Defaults to False — only explicitly
+    # endpoint-bound experts (e.g. vuln_detec / weak_password) opt in.
+    endpoint_bound: bool = False
 
     @property
     def available(self) -> bool:
@@ -67,7 +78,16 @@ class ExpertAgentSpec:
         return not self.missing_binaries
 
     def to_tool_surface(self) -> dict[str, Any]:
-        """Return the dict the Orchestrator hands to the LLM as a tool definition."""
+        """Return an OpenAI-style tool-definition dict for this expert agent.
+
+        .. deprecated::
+            As of D2 / D7, the Orchestrator no longer exposes one tool per
+            expert agent — it exposes a single ``create_agent`` tool and
+            picks the target via ``name``. This method is kept for
+            diagnostics (e.g. ``scripts/diag_subagents.py``) and so existing
+            tests still have a stable view of the per-agent input shape; it
+            should NOT be wired back into the live LLM tool list.
+        """
         return {
             "type": "function",
             "function": {
@@ -213,6 +233,7 @@ def load_agent_registry(
                 required_binaries=tuple(required),
                 missing_binaries=tuple(missing),
                 allow_exec=spec.allow_exec,
+                endpoint_bound=spec.endpoint_bound,
             )
 
         registry.agents[spec.name] = spec
@@ -270,9 +291,9 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
         )
     system_prompt = prompt_path.read_text(encoding="utf-8")
 
-    in_schema = raw["input_schema"]
+    in_schema = _resolve_input_schema(yaml_path, raw)
     out_schema = raw["output_schema"]
-    _validate_schema(yaml_path, "input_schema", in_schema)
+    _validate_schema(yaml_path, "legacy_input_schema", in_schema)
     _validate_schema(yaml_path, "output_schema", out_schema)
 
     model = raw.get("model")
@@ -292,6 +313,10 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
     allow_exec = raw.get("allow_exec", False)
     if not isinstance(allow_exec, bool):
         raise AgentRegistryError(f"{yaml_path}: 'allow_exec' must be a bool")
+
+    endpoint_bound = raw.get("endpoint_bound", False)
+    if not isinstance(endpoint_bound, bool):
+        raise AgentRegistryError(f"{yaml_path}: 'endpoint_bound' must be a bool")
 
     display_name = raw["display_name"]
     if not isinstance(display_name, str) or not display_name.strip():
@@ -314,6 +339,31 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
         emit_plan_steps=emit,
         source_path=yaml_path,
         allow_exec=allow_exec,
+        endpoint_bound=endpoint_bound,
+    )
+
+
+def _resolve_input_schema(yaml_path: Path, raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Pick the input schema field, honouring the D7 rename.
+
+    The current name is ``legacy_input_schema``; the older name
+    ``input_schema`` is still accepted to keep existing YAMLs loadable
+    during the migration window, but each use emits a DeprecationWarning.
+    """
+    if "legacy_input_schema" in raw:
+        return raw["legacy_input_schema"]
+    if "input_schema" in raw:
+        warnings.warn(
+            f"{yaml_path}: 'input_schema' is deprecated — rename it to "
+            "'legacy_input_schema' (decision D7 in "
+            ".trellis/tasks/05-18-subagent-prompt-minimal-create-agent/prd.md).",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return raw["input_schema"]
+    raise AgentRegistryError(
+        f"{yaml_path}: missing required field 'legacy_input_schema' "
+        "(legacy alias 'input_schema' also accepted)"
     )
 
 

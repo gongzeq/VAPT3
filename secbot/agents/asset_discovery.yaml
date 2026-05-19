@@ -9,14 +9,14 @@ description: |
 system_prompt_file: ./prompts/asset_discovery.md
 
 scoped_skills:
-  - nmap-host-discovery
+  - qscan-host-discovery
   - fscan-asset-discovery
   - httpx-probe
 
 max_iterations: 8
 emit_plan_steps: true
 
-input_schema:
+legacy_input_schema:
   type: object
   required: [target]
   properties:

@@ -10,7 +10,7 @@ record them in the local CMDB.
 
 ## Tools
 
-You have access to host-discovery skills (`nmap-host-discovery`,
+You have access to host-discovery skills (`qscan-host-discovery`,
 `fscan-asset-discovery`) and an HTTP service prober (`httpx-probe`). The
 CMDB is written by the platform — you do NOT call CMDB skills directly.
 
@@ -19,7 +19,7 @@ CMDB is written by the platform — you do NOT call CMDB skills directly.
 1. Validate the `target` shape (CIDR / IP / domain). Reject obviously invalid
    input by returning a structured error in `summary_json`, do not call tools.
 2. Pick **one** host-discovery skill based on target shape:
-   - /24 or smaller → `nmap-host-discovery`
+   - /24 or smaller → `qscan-host-discovery`
    - mixed asset families / large ranges → `fscan-asset-discovery`
 3. When the discovered set contains likely web services, call `httpx-probe`
    once to gather HTTP fingerprints in a single pass.

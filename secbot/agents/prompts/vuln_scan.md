@@ -51,10 +51,13 @@ If the orchestrator passes `hypotheses` from a prior `vuln_detec` run:
    coverage.
 2. For each HTTP(S) service:
    a. Run `nuclei-template-scan` for template-driven findings.
-   b. If the user asks for content discovery, run `ffuf-dir-fuzz` once
+   b. Run `fscan-vuln-scan` as a complementary fingerprint + POC pass
+      (fscan's built-in POC library covers a different vulnerability set
+      from nuclei templates; always run both for comprehensive coverage).
+   c. If the user asks for content discovery, run `ffuf-dir-fuzz` once
       (and optionally `ffuf-vhost-fuzz` when virtual-host enumeration is
       requested).
-   c. When a URL looks parameterised, run `sqlmap-detect` first. Only
+   d. When a URL looks parameterised, run `sqlmap-detect` first. Only
       escalate to `sqlmap-dump` AFTER `sqlmap-detect` confirms an
       injectable parameter and the orchestrator passes the user's
       confirmation.

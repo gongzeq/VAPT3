@@ -4,8 +4,9 @@ description: |
   Perform quick manual vulnerability verification tests against a Web
   endpoint. Runs baseline, special-character, XSS reflection, SQLi
   error/time-based, numeric arithmetic, template injection and command
-  injection probes using curl. Use AFTER vuln_scan to confirm suspected
-  findings.
+  injection probes using curl. Generates structured findings with
+  confidence ratings (low / medium / high) that the orchestrator may
+  feed into vuln_scan for targeted full scanning.
 
 system_prompt_file: ./prompts/vuln_detec.md
 
@@ -16,7 +17,8 @@ max_iterations: 10
 emit_plan_steps: true
 allow_exec: true
 
-input_schema:
+endpoint_bound: true
+legacy_input_schema:
   type: object
   required: [url]
   properties:

@@ -3,7 +3,7 @@
 """secbot 子智能体部署自检脚本。
 
 用途：当在一台新主机上部署 nanobot / secbot 后，orchestrator 只会输出
-"第一步：资产发现"之类的纯文本规划就结束（没有实际调用 delegate_task），
+"第一步：资产发现"之类的纯文本规划就结束（没有实际调用 create_agent），
 用该脚本快速定位原因。
 
 覆盖的检查项：
@@ -12,7 +12,7 @@
   3) agents 目录是否存在、5 个 yaml 能否全部加载
   4) 每个专家智能体 scoped_skills 对应的 SKILL.md 是否齐全
   5) 每个专家智能体依赖的外部二进制是否在 PATH（决定 spec.available）
-  6) orchestrator 工具表是否成功注册 delegate_task 等 5 个工具
+  6) orchestrator 工具表是否成功注册 create_agent 等 5 个工具
   7) LLM provider / model 是否配置，并提示是否支持 function-calling
   8) 可选：实际发起一次最小 function-calling 探针 (--probe-llm)
 
@@ -136,8 +136,8 @@ def check_secbot_import(rep: Report, project_root: Path) -> bool:
     sys.path.insert(0, str(project_root))
     try:
         import secbot  # noqa: F401
-        from secbot.agents.registry import load_agent_registry  # noqa: F401
         from secbot.agent.skills import BUILTIN_SKILLS_DIR  # noqa: F401
+        from secbot.agents.registry import load_agent_registry  # noqa: F401
         rep.add("secbot 包导入", "pass", detail="secbot / agents.registry / agent.skills 可导入")
         return True
     except Exception as e:
@@ -178,7 +178,7 @@ def check_agents_dir(rep: Report, project_root: Path) -> Path | None:
 
 def check_registry_load(rep: Report, agents_dir: Path):
     from secbot.agent.skills import BUILTIN_SKILLS_DIR
-    from secbot.agents.registry import load_agent_registry, AgentRegistryError
+    from secbot.agents.registry import AgentRegistryError, load_agent_registry
 
     if not BUILTIN_SKILLS_DIR.is_dir():
         rep.add(
@@ -224,7 +224,7 @@ def check_registry_load(rep: Report, agents_dir: Path):
             "AgentRegistry 内容",
             "fail",
             detail=f"已加载 {names}，缺 {sorted(miss)}",
-            hint="orchestrator prompt 的 agent 表会漏项，LLM 不知道可用的 delegate_task 目标。",
+            hint="orchestrator prompt 的 agent 表会漏项，LLM 不知道可用的 create_agent name 取值。",
         )
     else:
         rep.add("AgentRegistry 内容", "pass", detail=f"{len(names)} 个专家智能体: {names}")
@@ -429,11 +429,11 @@ def check_common_binaries(rep: Report, config_path: Path | None = None) -> None:
 def check_orchestrator_tools(rep: Report) -> None:
     """模拟 _register_orchestrator_tools，确认 5 个工具都能实例化。"""
     try:
-        from secbot.agent.tools.spawn import SpawnTool
-        from secbot.agent.tools.blackboard import BlackboardReadTool
         from secbot.agent.tools.approval import RequestApprovalTool
-        from secbot.agent.tools.plan import WritePlanTool
+        from secbot.agent.tools.blackboard import BlackboardReadTool
         from secbot.agent.tools.message import MessageTool  # noqa: F401
+        from secbot.agent.tools.plan import WritePlanTool
+        from secbot.agent.tools.spawn import SpawnTool
     except Exception as e:
         rep.add(
             "orchestrator 工具导入",
@@ -443,7 +443,7 @@ def check_orchestrator_tools(rep: Report) -> None:
         )
         return
 
-    expected = {"delegate_task", "read_blackboard", "request_approval", "write_plan", "message"}
+    expected = {"create_agent", "read_blackboard", "request_approval", "write_plan", "message"}
     found = set()
 
     class _DummyMgr:
@@ -457,7 +457,7 @@ def check_orchestrator_tools(rep: Report) -> None:
         found.add(RequestApprovalTool().name)
         found.add(WritePlanTool(chat_id_getter=lambda: None).name)
         # MessageTool 需要 send_callback / workspace；用最小替身即可：
-        from secbot.agent.tools.message import MessageTool as _MT
+        from secbot.agent.tools.message import MessageTool as _MT  # noqa: N814
         async def _cb(*a, **k): return None
         found.add(_MT(send_callback=_cb, workspace=Path(".")).name)
     except Exception as e:
@@ -515,7 +515,7 @@ def probe_llm_function_call(rep: Report) -> None:
     """
     发起最小 function-calling 探针，验证当前 LLM 端点支持 tool_calls。
     这个检查最关键：很多国产/自部署 OpenAI 兼容服务不支持 tool_calls，
-    表现就是 orchestrator 只输出"第一步：资产发现"文字，没有 delegate_task。
+    表现就是 orchestrator 只输出"第一步：资产发现"文字，没有 create_agent。
     """
     try:
         import httpx  # noqa: F401
@@ -552,15 +552,16 @@ def probe_llm_function_call(rep: Report) -> None:
     tools = [{
         "type": "function",
         "function": {
-            "name": "delegate_task",
-            "description": "Delegate work to an expert agent.",
+            "name": "create_agent",
+            "description": "Create an expert subagent to run a concrete task.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string"},
-                    "task":  {"type": "string"},
+                    "name":   {"type": "string"},
+                    "task":   {"type": "string"},
+                    "target": {"type": "string"},
                 },
-                "required": ["agent", "task"],
+                "required": ["name", "task", "target"],
             },
         },
     }]
@@ -570,7 +571,7 @@ def probe_llm_function_call(rep: Report) -> None:
             tools=tools,
             tool_choice="auto",
             messages=[
-                {"role": "system", "content": "You must call delegate_task with agent=asset_discovery."},
+                {"role": "system", "content": "You must call create_agent with name=asset_discovery."},
                 {"role": "user", "content": "扫描 10.0.0.0/24 的资产"},
             ],
             timeout=30,

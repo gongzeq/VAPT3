@@ -23,7 +23,7 @@ from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
-from secbot.agent.tools.web import WebFetchTool, WebSearchTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
@@ -198,6 +198,38 @@ class _SubagentHook(AgentHook):
         return "ok", None
 
 
+def _normalise_endpoint_key(endpoint_url: str, endpoint_param: str) -> tuple[str, str]:
+    """Compute the deduplication key for endpoint-level mutual exclusion (D5).
+
+    Goal: two ``create_agent`` calls naming the *same* endpoint must collide
+    even if their URL forms differ in trivial ways (case, trailing slash,
+    default port, query/fragment). We deliberately drop the query string &
+    fragment so that ``http://h/path?foo=1`` and ``http://h/path?bar=2``
+    share a lock — the parameter being probed is captured separately via
+    ``endpoint_param``.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(endpoint_url.strip())
+    scheme = (parts.scheme or "").lower()
+    host = (parts.hostname or "").lower()
+    port = parts.port
+    # Drop the default port for the scheme so ``http://h:80/`` == ``http://h/``.
+    if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
+        port = None
+    netloc = host if port is None else f"{host}:{port}"
+    if parts.username or parts.password:
+        userinfo = parts.username or ""
+        if parts.password is not None:
+            userinfo = f"{userinfo}:{parts.password}"
+        netloc = f"{userinfo}@{netloc}"
+    path = parts.path or "/"
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/") or "/"
+    normalised_url = urlunsplit((scheme, netloc, path, "", ""))
+    return (normalised_url, endpoint_param.strip().lower())
+
+
 class SubagentManager:
     """Manages background subagent execution."""
 
@@ -252,6 +284,11 @@ class SubagentManager:
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        # D5 endpoint-level mutex: maps normalised ``(endpoint_url, endpoint_param)``
+        # tuples to the task_id that currently owns them. ``spawn`` rejects a
+        # second endpoint-bound subagent targeting the same key; the per-task
+        # cleanup callback releases the entry on completion / failure.
+        self._endpoint_inflight: dict[tuple[str, str], str] = {}
 
     def set_provider(self, provider: LLMProvider, model: str) -> None:
         self.provider = provider
@@ -320,8 +357,18 @@ class SubagentManager:
         session_key: str | None = None,
         origin_message_id: str | None = None,
         agent: str | None = None,
+        target: str | None = None,
+        endpoint_url: str | None = None,
+        endpoint_param: str | None = None,
     ) -> str:
-        """Spawn a subagent to execute a task in the background."""
+        """Spawn a subagent to execute a task in the background.
+
+        ``target`` / ``endpoint_url`` / ``endpoint_param`` are routing/audit
+        metadata supplied by ``SpawnTool``; they are NOT auto-injected into
+        the LLM prompt (the Orchestrator is expected to embed them into
+        ``task`` when relevant). ``endpoint_url`` + ``endpoint_param`` are
+        also used to derive the endpoint-level mutex key for D5 enforcement.
+        """
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id, "session_key": session_key}
@@ -338,6 +385,22 @@ class SubagentManager:
                 )
             spec = self.agent_registry.get(agent)
 
+        # D5: endpoint-level mutual exclusion. We only enforce when BOTH
+        # endpoint fields are present (SpawnTool already guarantees this is
+        # the case iff the resolved spec is endpoint_bound). Programmatic
+        # callers that bypass SpawnTool simply opt out by not passing them.
+        endpoint_key: tuple[str, str] | None = None
+        if endpoint_url and endpoint_param:
+            endpoint_key = _normalise_endpoint_key(endpoint_url, endpoint_param)
+            holder = self._endpoint_inflight.get(endpoint_key)
+            if holder is not None:
+                return (
+                    f"create_agent failed: endpoint already busy — another "
+                    f"subagent (task {holder}) is currently running against "
+                    f"endpoint {endpoint_key[0]}?{endpoint_key[1]}. Wait for "
+                    "it to finish before launching another."
+                )
+
         status = SubagentStatus(
             task_id=task_id,
             label=display_label,
@@ -346,6 +409,8 @@ class SubagentManager:
             agent_name=(agent or ""),
         )
         self._task_statuses[task_id] = status
+        if endpoint_key is not None:
+            self._endpoint_inflight[endpoint_key] = task_id
 
         bg_task = asyncio.create_task(
             self._run_subagent(task_id, task, display_label, origin, status, origin_message_id, spec)
@@ -364,6 +429,10 @@ class SubagentManager:
                 ids.discard(task_id)
                 if not ids:
                     del self._session_tasks[session_key]
+            # D5: release the endpoint mutex as soon as the bg task is done
+            # (regardless of success/error), but only if WE still own it.
+            if endpoint_key is not None and self._endpoint_inflight.get(endpoint_key) == task_id:
+                self._endpoint_inflight.pop(endpoint_key, None)
 
         bg_task.add_done_callback(_cleanup)
 
@@ -447,7 +516,7 @@ class SubagentManager:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
             allowed_dir = self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
-            extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
+            extra_read = [BUILTIN_SKILLS_DIR] if BUILTIN_SKILLS_DIR.exists() else None
             # Subagent gets its own FileStates so its read-dedup cache is
             # isolated from the parent loop's sessions (issue #3571).
             from secbot.agent.tools.file_state import FileStates
@@ -486,22 +555,8 @@ class SubagentManager:
                         allowed_env_keys=self.exec_config.allowed_env_keys,
                     )
                 )
-            if self.web_config.enable:
-                tools.register(
-                    WebSearchTool(
-                        config=self.web_config.search,
-                        proxy=self.web_config.proxy,
-                        user_agent=self.web_config.user_agent,
-                    )
-                )
-                tools.register(
-                    WebFetchTool(
-                        config=self.web_config.fetch,
-                        proxy=self.web_config.proxy,
-                        user_agent=self.web_config.user_agent,
-                    )
-                )
-            # Subagents also get SkillTool instances so they can run nmap /
+            tools.register(CurlTool())
+            # Subagents also get SkillTool instances so they can run qscan /
             # fscan / etc. without shelling out. When an expert-agent spec is
             # provided (``spawn(agent=...)``), restrict the SkillTool set to
             # that spec's ``scoped_skills`` so the subagent only sees tools
@@ -529,12 +584,12 @@ class SubagentManager:
                 scan_dir=self.workspace / ".secbot" / "scans" / task_id,
                 confirm=parent_confirm,
             )
-            system_prompt = self._build_subagent_prompt(spec=spec)
-            # Inject current blackboard findings so the subagent sees peer
-            # state without having to call read_blackboard on its first turn.
-            bb_context = await self._format_blackboard_context(resolved_blackboard)
-            if bb_context:
-                system_prompt = f"{system_prompt.rstrip()}\n\n{bb_context}\n"
+            system_prompt = self._build_subagent_prompt(spec)
+            # D3: the shared-blackboard snapshot is NO LONGER auto-injected
+            # into the subagent's system prompt. The orchestrator owns prompt
+            # composition (it can read the blackboard via ``read_blackboard``
+            # and embed the relevant excerpt into ``task``). The subagent can
+            # still call ``read_blackboard`` / ``blackboard_write`` if needed.
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task},
@@ -703,59 +758,37 @@ class SubagentManager:
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
 
     def _build_subagent_prompt(
-        self,
-        *,
-        spec: "ExpertAgentSpec | None" = None,
+        self, spec: "ExpertAgentSpec | None" = None
     ) -> str:
-        """Build a focused system prompt for the subagent.
+        """Build the system prompt for an expert subagent.
 
-        When ``spec`` is provided, the expert-agent's ``system_prompt`` is
-        prepended so the subagent adopts that role before the generic secbot
-        subagent instructions.
+        Composition:
+
+        - runtime/time context
+        - workspace path
+        - hard rules (skill-tool preference + missing-skill → blackboard
+          blocker + return)
+        - untrusted-content snippet
+        - SKILL.md self-inspection hint
+        - **spec.system_prompt** (when an expert-agent spec is resolved)
+
+        The scaffold owns the *how* (safety + tool-discovery guidance); the
+        per-agent system_prompt owns the *what* (test steps, parameter shapes,
+        output format).  Both are needed because the orchestrator's ``task``
+        is typically too short to replace the full agent role description.
         """
         from secbot.agent.context import ContextBuilder
-        from secbot.agent.skills import SkillsLoader
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
-        skills_summary = SkillsLoader(
-            self.workspace,
-            disabled_skills=self.disabled_skills,
-        ).build_skills_summary()
         base = render_template(
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(self.workspace),
-            skills_summary=skills_summary or "",
+            skills_dir=str(BUILTIN_SKILLS_DIR),
         )
-        if spec is None:
-            return base
-        return f"{spec.system_prompt.rstrip()}\n\n{base}"
-
-    @staticmethod
-    async def _format_blackboard_context(blackboard: Blackboard, max_chars: int = 1500) -> str:
-        """Format blackboard entries for injection into a subagent system prompt."""
-        entries = await blackboard.read_all()
-        if not entries:
-            return (
-                "## Shared Blackboard\n\n"
-                "The shared blackboard is currently empty. "
-                "You are the first agent — record your findings for peers that follow."
-            )
-        lines = ["## Shared Blackboard (findings from previous agents)\n"]
-        for e in entries:
-            lines.append(f"[{e.agent_name}] {e.id}: {e.text}")
-        text = "\n".join(lines)
-        if len(text) > max_chars:
-            kept: list[str] = []
-            count = 0
-            for line in lines:
-                if count + len(line) + 1 > max_chars:
-                    break
-                kept.append(line)
-                count += len(line) + 1
-            kept.append("... (truncated)")
-            text = "\n".join(kept)
-        return text
+        if spec is not None and spec.system_prompt:
+            base = base.rstrip() + "\n\n" + spec.system_prompt.strip() + "\n"
+        return base
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

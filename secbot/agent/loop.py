@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
+from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.autocompact import AutoCompact
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
-from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.context import ContextBuilder
 from secbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
@@ -32,8 +32,8 @@ from secbot.agent.tools.ask import (
     ask_user_tool_result_messages,
     pending_ask_user_call,
 )
-from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
+from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.cron import CronTool
 from secbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -56,7 +56,7 @@ from secbot.agent.tools.teammate import (
     ShutdownTeammateTool,
     SpawnTeammateTool,
 )
-from secbot.agent.tools.web import WebFetchTool, WebSearchTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
@@ -663,7 +663,7 @@ class AgentLoop:
         allowed_dir = (
             self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
         )
-        extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
+        extra_read = [BUILTIN_SKILLS_DIR] if BUILTIN_SKILLS_DIR.exists() else None
         self.tools.register(AskUserTool())
         self.tools.register(
             ReadFileTool(
@@ -681,21 +681,7 @@ class AgentLoop:
         # ExecTool. Subagents MAY receive ExecTool only when spawned with an
         # expert-agent spec that has allow_exec=True AND exec_config.enable.
         # See subagent.py for the conditional gate.
-        if self.web_config.enable:
-            self.tools.register(
-                WebSearchTool(
-                    config=self.web_config.search,
-                    proxy=self.web_config.proxy,
-                    user_agent=self.web_config.user_agent,
-                )
-            )
-            self.tools.register(
-                WebFetchTool(
-                    config=self.web_config.fetch,
-                    proxy=self.web_config.proxy,
-                    user_agent=self.web_config.user_agent,
-                )
-            )
+        self.tools.register(CurlTool())
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound, workspace=self.workspace))
         self.tools.register(SpawnTool(manager=self.subagents))
         self.tools.register(BlackboardWriteTool(blackboard=lambda: self.blackboard, agent_name="orchestrator"))
@@ -716,7 +702,7 @@ class AgentLoop:
         )
         self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
         # Register every valid secbot skill as a first-class tool so the LLM
-        # can invoke nmap / fscan / hydra / nuclei etc. with typed parameters
+        # can invoke qscan / fscan / hydra / nuclei etc. with typed parameters
         # instead of synthesising shell commands via ``exec``. Skills whose
         # front-matter does not comply with the secbot SKILL.md schema are
         # silently skipped (scan_skills strict=False).
@@ -772,10 +758,10 @@ class AgentLoop:
         else:
             effective_key = f"{channel}:{chat_id}"
         self._current_chat_id = chat_id
-        for name in ("message", "delegate_task", "cron", "my"):
+        for name in ("message", "create_agent", "cron", "my"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    if name == "delegate_task":
+                    if name == "create_agent":
                         tool.set_context(channel, chat_id, effective_key=effective_key)
                         if hasattr(tool, "set_origin_message_id"):
                             tool.set_origin_message_id(message_id)

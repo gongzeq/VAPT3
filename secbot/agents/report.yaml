@@ -13,7 +13,7 @@ scoped_skills:
 max_iterations: 2
 emit_plan_steps: false
 
-input_schema:
+legacy_input_schema:
   type: object
   required: [scan_id]
   properties:

@@ -34,7 +34,7 @@ class SpawnTeammateTool(Tool):
             "Create a persistent teammate with a durable identity and assign it "
             "work. Reusing the same name assigns new work to that idle teammate. "
             "Use this only when the teammate needs mailbox-based communication "
-            "across turns; for one-shot expert work use delegate_task."
+            "across turns; for one-shot expert work use create_agent."
         )
 
     @property

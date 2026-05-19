@@ -1,4 +1,22 @@
-"""Delegate-task tool for creating background subagents."""
+"""create_agent tool — orchestrator-only entry point for spawning expert subagents.
+
+This is the *single* tool the Orchestrator uses to launch an expert agent
+(see decision D2/D6 in `.trellis/tasks/05-18-subagent-prompt-minimal-create-agent/prd.md`).
+
+Strict invariants (fail-fast, no defaults, no silent fallbacks):
+- ``name``  must be a registered expert agent.
+- ``task``  must be a non-empty prompt within ``MAX_TASK_LEN``; the Orchestrator
+            is expected to write the full prompt body — the subagent will NOT
+            read ``spec.system_prompt`` nor receive an auto-injected blackboard
+            snapshot.
+- ``target`` must be set (asset / scope identifier — IP, CIDR, domain, URL, …).
+            Used for routing/audit; **not** spliced into the LLM prompt by this
+            tool. The Orchestrator is responsible for embedding any necessary
+            target text into ``task`` itself.
+- ``endpoint_url`` + ``endpoint_param`` are required *iff* the resolved spec has
+            ``endpoint_bound=true``; they form the endpoint-level mutex key
+            enforced by ``SubagentManager`` (see decision D5/D8).
+"""
 
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
@@ -10,21 +28,47 @@ if TYPE_CHECKING:
     from secbot.agent.subagent import SubagentManager
 
 
+# Hard upper bound on the ``task`` payload coming from the Orchestrator. The
+# value is intentionally generous: a full prompt usually fits well under 8K
+# chars, and 16K leaves head-room for embedded findings/blackboard excerpts
+# the Orchestrator chooses to inline. Anything past this is almost certainly
+# a bug (e.g. dumping a whole repo into the field).
+MAX_TASK_LEN = 16_000
+
+
 @tool_parameters(
     tool_parameters_schema(
-        task=StringSchema("The task for the subagent to complete"),
-        label=StringSchema("Optional short label for the task (for display)"),
-        agent=StringSchema(
-            "Optional expert agent name. When set, the subagent loads "
-            "only that agent's scoped_skills and system prompt (see "
-            "/api/agents for the list of registered expert agents).",
+        name=StringSchema(
+            "Expert agent name. MUST be one of the agents listed in the "
+            "orchestrator prompt (or /api/agents). Unknown names are rejected.",
+        ),
+        task=StringSchema(
+            "Full prompt for the subagent. The Orchestrator writes the entire "
+            "instruction body here — the subagent does NOT read any per-agent "
+            f"system_prompt. Hard limit: {MAX_TASK_LEN} characters.",
+        ),
+        target=StringSchema(
+            "Asset / scope identifier (IP, CIDR, domain, URL, …). Required for "
+            "every call; used for routing & audit. Not auto-injected into the "
+            "LLM prompt — restate it inside 'task' if the subagent needs it.",
+        ),
+        endpoint_url=StringSchema(
+            "Endpoint URL. REQUIRED iff the target agent is endpoint_bound "
+            "(e.g. vuln_detec / weak_password). Forms the endpoint mutex key "
+            "together with endpoint_param.",
             nullable=True,
         ),
-        required=["task"],
+        endpoint_param=StringSchema(
+            "Endpoint parameter name. REQUIRED iff the target agent is "
+            "endpoint_bound. Forms the endpoint mutex key together with "
+            "endpoint_url.",
+            nullable=True,
+        ),
+        required=["name", "task", "target"],
     )
 )
 class SpawnTool(Tool):
-    """Tool to delegate work to a background subagent."""
+    """Tool to create an expert subagent (orchestrator-only)."""
 
     def __init__(self, manager: "SubagentManager"):
         self._manager = manager
@@ -48,24 +92,98 @@ class SpawnTool(Tool):
 
     @property
     def name(self) -> str:
-        return "delegate_task"
+        return "create_agent"
 
     @property
     def description(self) -> str:
         return (
-            "Delegate a concrete task to a subagent. Use this for any work that "
-            "needs file, shell, web, skill, blackboard write, or other operational "
-            "tool access. The subagent completes the task and reports back."
+            "Create an expert subagent to run a concrete task. Provide the FULL "
+            "prompt in 'task', the asset/scope in 'target', and — when the agent "
+            "is endpoint-bound — both 'endpoint_url' and 'endpoint_param'. The "
+            "orchestrator owns prompt composition; the subagent does not read "
+            "per-agent system prompts and is not given an auto-injected "
+            "blackboard snapshot."
         )
 
     async def execute(
         self,
-        task: str,
-        label: str | None = None,
-        agent: str | None = None,
+        name: str | None = None,
+        task: str | None = None,
+        target: str | None = None,
+        endpoint_url: str | None = None,
+        endpoint_param: str | None = None,
         **kwargs: Any,
     ) -> str:
-        """Spawn a subagent to execute the given task."""
+        """Validate the create_agent call (D6 strict / fail-fast) and spawn."""
+
+        # ---- 1. Field presence & shape (no defaults, no silent fallback) ----
+        if not isinstance(name, str) or not name.strip():
+            return (
+                "create_agent failed: 'name' is required and must be a "
+                "non-empty string naming a registered expert agent."
+            )
+        if not isinstance(task, str) or not task.strip():
+            return "create_agent failed: 'task' is required and must be non-empty."
+        if not isinstance(target, str) or not target.strip():
+            return (
+                "create_agent failed: 'target' is required (asset/scope "
+                "identifier such as IP, CIDR, domain or URL)."
+            )
+        if len(task) > MAX_TASK_LEN:
+            return (
+                f"create_agent failed: 'task' length {len(task)} exceeds the "
+                f"maximum of {MAX_TASK_LEN} characters. Split the work or "
+                "summarise before delegating."
+            )
+
+        name = name.strip()
+        target = target.strip()
+
+        # ---- 2. Agent registry lookup ----------------------------------------
+        registry = getattr(self._manager, "agent_registry", None)
+        if registry is None:
+            return (
+                "create_agent failed: no agent registry is attached to the "
+                "SubagentManager (server mis-configuration)."
+            )
+        if name not in registry:
+            available = ", ".join(registry.names()) or "<none registered>"
+            return (
+                f"create_agent failed: unknown agent '{name}'. "
+                f"Available agents: {available}."
+            )
+        spec = registry.get(name)
+        if not spec.available:
+            missing = ", ".join(spec.missing_binaries) or "<unknown>"
+            return (
+                f"create_agent failed: agent '{name}' is offline (missing "
+                f"binaries: {missing}). Install them and retry."
+            )
+
+        # ---- 3. Endpoint-bound enforcement (D5/D8) --------------------------
+        if spec.endpoint_bound:
+            if not isinstance(endpoint_url, str) or not endpoint_url.strip():
+                return (
+                    f"create_agent failed: agent '{name}' is endpoint-bound; "
+                    "'endpoint_url' is required."
+                )
+            if not isinstance(endpoint_param, str) or not endpoint_param.strip():
+                return (
+                    f"create_agent failed: agent '{name}' is endpoint-bound; "
+                    "'endpoint_param' is required."
+                )
+            endpoint_url = endpoint_url.strip()
+            endpoint_param = endpoint_param.strip()
+        else:
+            # Non-endpoint agents must not receive endpoint fields — reject so
+            # the orchestrator's intent stays unambiguous.
+            if endpoint_url is not None or endpoint_param is not None:
+                return (
+                    f"create_agent failed: agent '{name}' is not endpoint-bound; "
+                    "omit 'endpoint_url' and 'endpoint_param'."
+                )
+
+        # ---- 4. Concurrency guard (existing behaviour) ----------------------
         running = self._manager.get_running_count()
         limit = self._manager.max_concurrent_subagents
         if running >= limit:
@@ -74,27 +192,15 @@ class SpawnTool(Tool):
                 f"({running}/{limit} running). Wait for a running subagent "
                 f"to complete before spawning a new one."
             )
-        # PR3: when the caller names a specific expert agent, resolve + validate
-        # it here so the LLM gets a concise error (instead of burning a subagent
-        # slot on an unknown / offline agent).
-        if agent:
-            registry = getattr(self._manager, "agent_registry", None)
-            if registry is None or agent not in registry:
-                return (
-                    f"Unknown expert agent '{agent}'. "
-                    f"Use the orchestrator prompt's agent list or /api/agents."
-                )
-            spec = registry.get(agent)
-            if not spec.available:
-                missing = ", ".join(spec.missing_binaries) or "<unknown>"
-                return (
-                    f"Agent '{agent}' is offline: missing binaries {missing}. "
-                    "Install them and retry."
-                )
+
+        # ---- 5. Hand off to the manager -------------------------------------
         return await self._manager.spawn(
             task=task,
-            label=label,
-            agent=agent,
+            label=None,
+            agent=name,
+            target=target,
+            endpoint_url=endpoint_url,
+            endpoint_param=endpoint_param,
             origin_channel=self._origin_channel.get(),
             origin_chat_id=self._origin_chat_id.get(),
             session_key=self._session_key.get(),

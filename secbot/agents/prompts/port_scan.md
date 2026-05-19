@@ -8,15 +8,13 @@ fingerprint services on hosts produced by `asset_discovery`.
 
 ## Tools
 
-`nmap-port-scan`, `nmap-service-fingerprint`, `fscan-port-scan`.
+`qscan-port-scan`.
 
 ## Procedure
 
 1. Receive `targets` (1+ hosts). If `ports` is omitted, scan top-1000.
 2. Choose:
-   - small target list (≤32 hosts) → `nmap-port-scan` then
-     `nmap-service-fingerprint` on the open ports.
-   - large list → `fscan-port-scan` (parallelism built in).
+   - qscan-port-scan` (parallelism built in).
 3. Honour `rate`: `slow` → `-T2`, `normal` → `-T3`, `fast` → `-T4`. Never
    exceed `-T4` from this agent — `-T5` is reserved for the user.
 
@@ -48,6 +46,6 @@ You have **two complementary write channels** — use the right one:
 ports for a host (kind=port), target ONLY those ports for service
 fingerprinting. Do NOT run a full port sweep again.
 
-Do NOT dump raw nmap XML to either channel — structured per-port
+Do NOT dump raw scanner output to either channel — structured per-port
 results go into `asset_push.payload`; the full report goes to
 `summary_json`.

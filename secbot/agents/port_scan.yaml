@@ -8,14 +8,12 @@ description: |
 system_prompt_file: ./prompts/port_scan.md
 
 scoped_skills:
-  - nmap-port-scan
-  - nmap-service-fingerprint
-  - fscan-port-scan
+  - qscan-port-scan
 
 max_iterations: 8
 emit_plan_steps: true
 
-input_schema:
+legacy_input_schema:
   type: object
   required: [targets]
   properties:
