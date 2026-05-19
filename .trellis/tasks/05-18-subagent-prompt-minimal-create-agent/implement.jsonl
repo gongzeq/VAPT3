@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 入口，统揽 agent/tool/orchestrator 相关约定"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "ExpertAgentSpec 字段契约；本期改动：input_schema→legacy_input_schema 重命名 + 新增 endpoint_bound"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "orchestrator 系统提示词模板规范；本期需同步把 tool surface 收敛到单一 create_agent"}
+{"file": ".trellis/spec/backend/orchestrator-tool-whitelist.md", "reason": "orchestrator 可见工具白名单；per-agent function tool 整体下线、新增 create_agent"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "工具调用安全规约；ExecTool 子智能体绝对不注册红线 + 参数 fail-fast 校验"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "subagent hard rules（必须用 skill tool 而非伪造 shell）需对齐"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "D6 严格校验的错误返回风格（结构化 error，不静默兜底）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增/重命名文件需遵循目录结构约定"}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "黑板自动注入路径移除但 read/write 工具保留，需理解黑板注册边界"}

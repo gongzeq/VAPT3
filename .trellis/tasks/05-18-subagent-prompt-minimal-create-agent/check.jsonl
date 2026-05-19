@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "backend spec 入口，check 阶段也需统览"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "质量门槛（mypy/ruff/pytest 全绿）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验严格校验/结构化 error 是否符合规范"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "校验 ExpertAgentSpec 字段改造是否符合契约"}
+{"file": ".trellis/spec/backend/orchestrator-tool-whitelist.md", "reason": "校验 tool surface 收敛是否合规"}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "校验 ExecTool 红线 + spawn 校验"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "校验互斥拒绝/严格校验失败时的日志输出"}

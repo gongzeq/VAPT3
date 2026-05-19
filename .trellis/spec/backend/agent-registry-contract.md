@@ -17,7 +17,11 @@ secbot/agents/
 └── report.yaml
 ```
 
-One YAML file per expert agent. Filename (without extension) IS the agent's tool name as seen by the Orchestrator.
+One YAML file per expert agent. Filename (without extension) IS the agent's
+registered name; the Orchestrator picks it via `create_agent(name=...)`. Per-
+agent tools (one tool per yaml) are no longer exposed at the LLM tool surface
+(see `orchestrator-tool-whitelist.md` and decision D2 in
+`05-18-subagent-prompt-minimal-create-agent/prd.md`).
 
 ---
 
@@ -46,8 +50,17 @@ model:                               # optional, falls back to global default
 
 max_iterations: 8                    # optional, default 10
 emit_plan_steps: true                # optional, default true (renders in PlanTimeline)
+endpoint_bound: false                # optional, default false. When true, the
+                                     # agent operates on a single (endpoint_url,
+                                     # endpoint_param) pair and SubagentManager
+                                     # enforces endpoint-level mutual exclusion.
 
-input_schema:                        # required, JSON Schema for `args` from Orchestrator
+legacy_input_schema:                 # required (alias `input_schema` accepted
+                                     # with a DeprecationWarning during the
+                                     # migration window — decision D7). Kept
+                                     # for diagnostics & schema docs ONLY; the
+                                     # Orchestrator no longer hands per-agent
+                                     # input shapes to the LLM.
   type: object
   required: [target]
   properties:
@@ -79,8 +92,9 @@ output_schema:                       # required, declares the summary returned t
 |-------|------|
 | `name` | MUST equal filename stem; MUST match `^[a-z][a-z0-9_]*$`. |
 | `scoped_skills` | Each entry MUST exist as a registered skill (`secbot/skills/<entry>/SKILL.md`). Loader fails fast if missing. |
-| `system_prompt_file` | MUST exist; loader reads and embeds at registration time. |
-| `input_schema` / `output_schema` | MUST be valid JSON Schema 2020-12. The Orchestrator validates `args` BEFORE calling the agent; the loop validates `summary_json` AFTER. Validation failure → tool error returned to caller, not raised. |
+| `system_prompt_file` | MUST exist; loader reads it and **appends** it to the subagent system prompt (after the safety scaffold). This gives the subagent both the hard-rules skeleton and the per-agent role instructions. |
+| `legacy_input_schema` / `output_schema` | MUST be valid JSON Schema 2020-12. `legacy_input_schema` is informational only — the Orchestrator no longer validates `args` against it (the `create_agent` tool has its own fixed schema). `output_schema` MAY still drive post-run summary validation. The legacy alias `input_schema` is accepted with a DeprecationWarning. |
+| `endpoint_bound` | Optional bool, default `false`. When `true`, `create_agent` MUST receive both `endpoint_url` and `endpoint_param`; `SubagentManager` rejects a second concurrent spawn against the same normalised `(endpoint_url, endpoint_param)` key. |
 | `emit_plan_steps` | When `false`, the agent's individual steps collapse in the WebUI; only the final summary renders. |
 
 ---
@@ -105,20 +119,18 @@ secbot startup
 
 ## 4. What the Orchestrator Sees
 
-For the LLM, each expert agent looks like a single tool:
+The Orchestrator does NOT receive one tool per expert agent. Instead, it sees a
+single `create_agent(name, task, target, endpoint_url?, endpoint_param?)` tool
+plus the locked agent table rendered into its system prompt by
+`render_orchestrator_prompt()`. Each row of that table lists:
 
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "asset_discovery",
-    "description": "Discover live hosts, services and basic asset inventory ...",
-    "parameters": { /* input_schema */ }
-  }
-}
-```
+- the agent `name` (the value to pass as `create_agent(name=...)`),
+- whether the agent is `endpoint-bound`,
+- a one-line purpose,
+- the agent's scoped skills.
 
-The Orchestrator never sees individual skill names. Skills are an **implementation detail** of the expert agent.
+The Orchestrator never sees individual skill names as standalone tools.
+Skills are an **implementation detail** of the expert agent.
 
 ---
 
