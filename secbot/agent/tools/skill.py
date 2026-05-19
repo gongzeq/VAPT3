@@ -1,14 +1,14 @@
 """SkillTool: wrap a ``secbot/skills/<name>/`` package as a first-class LLM tool.
 
 A Skill is a pre-written handler that validates arguments, runs a sandboxed
-external binary (nmap / fscan / hydra / httpx / nuclei / ffuf / sqlmap / ...),
+external binary (qscan / fscan / hydra / httpx / nuclei / ffuf / sqlmap / ...),
 and returns a structured :class:`SkillResult`. Exposing each skill as a
 dedicated ``Tool`` lets the LLM invoke it by name with typed parameters
 (instead of synthesising a shell command via ``exec``).
 
 The tool:
 
-- ``name``       = ``SkillMetadata.name`` (e.g. ``nmap-port-scan``)
+- ``name``       = ``SkillMetadata.name`` (e.g. ``qscan-port-scan``)
 - ``description``= first paragraph of ``SKILL.md`` body (fallback: display_name)
 - ``parameters`` = contents of ``input.schema.json``
 - ``execute()``  = constructs a :class:`SkillContext`, routes through
@@ -169,6 +169,8 @@ class SkillTool(Tool):
         if progress is not None:
             ctx_kwargs["progress"] = progress
         ctx = SkillContext(**ctx_kwargs)
+
+        _LOG.debug("SkillTool %s args: %s", self._meta.name, kwargs)
 
         try:
             result = await self._high_risk_gate.guard(

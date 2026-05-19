@@ -150,6 +150,8 @@ class ExecTool(Tool):
         if guard_error:
             return guard_error
 
+        logger.debug("exec: {}", command)
+
         if self.sandbox:
             if _IS_WINDOWS:
                 logger.warning(

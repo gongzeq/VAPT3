@@ -14,8 +14,7 @@ _TOOL_FORMATS: dict[str, tuple[list[str], str, bool, bool]] = {
     "glob":       (["pattern"],                        'glob "{}"',   False, False),
     "grep":       (["pattern"],                        'grep "{}"',   False, False),
     "exec":       (["command"],                        "$ {}",        False, True),
-    "web_search": (["query"],                          'search "{}"', False, False),
-    "web_fetch":  (["url"],                            "fetch {}",    True,  False),
+    "curl":       (["command"],                        "curl {}",     False, True),
     "list_dir":   (["path"],                           "ls {}",       True,  False),
 }
 

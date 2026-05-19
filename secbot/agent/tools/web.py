@@ -499,6 +499,10 @@ class WebFetchTool(Tool):
                 "extractor": extractor, "truncated": truncated, "length": len(text),
                 "untrusted": True, "text": text,
             }, ensure_ascii=False)
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code if e.response else None
+            logger.warning("WebFetch HTTP {} for {}", status, url)
+            return json.dumps({"error": f"HTTP error {status}", "url": url, "status": status}, ensure_ascii=False)
         except httpx.ProxyError as e:
             logger.exception("WebFetch proxy error for {}", url)
             return json.dumps({"error": f"Proxy error: {e}", "url": url}, ensure_ascii=False)
