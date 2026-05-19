@@ -8,12 +8,14 @@ local ucl = require "ucl"
 -- 部署步骤：
 --   1. 先在 WebUI 用钓鱼邮件检测模板"Use"出一个 workflow，记下 wf_id
 --   2. 把下面的 workflow_run_url 末尾的 <wf_id> 替换为该 ID
---   3. 如果 secbot 启用了 bearer token，填到 auth_token；否则保持 ""
+-- 说明：secbot /api/workflows/.../run 不鉴权，LLM 厂商 apiKey 由
+-- secbot 内部从 ~/.secbot/config.json 的 providers.{name}.apiKey 读取，
+-- 本插件不需要传递任何密钥。
+
 local ai_config = {
     enabled = true,
     -- secbot workflow run 端点。``<wf_id>`` 必须替换为实际工作流 ID。
     workflow_run_url = "http://127.0.0.1:18791/api/workflows/wf_6ce140c2/run",
-    auth_token = "sk-b7c70caf48e145a58156596b7462a685",
     request_timeout = 120,
     min_score = -10,
     max_score = 10.0,
@@ -200,9 +202,6 @@ local function call_ai_service(task)
 
     rspamd_logger.infox(task, "正在调用 secbot 工作流: %s", ai_config.workflow_run_url)
     local headers = { ["Content-Type"] = "application/json" }
-    if ai_config.auth_token and ai_config.auth_token ~= "" then
-        headers["Authorization"] = "Bearer " .. ai_config.auth_token
-    end
     rspamd_http.request({
         task = task,
         url = ai_config.workflow_run_url,

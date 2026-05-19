@@ -29,25 +29,65 @@ Output payload::
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+from typing import Any, Callable
 
 from secbot.workflow.executors.base import ExecutorError, StepContext, StepExecutor
 from secbot.workflow.types import WorkflowStep
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_TEMPERATURE = 0.7
 
 
 class LlmExecutor(StepExecutor):
-    """One-shot LLM chat call using the default provider."""
+    """One-shot LLM chat call using the default provider.
+
+    Hot-reload contract
+    -------------------
+    The provider can be supplied two ways:
+
+    * ``llm_provider`` — a fixed instance (legacy / tests).
+    * ``provider_loader`` — a zero-arg callable returning the *current*
+      provider. Called at the start of every ``_run`` so that config
+      changes (e.g. a new apiKey saved via the WebUI settings page) are
+      picked up without restarting the gateway, mirroring the AgentLoop
+      behaviour (see ``secbot/agent/loop.py::_refresh_provider_snapshot``).
+
+    When both are provided, ``provider_loader`` wins; on loader failure
+    the cached ``llm_provider`` is used as a fallback so a transient
+    config-read error never breaks an in-flight workflow.
+    """
 
     kind = "llm"
 
-    def __init__(self, *, llm_provider: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        llm_provider: Any = None,
+        provider_loader: Callable[[], Any] | None = None,
+    ) -> None:
         # ``None`` is allowed so unit tests without an LLM wire can still
         # construct the executor table; the failure surfaces only when a
         # step tries to run.
         self._provider = llm_provider
+        self._provider_loader = provider_loader
+
+    def _resolve_provider(self) -> Any:
+        """Return the freshest provider; fall back to the cached one on error."""
+        if self._provider_loader is not None:
+            try:
+                fresh = self._provider_loader()
+            except Exception:
+                logger.warning(
+                    "workflow.llm: provider_loader failed; falling back to cached provider",
+                    exc_info=True,
+                )
+            else:
+                if fresh is not None:
+                    return fresh
+        return self._provider
 
     async def _run(
         self,
@@ -55,7 +95,8 @@ class LlmExecutor(StepExecutor):
         args: dict[str, Any],
         ctx: StepContext,
     ) -> Any:
-        if self._provider is None:
+        provider = self._resolve_provider()
+        if provider is None:
             raise ExecutorError(
                 "workflow.validation.llm_config: no LLM provider is configured"
             )
@@ -95,7 +136,7 @@ class LlmExecutor(StepExecutor):
         messages.append({"role": "user", "content": user_prompt})
 
         try:
-            resp = await self._provider.chat(
+            resp = await provider.chat(
                 messages,
                 max_tokens=int(max_tokens),
                 temperature=float(temperature),

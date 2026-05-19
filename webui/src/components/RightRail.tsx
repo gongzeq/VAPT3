@@ -20,12 +20,10 @@ export interface RightRailProps {
 /**
  * F7 — Right-Rail tabbed container.
  *
- * Default tab is ``Blackboard`` (per PRD requirement: refresh page → live
- * agent notes immediately visible). Tab order: ``Blackboard | Assets |
- * Trace | Prompts`` — Assets renders the per-chat real-time asset feed
- * (PRD ``05-17-bb-realtime-notify``); Trace replays thought / tool_call /
- * tool_result events for the active chat; Prompts stays as the fallback
- * surface until a future iteration retires it.
+ * Default tab is ``Prompts`` (工作台). Tab order: ``Blackboard | Assets |
+ * Trace | Prompts`` — Assets renders the per-chat real-time asset feed;
+ * Trace replays thought / tool_call / tool_result events for the active
+ * chat; Prompts is the default surface on load.
  */
 export function RightRail({
   session,
@@ -36,7 +34,7 @@ export function RightRail({
   const chatId = session?.chatId ?? null;
   return (
     <Tabs
-      defaultValue="blackboard"
+      defaultValue="prompts"
       className={cn(
         "flex h-full min-h-0 w-full flex-col gap-3 p-5",
         className,

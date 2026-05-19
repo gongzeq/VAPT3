@@ -41,12 +41,10 @@ export function ThreadShell({
   session,
   title,
   onToggleSidebar,
-  onGoHome,
-  onNewChat,
   onCreateChat,
   onTurnEnd,
-  onOpenSettings,
-  hideSidebarToggleOnDesktop,
+  onOpenSettings = () => {},
+  hideSidebarToggleOnDesktop = false,
   onToggleRightRail,
   rightRailOpen,
 }: ThreadShellProps) {
@@ -55,8 +53,6 @@ export function ThreadShell({
   // public interface.
   void title;
   void onToggleSidebar;
-  void onGoHome;
-  void onNewChat;
   void onOpenSettings;
   void hideSidebarToggleOnDesktop;
   void onToggleRightRail;
@@ -94,11 +90,6 @@ export function ThreadShell({
         return {
           question: message.content,
           buttons: message.buttons,
-          variant: message.promptKind === "approval" || message.toolName === "request_approval"
-            ? ("approval" as const)
-            : ("question" as const),
-          askId: message.askId,
-          detail: message.approvalDetail,
         };
       }
       if (message.role === "assistant") return null;
@@ -196,19 +187,7 @@ export function ThreadShell({
         <AskUserPrompt
           question={pendingAsk.question}
           buttons={pendingAsk.buttons}
-          variant={pendingAsk.variant}
-          detail={pendingAsk.detail}
-          onAnswer={(answer) => {
-            if (pendingAsk.askId) {
-              // High-risk confirmation: route via scan.user_reply frame.
-              const decision = answer.toLowerCase().includes("approve")
-                ? "approve" as const
-                : "deny" as const;
-              client.sendUserReply(pendingAsk.askId, decision);
-            } else {
-              send(answer);
-            }
-          }}
+          onAnswer={send}
         />
       ) : null}
       {session ? (
