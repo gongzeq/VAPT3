@@ -349,9 +349,20 @@ class OpenAICompatProvider(LLMProvider):
         # opening a fresh connection for each request, which is cheap on a
         # LAN.  Cloud providers benefit from keepalive, so we leave the
         # default pool settings for them.
+        #
+        # Xiaomi MiMo also gets the no-keepalive treatment: long-running
+        # tools (e.g. multi-minute qscan) leave the HTTP connection idle
+        # for far longer than MiMo's edge tolerates, and the next request
+        # consistently fails with ``APIConnectionError("Connection error.")``
+        # for 4+ retries because each retry grabs another half-dead pooled
+        # entry.  Forcing a fresh connection per request is cheap on a
+        # cloud endpoint and removes that failure mode entirely.
         timeout_s = _openai_compat_timeout_s()
         http_client: httpx.AsyncClient | None = None
-        if _is_local_endpoint(spec, effective_base):
+        force_no_keepalive = _is_local_endpoint(spec, effective_base) or (
+            spec is not None and spec.name == "xiaomi_mimo"
+        ) or "xiaomimimo" in (effective_base or "").lower()
+        if force_no_keepalive:
             http_client = httpx.AsyncClient(
                 limits=httpx.Limits(keepalive_expiry=0),
                 timeout=timeout_s,
@@ -1196,11 +1207,35 @@ class OpenAICompatProvider(LLMProvider):
             or getattr(getattr(e, "response", None), "text", None)
         )
         body_text = body if isinstance(body, str) else str(body) if body is not None else ""
-        msg = f"Error: {body_text.strip()[:500]}" if body_text.strip() else f"Error calling LLM: {e}"
+
+        # ``APIConnectionError`` is the OpenAI SDK's catch-all wrapper for
+        # any non-timeout httpx failure (ConnectError, RemoteProtocolError,
+        # ReadError, SSLError, ...). Its ``str(e)`` is the constant string
+        # "Connection error.", which hides the real root cause.  Surface
+        # the chained exception so logs and the agent's error bubble both
+        # name the actual transport failure (e.g.
+        # ``httpx.RemoteProtocolError: Server disconnected without sending
+        # a response``).  This is what the user needs to see when MiMo
+        # drops a multi-minute idle connection mid-conversation.
+        cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
+        cause_text = ""
+        if cause is not None:
+            cause_msg = str(cause).strip()
+            cause_text = (
+                f"{type(cause).__name__}: {cause_msg}" if cause_msg else type(cause).__name__
+            )
+
+        if body_text.strip():
+            msg = f"Error: {body_text.strip()[:500]}"
+        elif cause_text:
+            msg = f"Error calling LLM: {e} ({cause_text})"
+        else:
+            msg = f"Error calling LLM: {e}"
 
         logger.opt(lazy=True).debug(
-            "LLM error body (type={}): {}",
+            "LLM error body (type={}, cause={}): {}",
             lambda: type(e).__name__,
+            lambda: cause_text or "None",
             lambda: _dump(body if body is not None else str(e)),
         )
 
