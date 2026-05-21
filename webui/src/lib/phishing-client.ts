@@ -38,7 +38,6 @@ export interface PhishingSparkPoint {
 export interface PhishingSummary {
   today_phishing: number;
   today_total: number;
-  cache_hit_rate: number; // 0..1
   avg_duration_ms: number;
   spark_7d: PhishingSparkPoint[];
   generated_at: string;
@@ -47,7 +46,6 @@ export interface PhishingSummary {
 export interface PhishingStatsDelta {
   today_total_pct: number;
   today_phishing: number;
-  cache_hit_pct: number;
   avg_duration_ms: number;
 }
 
@@ -55,7 +53,6 @@ export interface PhishingStats {
   today_total: number;
   today_phishing: number;
   today_phishing_rate: number; // 0..1
-  cache_hit_rate: number; // 0..1
   avg_duration_ms: number;
   delta: PhishingStatsDelta;
   generated_at: string;
@@ -68,12 +65,15 @@ export interface PhishingHistoryItem {
   content_hash: string;
   sender: string;
   subject: string;
-  is_phishing: boolean;
   suspicion_level: number; // 0..1 (可疑度)
   reason: string;
   action: string;
   created_at: string;
   processed_time_ms: number;
+  risk_factors: string[];
+  rspamd_score: number | null;
+  final_score: number | null;
+  rspamd_action: string; // reject | add_header | greylist | accept
 }
 
 export interface PhishingHistoryPage {

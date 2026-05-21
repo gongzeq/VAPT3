@@ -42,16 +42,14 @@ from secbot.workflow.scripts import (
 
 
 _PHISHING_LLM_SYSTEM = (
-    "你是一个邮件安全分析专家。判断邮件是否为钓鱼邮件，"
+    "你是一个邮件安全分析专家。分析邮件的可疑程度，"
     "只输出 JSON，不输出多余文字。"
 )
 
 _PHISHING_LLM_USER = (
-    "请分析以下邮件特征，判断是否为钓鱼邮件，并输出 JSON：\n"
+    "请分析以下邮件特征，评估其可疑程度，并输出 JSON：\n"
     "{\n"
-    '  "is_phishing": true|false,\n'
-    '  "confidence": 0.0-1.0,\n'
-    '  "risk_level": "high|medium|low|safe",\n'
+    '  "confidence": 0.0-1.0,  // 可疑度，0.0=完全不可疑，1.0=极度可疑\n'
     '  "reason": "简要说明判断依据（≤200 字）",\n'
     '  "risk_factors": ["可疑特征 1", "可疑特征 2"],\n'
     '  "suggested_action": "拒绝|隔离|标记|放行"\n'
@@ -158,12 +156,7 @@ def _phishing_email_template() -> dict[str, Any]:
                     "systemPrompt": _PHISHING_LLM_SYSTEM,
                     "userPrompt": _PHISHING_LLM_USER,
                     "temperature": 0.1,
-                    # 1500 是给非 reasoning 模型的安全余量；reasoning
-                    # 模型会把大量 token 花在隐藏 chain-of-thought 上，
-                    # 600 token 实测被截断（llm_parse: Unterminated
-                    # string）。如果上线后仍出现 truncated，应改用
-                    # 非 reasoning 模型或继续上调。
-                    "maxTokens": 1500,
+                    "maxTokens": 10000,
                     "responseFormat": "json",
                 },
                 # Skip LLM when:
@@ -171,7 +164,7 @@ def _phishing_email_template() -> dict[str, Any]:
                 #     payload — the raw script result is the executor
                 #     wrapper {exit_code, stdout, stderr}, the business
                 #     fields live under .parsed)
-                #   - rspamd_score outside [-10.0, 10.0]
+                #   - rspamd_score outside [-1.0, 15.0]
                 #
                 # NOTE: ``eval_bool`` forbids function calls in conditions
                 # (no ``float(inputs.x)`` allowed) — we therefore compare
@@ -179,8 +172,8 @@ def _phishing_email_template() -> dict[str, Any]:
                 # already coerces to a Python ``float`` before emitting.
                 condition=(
                     "steps.step1.result.parsed.cache_hit == False"
-                    " and steps.step1.result.parsed.rspamd_score >= -10.0"
-                    " and steps.step1.result.parsed.rspamd_score <= 10.0"
+                    " and steps.step1.result.parsed.rspamd_score >= -1.0"
+                    " and steps.step1.result.parsed.rspamd_score <= 15.0"
                 ),
                 on_error="continue",
                 retry=1,
@@ -224,7 +217,7 @@ def _phishing_email_template() -> dict[str, Any]:
         "name": "钓鱼邮件检测",
         "description": (
             "Per-Mail 触发：rspamd 同步调用本工作流，"
-            "脚本预筛（Redis 7 天去重 + 特征脱敏）→ LLM 判定（confidence + risk_level）"
+            "脚本预筛（Redis 7 天去重 + 特征脱敏）→ LLM 判定（confidence + risk_factors）"
             " → step3 聚合输出 add_score 给 Lua 插件。"
         ),
         "tags": ["email", "phishing", "llm"],

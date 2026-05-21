@@ -71,8 +71,8 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
 
     Idempotent: safe to call on every connection open.
     - Drops UNIQUE constraint on content_hash (allows repeated detections)
-    - Renames ai_confidence -> ai_suspicion_level (if still old name)
-    - Adds from_cache column (if missing)
+    - Renames ai_suspicion_level -> ai_confidence (if still old name)
+    - Adds risk_factors / rspamd_score / final_score columns (if missing)
     """
     # 1. Drop UNIQUE on content_hash so same email can produce multiple rows
     try:
@@ -113,21 +113,41 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
             conn.commit()
     except Exception:
         pass
-    # 2. Rename ai_confidence -> ai_suspicion_level
+    # 2. Rename ai_suspicion_level -> ai_confidence (legacy migration)
     try:
         conn.execute(
-            "ALTER TABLE detection_results RENAME COLUMN ai_confidence"
-            " TO ai_suspicion_level"
+            "ALTER TABLE detection_results RENAME COLUMN ai_suspicion_level"
+            " TO ai_confidence"
         )
     except Exception:
         pass
-    # 3. Add from_cache column
-    try:
-        conn.execute(
-            "ALTER TABLE detection_results ADD COLUMN from_cache INTEGER DEFAULT 0"
-        )
-    except Exception:
-        pass
+    # 3. Add new columns
+    for col, typ in [
+        ("risk_factors", "TEXT"),
+        ("rspamd_score", "REAL"),
+        ("final_score", "REAL"),
+        ("rspamd_action", "TEXT"),
+    ]:
+        try:
+            conn.execute(
+                f"ALTER TABLE detection_results ADD COLUMN {col} {typ}"
+            )
+        except Exception:
+            pass
+
+
+def _derive_rspamd_action(final_score: Any) -> str:
+    """Fallback: compute rspamd_action from final_score when DB column is NULL."""
+    if final_score is None:
+        return ""
+    score = float(final_score)
+    if score >= 15:
+        return "reject"
+    if score >= 6:
+        return "add_header"
+    if score >= 4:
+        return "greylist"
+    return "accept"
 
 
 def _today_bounds() -> tuple[str, str]:
@@ -160,7 +180,6 @@ def summary() -> dict[str, Any]:
     payload: dict[str, Any] = {
         "today_phishing": 0,
         "today_total": 0,
-        "cache_hit_rate": 0.0,
         "avg_duration_ms": 0,
         "spark_7d": _empty_spark(),
         "generated_at": _now_iso(),
@@ -170,12 +189,11 @@ def summary() -> dict[str, Any]:
             return payload
         start, end = _today_bounds()
         try:
-            today_total, today_phishing, today_cache, avg_ms = conn.execute(
+            today_total, today_phishing, avg_ms = conn.execute(
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -187,10 +205,6 @@ def summary() -> dict[str, Any]:
 
         payload["today_total"] = int(today_total or 0)
         payload["today_phishing"] = int(today_phishing or 0)
-        if payload["today_total"] > 0:
-            payload["cache_hit_rate"] = round(
-                int(today_cache or 0) / payload["today_total"], 4
-            )
         # Prefer workflow run duration over step3-only processed_time_ms
         wf_avg = _avg_workflow_duration_ms(start, end)
         payload["avg_duration_ms"] = wf_avg if wf_avg > 0 else int(round(float(avg_ms or 0)))
@@ -200,7 +214,7 @@ def summary() -> dict[str, Any]:
             spark_rows = conn.execute(
                 """
                 SELECT substr(created_at, 1, 10) AS day,
-                       COALESCE(SUM(ai_is_phishing), 0) AS phishing
+                       COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0) AS phishing
                 FROM detection_results
                 WHERE created_at >= datetime('now', '-7 days', 'localtime')
                 GROUP BY day
@@ -305,12 +319,10 @@ def stats() -> dict[str, Any]:
         "today_total": 0,
         "today_phishing": 0,
         "today_phishing_rate": 0.0,
-        "cache_hit_rate": 0.0,
         "avg_duration_ms": 0,
         "delta": {
             "today_total_pct": 0.0,
             "today_phishing": 0,
-            "cache_hit_pct": 0.0,
             "avg_duration_ms": 0,
         },
         "generated_at": _now_iso(),
@@ -327,8 +339,7 @@ def stats() -> dict[str, Any]:
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -339,8 +350,7 @@ def stats() -> dict[str, Any]:
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN from_cache = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -352,12 +362,10 @@ def stats() -> dict[str, Any]:
 
     today_total = int(today[0] or 0)
     today_phish = int(today[1] or 0)
-    today_cache = int(today[2] or 0)
-    today_avg = float(today[3] or 0)
+    today_avg = float(today[2] or 0)
     yest_total = int(yest[0] or 0)
     yest_phish = int(yest[1] or 0)
-    yest_cache = int(yest[2] or 0)
-    yest_avg = float(yest[3] or 0)
+    yest_avg = float(yest[2] or 0)
 
     # Prefer workflow run duration (includes LLM time) over step3-only timing
     wf_avg_today = _avg_workflow_duration_ms(today_start, today_end)
@@ -369,13 +377,11 @@ def stats() -> dict[str, Any]:
         today_total=today_total,
         today_phishing=today_phish,
         today_phishing_rate=round(today_phish / today_total, 4) if today_total else 0.0,
-        cache_hit_rate=round(today_cache / today_total, 4) if today_total else 0.0,
         avg_duration_ms=final_avg_today,
     )
     payload["delta"] = {
         "today_total_pct": _pct_delta(today_total, yest_total),
         "today_phishing": today_phish - yest_phish,
-        "cache_hit_pct": _pct_delta(today_cache, yest_cache),
         "avg_duration_ms": final_avg_today - final_avg_yest,
     }
     return payload
@@ -393,9 +399,9 @@ def _pct_delta(now: int | float, prev: int | float) -> float:
 
 
 _FILTER_MAP = {
-    "phishing": "ai_is_phishing = 1 AND ai_suspicion_level >= 0.7",
-    "suspicious": "ai_is_phishing = 1 AND ai_suspicion_level < 0.7",
-    "normal": "ai_is_phishing = 0",
+    "phishing": "ai_confidence >= 0.7",
+    "suspicious": "ai_confidence >= 0.4 AND ai_confidence < 0.7",
+    "normal": "ai_confidence < 0.4",
     "all": "1=1",
 }
 
@@ -450,9 +456,10 @@ def history(
             )
             rows = conn.execute(
                 f"""
-                SELECT id, content_hash, sender, subject, ai_is_phishing,
-                       ai_suspicion_level, ai_reason, action, created_at,
-                       processed_time_ms
+                SELECT id, content_hash, sender, subject,
+                       ai_confidence, ai_reason, action, created_at,
+                       processed_time_ms, risk_factors, rspamd_score,
+                       final_score, rspamd_action
                 FROM detection_results
                 WHERE {where}
                 ORDER BY id DESC
@@ -469,18 +476,25 @@ def history(
             }
 
     for row in rows:
+        try:
+            rf = json.loads(row["risk_factors"]) if row["risk_factors"] else []
+        except Exception:
+            rf = []
         items.append(
             {
                 "id": int(row["id"]),
                 "content_hash": row["content_hash"],
                 "sender": row["sender"] or "",
                 "subject": row["subject"] or "",
-                "is_phishing": bool(row["ai_is_phishing"]),
-                "suspicion_level": float(row["ai_suspicion_level"] or 0.0),
+                "suspicion_level": float(row["ai_confidence"] or 0.0),
                 "reason": row["ai_reason"] or "",
                 "action": row["action"] or "",
                 "created_at": row["created_at"],
                 "processed_time_ms": int(row["processed_time_ms"] or 0),
+                "risk_factors": rf,
+                "rspamd_score": float(row["rspamd_score"] or 0.0) if row["rspamd_score"] is not None else None,
+                "final_score": float(row["final_score"] or 0.0) if row["final_score"] is not None else None,
+                "rspamd_action": row["rspamd_action"] or _derive_rspamd_action(row["final_score"]),
             }
         )
     return {
@@ -519,11 +533,11 @@ def trend(*, days: int = 7) -> dict[str, Any]:
                 """
                 SELECT substr(created_at, 1, 10) AS day,
                        COUNT(*) AS total,
-                       SUM(CASE WHEN ai_is_phishing = 1 AND ai_suspicion_level >= 0.7
+                       SUM(CASE WHEN ai_confidence >= 0.7
                                 THEN 1 ELSE 0 END) AS phishing,
-                       SUM(CASE WHEN ai_is_phishing = 1 AND ai_suspicion_level < 0.7
+                       SUM(CASE WHEN ai_confidence >= 0.4 AND ai_confidence < 0.7
                                 THEN 1 ELSE 0 END) AS suspicious,
-                       SUM(CASE WHEN ai_is_phishing = 0 THEN 1 ELSE 0 END) AS normal
+                       SUM(CASE WHEN ai_confidence < 0.4 THEN 1 ELSE 0 END) AS normal
                 FROM detection_results
                 WHERE created_at >= ?
                 GROUP BY day
@@ -566,15 +580,15 @@ def top_senders(*, limit: int = 8, days: int = 7) -> dict[str, Any]:
                 """
                 SELECT sender,
                        COUNT(*) AS phishing,
-                       MAX(ai_suspicion_level) AS max_suspicion_level,
+                       MAX(ai_confidence) AS max_confidence,
                        MAX(created_at) AS last_seen
                 FROM detection_results
-                WHERE ai_is_phishing = 1
+                WHERE ai_confidence >= 0.7
                   AND created_at >= ?
                   AND sender IS NOT NULL
                   AND sender <> ''
                 GROUP BY sender
-                ORDER BY phishing DESC, max_suspicion_level DESC
+                ORDER BY phishing DESC, max_confidence DESC
                 LIMIT ?
                 """,
                 (cutoff, limit),
@@ -587,7 +601,7 @@ def top_senders(*, limit: int = 8, days: int = 7) -> dict[str, Any]:
             {
                 "sender": row["sender"],
                 "phishing": int(row["phishing"] or 0),
-                "max_suspicion_level": float(row["max_suspicion_level"] or 0.0),
+                "max_confidence": float(row["max_confidence"] or 0.0),
                 "last_seen": row["last_seen"],
             }
         )

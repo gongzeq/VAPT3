@@ -27,11 +27,6 @@ import {
   type PhishingSummary,
 } from "@/lib/phishing-client";
 
-function formatRate(rate: number): string {
-  if (!Number.isFinite(rate) || rate <= 0) return "0%";
-  return `${(rate * 100).toFixed(1)}%`;
-}
-
 function formatMs(ms: number): string {
   if (!ms) return "—";
   if (ms < 1000) return `${ms}ms`;
@@ -151,7 +146,6 @@ export function PhishingSummaryCard() {
   const badge = healthBadge(health);
   const todayPhishing = summary?.today_phishing ?? 0;
   const todayTotal = summary?.today_total ?? 0;
-  const cacheRate = summary?.cache_hit_rate ?? 0;
   const avgMs = summary?.avg_duration_ms ?? 0;
 
   return (
@@ -217,21 +211,11 @@ export function PhishingSummaryCard() {
         </div>
 
         {/* Secondary metrics */}
-        <div className="lg:col-span-4 grid grid-cols-3 gap-3 text-sm">
+        <div className="lg:col-span-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-lg font-mono font-semibold">{todayTotal}</p>
             <p className="text-[11px] text-muted-foreground">
               {t("phishing.summary.today_total", { defaultValue: "今日总数" })}
-            </p>
-          </div>
-          <div>
-            <p className="text-lg font-mono font-semibold text-amber-400">
-              {formatRate(cacheRate)}
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {t("phishing.summary.cache_hit", {
-                defaultValue: "重复邮件率",
-              })}
             </p>
           </div>
           <div>

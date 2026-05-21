@@ -14,6 +14,41 @@ import { WORKFLOW_FIELD_CLASS } from "@/components/workflow/InputsEditor";
 import type { Workflow, WorkflowInput } from "@/lib/workflow-client";
 import { findParser } from "@/lib/parsers";
 
+/**
+ * Detect charset from raw email headers and decode accordingly.
+ * Scans the first 4KB of the file for a `charset=XXX` declaration.
+ * Falls back to UTF-8 if charset is not detected or decoding fails.
+ */
+function decodeWithCharsetDetection(buf: ArrayBuffer): string {
+  // Peek at first 4KB as ASCII to find charset= in headers
+  const peek = new TextDecoder("ascii", { fatal: false }).decode(
+    buf.slice(0, Math.min(buf.byteLength, 4096)),
+  );
+  // Match charset in Content-Type headers (e.g., charset=GBK, charset="gb2312")
+  const m = peek.match(/charset=["']?([^"';\s\r\n]+)/i);
+  const detected = m?.[1]?.toLowerCase() || "";
+
+  // Common CJK charset aliases
+  const charsetMap: Record<string, string> = {
+    gb2312: "gbk",
+    gb18030: "gb18030",
+    gbk: "gbk",
+    big5: "big5",
+    "euc-jp": "euc-jp",
+    "shift_jis": "shift_jis",
+    "iso-2022-jp": "iso-2022-jp",
+    "euc-kr": "euc-kr",
+  };
+
+  const encoding = charsetMap[detected] || detected || "utf-8";
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(buf);
+  } catch {
+    // If the detected encoding is not supported, fall back to UTF-8
+    return new TextDecoder("utf-8", { fatal: false }).decode(buf);
+  }
+}
+
 export interface RunDialogProps {
   workflow: Workflow | null;
   open: boolean;
@@ -72,9 +107,11 @@ export function RunDialog({
     }
 
     // Text-based parsers (EML, TXT, etc.)
+    // Read as ArrayBuffer first to detect charset from headers
     const reader = new FileReader();
     reader.onload = () => {
-      const text = reader.result as string;
+      const buf = reader.result as ArrayBuffer;
+      const text = decodeWithCharsetDetection(buf);
       if (parser && workflow?.inputs && workflow.inputs.length > 0) {
         const parsed = parser.parse(text);
         if (applyParsed(parsed, file.name)) return;
@@ -87,7 +124,7 @@ export function RunDialog({
         setValues((prev) => ({ ...prev, [target.name]: text }));
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   }
 
   /** Apply parsed fields to form values. Returns true if any fields matched. */

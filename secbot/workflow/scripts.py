@@ -32,6 +32,8 @@ from __future__ import annotations
 
 
 PHISHING_STEP1_CODE = r'''
+import email
+import email.policy
 import hashlib
 import json
 import os
@@ -52,7 +54,7 @@ _DB_PATH = os.environ.get(
 def _lookup_sqlite_cache(chash: str) -> dict | None:
     """Return the most recent LLM result for *chash* from the local SQLite DB.
 
-    Only genuine LLM results are used (from_cache=0, reason not starting with
+    Only genuine LLM results are used (reason not starting with
     "LLM skipped").  Returns None when not found or on any DB error.
     """
     if not os.path.isfile(_DB_PATH):
@@ -62,11 +64,10 @@ def _lookup_sqlite_cache(chash: str) -> dict | None:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
-            SELECT ai_is_phishing, ai_suspicion_level, ai_reason, action
+            SELECT ai_confidence, ai_reason, action, risk_factors
             FROM   detection_results
             WHERE  content_hash = ?
-              AND  ai_is_phishing IS NOT NULL
-              AND  from_cache = 0
+              AND  ai_confidence IS NOT NULL
               AND  (ai_reason IS NULL OR ai_reason NOT LIKE 'LLM skipped%')
             ORDER  BY id DESC
             LIMIT  1
@@ -76,14 +77,48 @@ def _lookup_sqlite_cache(chash: str) -> dict | None:
         conn.close()
         if row is None:
             return None
+        import json as _json
+        try:
+            rf = _json.loads(row["risk_factors"]) if row["risk_factors"] else []
+        except Exception:
+            rf = []
         return {
-            "is_phishing": bool(row["ai_is_phishing"]),
-            "suspicion_level": float(row["ai_suspicion_level"] or 0.0),
+            "confidence": float(row["ai_confidence"] or 0.0),
             "reason": str(row["ai_reason"] or "(cached)"),
             "suggested_action": str(row["action"] or ""),
+            "risk_factors": rf,
         }
     except Exception:
         return None
+
+
+def _extract_plain_text(raw: str) -> str:
+    """Extract plain text from raw MIME email.
+
+    Uses Python email module to correctly parse multipart structure
+    and extract text/plain (preferred) or stripped text/html.
+    Falls back to regex-based HTML stripping if MIME parsing fails.
+    """
+    try:
+        msg = email.message_from_string(raw, policy=email.policy.default)
+        # Prefer text/plain, fall back to text/html
+        body_part = msg.get_body(preferencelist=("plain", "html"))
+        if body_part:
+            content = body_part.get_content()
+            if body_part.get_content_type() == "text/html":
+                content = re.sub(r"<[^>]+>", " ", content)
+            return content
+        # Walk parts as fallback
+        for part in msg.walk():
+            ct = part.get_content_type()
+            if ct == "text/plain":
+                return part.get_content()
+            if ct == "text/html":
+                return re.sub(r"<[^>]+>", " ", part.get_content())
+    except Exception:
+        pass
+    # Last resort: strip HTML from raw input
+    return re.sub(r"<[^>]+>", " ", raw)
 
 
 def _content_hash(sender: str, subject: str, body: str) -> str:
@@ -92,7 +127,10 @@ def _content_hash(sender: str, subject: str, body: str) -> str:
     h.update(b"|")
     h.update((subject or "").strip().encode("utf-8", "replace"))
     h.update(b"|")
-    h.update((body or "").strip().encode("utf-8", "replace"))
+    # Extract real text content from MIME body, then normalize.
+    plain = _extract_plain_text(body or "")
+    normalized = re.sub(r"\s+", " ", plain).strip().lower()
+    h.update(normalized.encode("utf-8", "replace"))
     return h.hexdigest()
 
 
@@ -286,13 +324,15 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             content_hash TEXT NOT NULL,
             sender TEXT,
             subject TEXT,
-            ai_is_phishing INTEGER,
-            ai_suspicion_level REAL,
+            ai_confidence REAL,
             ai_reason TEXT,
             action TEXT,
             created_at TEXT,
             processed_time_ms INTEGER,
-            from_cache INTEGER DEFAULT 0
+            risk_factors TEXT,
+            rspamd_score REAL,
+            final_score REAL,
+            rspamd_action TEXT
         )
         """
     )
@@ -304,21 +344,28 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_detection_content_hash "
         "ON detection_results(content_hash)"
     )
-    # Migrate existing tables: rename ai_confidence -> ai_suspicion_level
+    # --- Migrations for existing tables ---
+    # Add new columns
+    for col, typ in [
+        ("risk_factors", "TEXT"),
+        ("rspamd_score", "REAL"),
+        ("final_score", "REAL"),
+        ("rspamd_action", "TEXT"),
+    ]:
+        try:
+            conn.execute(
+                f"ALTER TABLE detection_results ADD COLUMN {col} {typ}"
+            )
+        except Exception:
+            pass
+    # Rename ai_suspicion_level -> ai_confidence (legacy migration)
     try:
         conn.execute(
-            "ALTER TABLE detection_results RENAME COLUMN ai_confidence"
-            " TO ai_suspicion_level"
+            "ALTER TABLE detection_results RENAME COLUMN ai_suspicion_level"
+            " TO ai_confidence"
         )
     except Exception:
-        pass  # Column already renamed or doesn't exist
-    # Add from_cache column to existing tables
-    try:
-        conn.execute(
-            "ALTER TABLE detection_results ADD COLUMN from_cache INTEGER DEFAULT 0"
-        )
-    except Exception:
-        pass  # Column already exists
+        pass
 
 
 def _persist_sqlite(row: dict) -> bool:
@@ -338,21 +385,24 @@ def _persist_sqlite(row: dict) -> bool:
         conn.execute(
             """
             INSERT INTO detection_results
-                (content_hash, sender, subject, ai_is_phishing, ai_suspicion_level,
-                 ai_reason, action, created_at, processed_time_ms, from_cache)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (content_hash, sender, subject, ai_confidence,
+                 ai_reason, action, created_at, processed_time_ms,
+                 risk_factors, rspamd_score, final_score, rspamd_action)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("content_hash"),
                 row.get("sender"),
                 row.get("subject"),
-                1 if row.get("is_phishing") else 0,
-                float(row.get("suspicion_level") or 0.0),
+                float(row.get("confidence") or 0.0),
                 row.get("reason"),
                 row.get("suggested_action"),
                 row.get("created_at"),
                 int(row.get("processed_time_ms") or 0),
-                1 if row.get("from_cache") else 0,
+                json.dumps(row.get("risk_factors") or [], ensure_ascii=False),
+                float(row.get("rspamd_score") or 0.0) if row.get("rspamd_score") is not None else None,
+                float(row.get("final_score") or 0.0) if row.get("final_score") is not None else None,
+                row.get("rspamd_action") or "",
             ),
         )
         conn.commit()
@@ -367,33 +417,42 @@ def _persist_sqlite(row: dict) -> bool:
             pass
 
 
-def _add_score_for(
-    is_phishing: bool, confidence: float, risk_level: str
-) -> float:
-    """Map LLM judgement to rspamd score delta.
+def _add_score_for(suspicion_level: float) -> float:
+    """Map LLM suspicion level to rspamd score delta.
 
-    Mirrors `ai_detector.py`'s decision matrix:
-      high risk    → 5.0
-      medium risk  → 2.5
-      low risk     → 0.5
-      safe / unknown → 0.0
-    Cache hits use the cached `add_score` directly upstream.
+    Formula:  add_score = suspicion_level × 8.0
+
+    Suspicion level (0.0–1.0) represents how suspicious the email is.
+    A fixed multiplier keeps the scoring simple and predictable:
+      - 1.0 → 8.0 (max addition)
+      - 0.6 → 4.8
+      - 0.2 → 1.6
+      - 0.0 → 0.0
     """
-    rl = (risk_level or "").lower()
-    if not is_phishing:
-        return 0.0
-    if rl == "high" or confidence >= 0.85:
-        return 5.0
-    if rl == "medium" or confidence >= 0.6:
-        return 2.5
-    if rl == "low" or confidence >= 0.4:
-        return 0.5
-    return 0.0
+    return round(suspicion_level * 8.0, 2)
 
 
 def _emit(payload: dict) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False))
     sys.stdout.write("\n")
+
+
+def _rspamd_action(score: float) -> str:
+    """Derive the rspamd final action from total score.
+
+    Thresholds (from rspamadm configdump):
+      >= 15  → reject (拒绝投递，直接退信)
+      >=  6  → add_header (投递，标记为 spam)
+      >=  4  → greylist (临时拒绝，要求重试)
+      <   4  → accept (正常投递)
+    """
+    if score >= 15:
+        return "reject"
+    if score >= 6:
+        return "add_header"
+    if score >= 4:
+        return "greylist"
+    return "accept"
 
 
 def main() -> int:
@@ -405,11 +464,10 @@ def main() -> int:
         _emit({
             "error": f"step3.input_parse: {exc}",
             "add_score": 0.0,
-            "is_phishing": False,
-            "suspicion_level": 0.0,
+            "confidence": 0.0,
             "reason": "step3 input parse failed; defaulting add_score=0",
             "suggested_action": "放行",
-            "from_cache": False,
+            "risk_factors": [],
         })
         return 0
 
@@ -430,22 +488,17 @@ def main() -> int:
     if cache_hit and cached:
         # Trust the cached judgement verbatim; recompute add_score so
         # tuning the matrix takes effect on next read without bumping TTL.
-        is_phishing = bool(cached.get("is_phishing"))
-        suspicion_level = float(cached.get("confidence") or cached.get("suspicion_level") or 0.0)
-        risk_level = str(cached.get("risk_level") or "")
+        confidence = float(cached.get("confidence") or 0.0)
         reason = str(cached.get("reason") or "(cached)")
         suggested_action = str(cached.get("suggested_action") or "")
         risk_factors = list(cached.get("risk_factors") or [])
-        add_score = float(cached.get("add_score", _add_score_for(
-            is_phishing, suspicion_level, risk_level
-        )))
-        from_cache = True
+        add_score = float(cached.get("add_score", _add_score_for(confidence)))
     else:
         # Accept two shapes for ``step2``:
         # 1. The full LlmExecutor wrapper ``{content, parsed, ...}`` --
         #    business JSON nested under ``.parsed``.
-        # 2. The already-unwrapped business dict (``{is_phishing,
-        #    confidence, ...}`` at the top level), which is what the
+        # 2. The already-unwrapped business dict (``{confidence,
+        #    reason, ...}`` at the top level), which is what the
         #    current phishing template's stdin produces by interpolating
         #    the step2 parsed result directly.
         # NOTE: do NOT write the ``$``+``{...}`` placeholder syntax here --
@@ -460,7 +513,7 @@ def main() -> int:
             inner = step2.get("parsed")
             if isinstance(inner, dict):
                 parsed = inner
-            elif "is_phishing" in step2 or "risk_level" in step2:
+            elif "confidence" in step2 or "reason" in step2:
                 parsed = step2
         if not isinstance(parsed, dict):
             # LLM was skipped (rspamd_score outside [4,10]) or errored.
@@ -470,17 +523,16 @@ def main() -> int:
             early_created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             early_result = {
                 "add_score": 0.0,
-                "is_phishing": False,
-                "suspicion_level": 0.0,
-                "risk_level": "safe",
+                "confidence": 0.0,
                 "reason": "LLM skipped or unavailable; default add_score=0",
                 "suggested_action": "放行",
                 "risk_factors": [],
-                "from_cache": False,
                 "content_hash": chash,
                 "sender": sender,
                 "subject": subject,
                 "rspamd_score": rspamd_score,
+                "final_score": float(rspamd_score or 0.0),
+                "rspamd_action": _rspamd_action(float(rspamd_score or 0.0)),
                 "processed_time_ms": early_processed,
                 "created_at": early_created_at,
             }
@@ -490,14 +542,11 @@ def main() -> int:
             _emit(early_result)
             return 0
 
-        is_phishing = bool(parsed.get("is_phishing"))
-        suspicion_level = float(parsed.get("confidence") or parsed.get("suspicion_level") or 0.0)
-        risk_level = str(parsed.get("risk_level") or "")
+        confidence = float(parsed.get("confidence") or 0.0)
         reason = str(parsed.get("reason") or "")
         suggested_action = str(parsed.get("suggested_action") or "")
         risk_factors = list(parsed.get("risk_factors") or [])
-        add_score = _add_score_for(is_phishing, suspicion_level, risk_level)
-        from_cache = False
+        add_score = _add_score_for(confidence)
 
     # Calculate total workflow processing time (from step1 start to now)
     now_ms = int(time.time() * 1000)
@@ -507,19 +556,22 @@ def main() -> int:
         processed_ms = int((time.time() - started) * 1000)
     created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
+    rspamd_score_f = float(rspamd_score or 0.0)
+    final_score = round(rspamd_score_f + float(add_score), 2)
+    rspamd_action = _rspamd_action(final_score)
+
     result = {
         "add_score": float(add_score),
-        "is_phishing": bool(is_phishing),
-        "suspicion_level": float(suspicion_level),
-        "risk_level": risk_level,
+        "confidence": float(confidence),
         "reason": reason,
         "suggested_action": suggested_action,
         "risk_factors": risk_factors,
-        "from_cache": from_cache,
         "content_hash": chash,
         "sender": sender,
         "subject": subject,
-        "rspamd_score": rspamd_score,
+        "rspamd_score": rspamd_score_f,
+        "final_score": final_score,
+        "rspamd_action": rspamd_action,
         "processed_time_ms": processed_ms,
         "created_at": created_at,
     }
@@ -539,11 +591,10 @@ except Exception:
     sys.stdout.write(json.dumps({
         "error": "step3.unhandled",
         "add_score": 0.0,
-        "is_phishing": False,
-        "suspicion_level": 0.0,
+        "confidence": 0.0,
         "reason": "step3 unhandled exception; defaulting add_score=0",
         "suggested_action": "放行",
-        "from_cache": False,
+        "risk_factors": [],
     }, ensure_ascii=False) + "\n")
     sys.exit(0)
 '''
