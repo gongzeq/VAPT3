@@ -230,7 +230,7 @@ export function PhishingSummaryCard() {
             </p>
             <p className="text-[11px] text-muted-foreground">
               {t("phishing.summary.cache_hit", {
-                defaultValue: "缓存命中率",
+                defaultValue: "重复邮件率",
               })}
             </p>
           </div>

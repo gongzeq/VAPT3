@@ -242,6 +242,27 @@ export function WorkflowDetailPage() {
     }
   }
 
+  // ─── Clone (create copy) ───────────────────────────────────────────
+  function handleClone() {
+    if (!saved) return;
+    const cloned: WorkflowDraft = {
+      name: `${saved.name} (副本)`,
+      description: saved.description,
+      tags: [...saved.tags],
+      inputs: JSON.parse(JSON.stringify(saved.inputs)),
+      steps: JSON.parse(JSON.stringify(saved.steps)),
+      scheduleRef: null,
+    };
+    try {
+      sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(cloned));
+    } catch {
+      // Safari private mode fallback
+    }
+    // Force full page reload to ensure the new route mounts fresh and
+    // picks up the stashed draft from sessionStorage.
+    window.location.href = "/workflows/new";
+  }
+
   // ─── Basics tab field updates ────────────────────────────────────
   function updateDraft<K extends keyof WorkflowDraft>(
     key: K,
@@ -299,6 +320,7 @@ export function WorkflowDetailPage() {
             canSave={canSave}
             onRun={() => setRunOpen(true)}
             onSave={() => void handleSave()}
+            onClone={handleClone}
             onCancelRun={() =>
               saved ? void client.cancel(saved.id).then(() => setRunRefreshKey((n) => n + 1)) : undefined
             }
@@ -627,6 +649,7 @@ interface HeaderCardProps {
   canSave: boolean;
   onRun: () => void;
   onSave: () => void;
+  onClone: () => void;
   onCancelRun: () => void;
 }
 
@@ -639,6 +662,7 @@ function WorkflowHeaderCard({
   canSave,
   onRun,
   onSave,
+  onClone,
   onCancelRun,
 }: HeaderCardProps) {
   const { t } = useTranslation();
@@ -720,6 +744,7 @@ function WorkflowHeaderCard({
           <button
             type="button"
             disabled={!saved}
+            onClick={onClone}
             className={cn(
               "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
               saved
@@ -727,7 +752,7 @@ function WorkflowHeaderCard({
                 : "cursor-not-allowed border-border/40 bg-muted/30 text-muted-foreground",
             )}
           >
-            <Copy className="h-4 w-4" /> {t("workflow.detail.clone")}
+            <Copy className="h-4 w-4" /> {t("workflow.detail.clone", { defaultValue: "创建副本" })}
           </button>
           {running ? (
             <button

@@ -27,8 +27,11 @@ synchronous under the hood.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -78,6 +81,13 @@ class WorkflowService:
         )
         self._cron = cron_service
         self._progress_cb = progress_cb
+        # Per-workflow concurrency locks.  Each wf_id gets its own Lock so
+        # only one run of the *same* workflow can execute at a time; runs of
+        # *different* workflows are not blocked.  The defaultdict lazily
+        # creates a Lock the first time a wf_id is seen.
+        self._wf_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # Active runners keyed by run_id so cancel() can reach them.
+        self._active_runners: dict[str, WorkflowRunner] = {}
 
     # ------------------------------------------------------------------
     # Workflow CRUD
@@ -177,12 +187,99 @@ class WorkflowService:
         *,
         trigger: str = "manual",
     ) -> WorkflowRun:
-        """Execute ``wf_id`` with ``inputs`` and return the completed run."""
+        """Execute ``wf_id`` with ``inputs`` and return the completed run.
+
+        Acquires a per-workflow lock so only one run of the same workflow
+        can execute at a time.  Concurrent callers block until the lock
+        is released.
+        """
+        wf = self._require_workflow(wf_id)
+        lock = self._wf_locks[wf_id]
+        async with lock:
+            runner = WorkflowRunner(
+                self._store, self._executors, progress_cb=self._progress_cb
+            )
+            run, ctx = runner._prepare_run(wf, inputs, trigger=trigger)
+            self._active_runners[run.id] = runner
+            try:
+                await runner._execute_steps(run, wf, ctx)
+            finally:
+                self._active_runners.pop(run.id, None)
+            return run
+
+    async def run_async(
+        self,
+        wf_id: str,
+        inputs: dict[str, Any],
+        *,
+        trigger: str = "manual",
+    ) -> WorkflowRun:
+        """Start ``wf_id`` in the background and return the *running* run
+        immediately.
+
+        The caller gets back a ``WorkflowRun`` with ``status='running'``
+        so the API can respond without waiting for all steps to finish.
+        Step execution continues as an ``asyncio.Task`` and acquires a
+        per-workflow lock, so concurrent runs of the *same* workflow
+        are serialised.
+        """
         wf = self._require_workflow(wf_id)
         runner = WorkflowRunner(
             self._store, self._executors, progress_cb=self._progress_cb
         )
-        return await runner.run(wf, inputs, trigger=trigger)
+        run, ctx = runner._prepare_run(wf, inputs, trigger=trigger)
+
+        async def _bg() -> None:
+            lock = self._wf_locks[wf_id]
+            async with lock:
+                self._active_runners[run.id] = runner
+                try:
+                    await runner._execute_steps(run, wf, ctx)
+                except Exception:
+                    logger.exception(
+                        "Background workflow run %s failed", run.id
+                    )
+                    run.status = "error"  # type: ignore[assignment]
+                    run.error = "unexpected background failure"
+                    run.finished_at_ms = int(time.time() * 1000)
+                    self._store.upsert_run(run)
+                finally:
+                    self._active_runners.pop(run.id, None)
+
+        asyncio.create_task(_bg(), name=f"wf-run-{run.id}")
+        return run
+
+    async def cancel(self, wf_id: str) -> WorkflowRun | None:
+        """Cancel the currently active run for *wf_id*, if any.
+
+        Returns the cancelled :class:`WorkflowRun` or ``None`` if nothing
+        was running.
+        """
+        # Find the active runner whose run belongs to wf_id.
+        for run_id, runner in list(self._active_runners.items()):
+            run = self._store.get_run(run_id)
+            if run is not None and run.workflow_id == wf_id and run.status == "running":
+                runner.cancel()
+                # The runner loop will set status=cancelled on its next
+                # iteration.  Return the current (still running) snapshot;
+                # the caller can poll /runs for the final state.
+                return run
+        return None
+
+    @property
+    def active_run_ids(self) -> set[str]:
+        """Return the set of run IDs currently executing."""
+        return set(self._active_runners.keys())
+
+    @property
+    def active_workflow_ids(self) -> set[str]:
+        """Return the set of workflow IDs that have currently executing runs."""
+        wf_ids: set[str] = set()
+        for run_id in self._active_runners:
+            run = self._store.get_run(run_id)
+            if run is not None:
+                wf_ids.add(run.workflow_id)
+        return wf_ids
 
     # ------------------------------------------------------------------
     # Cron callback adapter

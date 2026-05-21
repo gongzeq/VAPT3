@@ -6,7 +6,6 @@ import {
   Bot,
   Brain,
   Clock,
-  FileText,
   Layers,
   Pause,
   PlayCircle,
@@ -18,6 +17,7 @@ import {
   Trash2,
   Workflow as WorkflowIcon,
   Wrench,
+  XCircle,
 } from "lucide-react";
 
 import { Navbar } from "@/components/Navbar";
@@ -27,6 +27,7 @@ import {
   WorkflowClient,
   emptyWorkflowDraft,
   STEP_KIND_TONE,
+  type FailedRunItem,
   type StepKind,
   type Workflow,
   type WorkflowDraft,
@@ -44,10 +45,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const DRAFT_STORAGE_KEY = "workflow.pending-draft";
 
-type StatusFilter = "all" | "scheduled" | "draft";
+type StatusFilter = "all" | "scheduled" | "manual" | "running";
 
 /**
  * ``/workflows`` — prototype §ListView 三栏还原:
@@ -75,6 +83,7 @@ export function WorkflowListPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [tag, setTag] = useState<string>("");
+  const [failedOpen, setFailedOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Workflow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -127,12 +136,13 @@ export function WorkflowListPage() {
   const counts = useMemo(() => {
     const all = data?.items.length ?? 0;
     const scheduled = data?.items.filter((w) => !!w.scheduleRef).length ?? 0;
-    const draft = all - scheduled;
+    const manual = all - scheduled;
     return {
       all,
       scheduled,
-      draft,
+      manual,
       running: data?.stats.running ?? 0,
+      runningIds: data?.stats.runningIds ?? [],
       failed24h: data?.stats.failed24h ?? 0,
     };
   }, [data]);
@@ -142,7 +152,8 @@ export function WorkflowListPage() {
     const q = search.trim().toLowerCase();
     return data.items.filter((wf) => {
       if (statusFilter === "scheduled" && !wf.scheduleRef) return false;
-      if (statusFilter === "draft" && wf.scheduleRef) return false;
+      if (statusFilter === "manual" && wf.scheduleRef) return false;
+      if (statusFilter === "running" && !counts.runningIds.includes(wf.id)) return false;
       if (tag && !wf.tags.includes(tag)) return false;
       if (!q) return true;
       return (
@@ -151,7 +162,7 @@ export function WorkflowListPage() {
         wf.tags.some((x) => x.toLowerCase().includes(q))
       );
     });
-  }, [data, search, statusFilter, tag]);
+  }, [data, search, statusFilter, tag, counts.runningIds]);
 
   function stashDraftAndNavigate(draft: WorkflowDraft) {
     try {
@@ -200,6 +211,7 @@ export function WorkflowListPage() {
               setTag={setTag}
               allTags={allTags}
               onCreate={handleCreateBlank}
+              onOpenFailedRuns={() => setFailedOpen(true)}
             />
 
             <section className="space-y-4">
@@ -281,6 +293,12 @@ export function WorkflowListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <FailedRunsDialog
+        open={failedOpen}
+        onOpenChange={setFailedOpen}
+        client={client}
+      />
     </div>
   );
 }
@@ -292,8 +310,9 @@ export default WorkflowListPage;
 interface CountBundle {
   all: number;
   scheduled: number;
-  draft: number;
+  manual: number;
   running: number;
+  runningIds: string[];
   failed24h: number;
 }
 
@@ -305,6 +324,7 @@ function LeftFilter({
   setTag,
   allTags,
   onCreate,
+  onOpenFailedRuns,
 }: {
   counts: CountBundle;
   statusFilter: StatusFilter;
@@ -313,6 +333,7 @@ function LeftFilter({
   setTag: (v: string) => void;
   allTags: string[];
   onCreate: () => void;
+  onOpenFailedRuns: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -339,15 +360,12 @@ function LeftFilter({
             count={counts.all}
           />
           <StatusRow
-            active={false}
-            onClick={() => {
-              /* 运行中需要 run-level 过滤，未落地时仅展示计数 */
-            }}
+            active={statusFilter === "running"}
+            onClick={() => setStatusFilter("running")}
             icon={<PlayCircle className="h-3.5 w-3.5 text-emerald-400" />}
             label={t("workflow.filter.statusRunning")}
             count={counts.running}
             tone="emerald"
-            disabled
           />
           <StatusRow
             active={statusFilter === "scheduled"}
@@ -357,22 +375,19 @@ function LeftFilter({
             count={counts.scheduled}
           />
           <StatusRow
-            active={statusFilter === "draft"}
-            onClick={() => setStatusFilter("draft")}
+            active={statusFilter === "manual"}
+            onClick={() => setStatusFilter("manual")}
             icon={<Pause className="h-3.5 w-3.5 text-muted-foreground" />}
-            label={t("workflow.filter.statusDraft")}
-            count={counts.draft}
+            label={t("workflow.filter.statusManual", { defaultValue: "未调度" })}
+            count={counts.manual}
           />
           <StatusRow
             active={false}
-            onClick={() => {
-              /* failed 只有 run 维度，这里仅展示 24h 统计 */
-            }}
+            onClick={onOpenFailedRuns}
             icon={<TriangleAlert className="h-3.5 w-3.5 text-rose-400" />}
-            label={t("workflow.filter.statusFailed")}
+            label={t("workflow.filter.statusFailed", { defaultValue: "失败历史" })}
             count={counts.failed24h}
             tone="rose"
-            disabled
           />
         </ul>
       </div>
@@ -590,7 +605,7 @@ function WorkflowListCard({
   const updated = new Date(workflow.updatedAtMs).toLocaleString(
     i18n.resolvedLanguage || "zh-CN",
   );
-  const status: StatusFilter = workflow.scheduleRef ? "scheduled" : "draft";
+  const status: StatusFilter = workflow.scheduleRef ? "scheduled" : "manual";
   return (
     <div
       role="button"
@@ -721,8 +736,8 @@ function StatusBadge({ status }: { status: StatusFilter }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-      <FileText className="h-3 w-3" /> {t("workflow.badge.draft")}
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] text-emerald-400">
+      <PlayCircle className="h-3 w-3" /> {t("workflow.badge.manual", { defaultValue: "已保存" })}
     </span>
   );
 }
@@ -805,3 +820,101 @@ function CardListSkeleton() {
 
 /** Exported so the detail page can pop the same stash. */
 export { DRAFT_STORAGE_KEY };
+
+// ─── Failed Runs Dialog ─────────────────────────────────────────────────
+
+function FailedRunsDialog({
+  open,
+  onOpenChange,
+  client,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  client: WorkflowClient;
+}) {
+  const { i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [items, setItems] = useState<FailedRunItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    client
+      .listFailedRuns(50)
+      .then((res) => setItems(res.items))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, [open, client]);
+
+  const fmtDate = (ms: number) =>
+    new Date(ms).toLocaleString(i18n.resolvedLanguage || "zh-CN");
+
+  const fmtDur = (run: FailedRunItem) => {
+    if (!run.finishedAtMs) return "—";
+    const sec = (run.finishedAtMs - run.startedAtMs) / 1000;
+    return sec < 1 ? `${Math.round(sec * 1000)}ms` : `${sec.toFixed(1)}s`;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>失败历史</DialogTitle>
+          <DialogDescription>所有失败的工作流运行记录</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {loading ? (
+            <div className="py-10 text-center text-xs text-muted-foreground">
+              加载中…
+            </div>
+          ) : items.length === 0 ? (
+            <div className="py-10 text-center text-xs text-muted-foreground">
+              暂无失败记录
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {items.map((run) => (
+                <li
+                  key={run.id}
+                  className="rounded-xl border border-border/40 bg-muted/10 p-3 transition-colors hover:bg-muted/20"
+                >
+                  <div className="flex items-center gap-3">
+                    <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {run.workflowName}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {fmtDate(run.startedAtMs)}
+                        <span className="mx-1.5">·</span>
+                        耗时 {fmtDur(run)}
+                        <span className="mx-1.5">·</span>
+                        <code className="font-mono text-[10px]">{run.id}</code>
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        navigate(`/workflows/${run.workflowId}`);
+                      }}
+                      className="shrink-0 rounded-lg border border-border/40 bg-muted/30 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                    >
+                      查看工作流
+                    </button>
+                  </div>
+                  {run.error && (
+                    <div className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-300">
+                      {run.error}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -187,8 +187,8 @@ function useRiskPieOption(items: PhishingHistoryItem[]) {
         normal += 1;
         return;
       }
-      if (it.confidence > 0.7) high += 1;
-      else if (it.confidence > 0.4) mid += 1;
+      if (it.suspicion_level > 0.7) high += 1;
+      else if (it.suspicion_level > 0.4) mid += 1;
       else low += 1;
     });
     return {
@@ -429,9 +429,9 @@ export function PhishingDetailPage() {
             glow
           />
           <KpiCard
-            icon="⚡"
+            icon="🔁"
             value={formatPct(cacheRate)}
-            label="Redis 缓存命中率"
+            label="重复邮件率"
             delta={delta ? formatDelta(delta.cache_hit_pct, "pct") : "—"}
             deltaClass={delta ? deltaClass(delta.cache_hit_pct) : ""}
           />
@@ -564,7 +564,7 @@ export function PhishingDetailPage() {
                     <th className="text-center py-2 font-medium">时间</th>
                     <th className="text-left py-2 font-medium">发件人</th>
                     <th className="text-left py-2 font-medium">主题</th>
-                    <th className="text-center py-2 font-medium">置信度</th>
+                    <th className="text-center py-2 font-medium">可疑度</th>
                     <th className="text-center py-2 font-medium">耗时</th>
                     <th className="text-center py-2 font-medium">动作</th>
                   </tr>
@@ -618,10 +618,10 @@ export function PhishingDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">链路健康</h3>
             <span className="text-xs text-muted-foreground">
-              聚合 postfix / rspamd / workflow / provider / redis / sqlite
+              聚合 postfix / rspamd / workflow / provider / sqlite
             </span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             {(health?.components ?? []).map((c) => (
               <div
                 key={c.name}
@@ -639,7 +639,7 @@ export function PhishingDetailPage() {
               </div>
             ))}
             {!health && (
-              <div className="col-span-6 text-xs text-muted-foreground py-4 text-center">
+              <div className="col-span-5 text-xs text-muted-foreground py-4 text-center">
                 健康数据加载中…
               </div>
             )}
@@ -694,7 +694,7 @@ function KpiCard({
 }
 
 function DetailRow({ row }: { row: PhishingHistoryItem }) {
-  const conf = row.confidence;
+  const conf = row.suspicion_level;
   const confClass =
     conf > 0.7
       ? "text-rose-400"

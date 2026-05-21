@@ -171,8 +171,7 @@ def _phishing_email_template() -> dict[str, Any]:
                 #     payload — the raw script result is the executor
                 #     wrapper {exit_code, stdout, stderr}, the business
                 #     fields live under .parsed)
-                #   - rspamd_score < 4.0 (likely benign) or > 10.0 (already
-                #     decided by other rules), saving an LLM call
+                #   - rspamd_score outside [-10.0, 10.0]
                 #
                 # NOTE: ``eval_bool`` forbids function calls in conditions
                 # (no ``float(inputs.x)`` allowed) — we therefore compare
@@ -180,7 +179,7 @@ def _phishing_email_template() -> dict[str, Any]:
                 # already coerces to a Python ``float`` before emitting.
                 condition=(
                     "steps.step1.result.parsed.cache_hit == False"
-                    " and steps.step1.result.parsed.rspamd_score >= 4.0"
+                    " and steps.step1.result.parsed.rspamd_score >= -10.0"
                     " and steps.step1.result.parsed.rspamd_score <= 10.0"
                 ),
                 on_error="continue",

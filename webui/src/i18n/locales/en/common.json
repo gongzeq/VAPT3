@@ -232,13 +232,15 @@
       "statusAll": "All",
       "statusRunning": "Running",
       "statusScheduled": "Scheduled",
-      "statusDraft": "Draft",
+      "statusDraft": "Manual",
+      "statusManual": "Manual",
       "statusFailed": "Failed",
       "tagsTitle": "Tags"
     },
     "badge": {
       "scheduled": "SCHEDULED",
-      "draft": "DRAFT",
+      "draft": "SAVED",
+      "manual": "SAVED",
       "running": "RUNNING"
     },
     "placeholders": {
@@ -434,7 +436,7 @@
       "empty": "No templates available"
     },
     "detail": {
-      "clone": "Clone",
+      "clone": "Create Copy",
       "cancel": "Cancel",
       "currentStep": "Current step",
       "elapsed": "Elapsed",

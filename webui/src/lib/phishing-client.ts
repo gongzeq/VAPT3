@@ -69,7 +69,7 @@ export interface PhishingHistoryItem {
   sender: string;
   subject: string;
   is_phishing: boolean;
-  confidence: number; // 0..1
+  suspicion_level: number; // 0..1 (可疑度)
   reason: string;
   action: string;
   created_at: string;

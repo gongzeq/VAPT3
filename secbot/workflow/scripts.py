@@ -16,7 +16,7 @@ The runtime contract for each snippet:
 * On any internal failure: still emit a JSON object with ``error`` set so
   the next step has something to operate on. The script must NEVER print
   Python tracebacks to stdout; tracebacks go to stderr only.
-* No third-party imports. ``redis`` / ``sqlite3`` are pulled lazily and
+* No third-party imports. ``sqlite3`` is pulled lazily and
   failures degrade gracefully (the cache and write-back layers are best
   effort — the workflow keeps running without them).
 
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# step1 — 特征提取 + Redis 7 天去重 + 脱敏
+# step1 — 特征提取 + SQLite 去重 + 脱敏
 # ---------------------------------------------------------------------------
 
 
@@ -36,25 +36,52 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import sys
+import time
 import traceback
 from urllib.parse import urlparse
 
 
-def _safe_load_redis():
-    try:
-        import redis  # type: ignore[import-not-found]
-    except Exception:
+_DB_PATH = os.environ.get(
+    "PHISHING_DB_PATH",
+    "/home/administrator/VAPT3/detection_results.db",
+)
+
+
+def _lookup_sqlite_cache(chash: str) -> dict | None:
+    """Return the most recent LLM result for *chash* from the local SQLite DB.
+
+    Only genuine LLM results are used (from_cache=0, reason not starting with
+    "LLM skipped").  Returns None when not found or on any DB error.
+    """
+    if not os.path.isfile(_DB_PATH):
         return None
     try:
-        return redis.Redis(
-            host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-            port=int(os.environ.get("REDIS_PORT", "6379")),
-            db=int(os.environ.get("REDIS_DB", "0")),
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0,
-            decode_responses=True,
-        )
+        conn = sqlite3.connect(_DB_PATH, timeout=1.0)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT ai_is_phishing, ai_suspicion_level, ai_reason, action
+            FROM   detection_results
+            WHERE  content_hash = ?
+              AND  ai_is_phishing IS NOT NULL
+              AND  from_cache = 0
+              AND  (ai_reason IS NULL OR ai_reason NOT LIKE 'LLM skipped%')
+            ORDER  BY id DESC
+            LIMIT  1
+            """,
+            (chash,),
+        ).fetchone()
+        conn.close()
+        if row is None:
+            return None
+        return {
+            "is_phishing": bool(row["ai_is_phishing"]),
+            "suspicion_level": float(row["ai_suspicion_level"] or 0.0),
+            "reason": str(row["ai_reason"] or "(cached)"),
+            "suggested_action": str(row["action"] or ""),
+        }
     except Exception:
         return None
 
@@ -133,24 +160,14 @@ def main() -> int:
     } - {""})
 
     chash = _content_hash(sender, subject, body)
-    cache_key = f"ai:result:{chash}"
 
     cache_hit = False
     cached_result = None
-    redis_ok = False
-    rds = _safe_load_redis()
-    if rds is not None:
-        try:
-            raw_cached = rds.get(cache_key)
-            redis_ok = True
-            if raw_cached:
-                try:
-                    cached_result = json.loads(raw_cached)
-                    cache_hit = True
-                except Exception:
-                    cached_result = None
-        except Exception:
-            redis_ok = False
+
+    # SQLite-based cache lookup (always available, no extra deps)
+    cached_result = _lookup_sqlite_cache(chash)
+    if cached_result is not None:
+        cache_hit = True
 
     try:
         rspamd_score = float(rspamd_score_raw)
@@ -160,9 +177,9 @@ def main() -> int:
     _emit({
         "cache_hit": cache_hit,
         "cached_result": cached_result,
-        "redis_ok": redis_ok,
         "content_hash": chash,
         "rspamd_score": rspamd_score,
+        "workflow_start_ms": int(time.time() * 1000),
         "features": {
             "sender_full": sender,
             "sender_local": sender_local,
@@ -192,7 +209,7 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
-# step3 — 聚合 + add_score 计算 + 回写 Redis & 业务 SQLite
+# step3 — 聚合 + add_score 计算 + 回写业务 SQLite
 # ---------------------------------------------------------------------------
 
 
@@ -205,32 +222,63 @@ import time
 import traceback
 
 
-_CACHE_TTL_SEC = int(os.environ.get("PHISHING_CACHE_TTL", "604800"))  # 7 days
 _DB_PATH = os.environ.get(
     "PHISHING_DB_PATH",
     "/home/administrator/VAPT3/detection_results.db",
 )
 
 
-def _safe_load_redis():
+def _migrate_drop_unique(conn: sqlite3.Connection) -> None:
+    """Drop UNIQUE on content_hash so repeated detections all get stored.
+
+    SQLite has no DROP CONSTRAINT; the only way is to recreate the table.
+    Safe to call repeatedly — checks the schema string first.
+    """
     try:
-        import redis  # type: ignore[import-not-found]
-    except Exception:
-        return None
-    try:
-        return redis.Redis(
-            host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-            port=int(os.environ.get("REDIS_PORT", "6379")),
-            db=int(os.environ.get("REDIS_DB", "0")),
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0,
-            decode_responses=True,
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='table' AND name='detection_results'"
+        ).fetchone()
+        if row is None or "content_hash TEXT UNIQUE" not in (row[0] or ""):
+            return  # nothing to do
+        cols = [
+            r[1]
+            for r in conn.execute(
+                "PRAGMA table_info(detection_results)"
+            ).fetchall()
+        ]
+        cols_csv = ", ".join(cols)
+        new_sql = (
+            row[0]
+            .replace("detection_results", "detection_results_new", 1)
+            .replace("content_hash TEXT UNIQUE", "content_hash TEXT")
         )
-    except Exception:
-        return None
+        conn.execute(new_sql)
+        conn.execute(
+            f"INSERT INTO detection_results_new ({cols_csv})"
+            f" SELECT {cols_csv} FROM detection_results"
+        )
+        conn.execute("DROP TABLE detection_results")
+        conn.execute(
+            "ALTER TABLE detection_results_new RENAME TO detection_results"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_detection_created_at"
+            " ON detection_results(created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_detection_content_hash"
+            " ON detection_results(content_hash)"
+        )
+        conn.commit()
+    except Exception as exc:
+        sys.stderr.write(f"[step3] migrate_drop_unique failed: {exc}\n")
 
 
 def _ensure_table(conn: sqlite3.Connection) -> None:
+    # Drop UNIQUE on content_hash first so the following CREATE TABLE
+    # definition (content_hash TEXT NOT NULL, no UNIQUE) is the canonical one.
+    _migrate_drop_unique(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS detection_results (
@@ -239,11 +287,12 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             sender TEXT,
             subject TEXT,
             ai_is_phishing INTEGER,
-            ai_confidence REAL,
+            ai_suspicion_level REAL,
             ai_reason TEXT,
             action TEXT,
             created_at TEXT,
-            processed_time_ms INTEGER
+            processed_time_ms INTEGER,
+            from_cache INTEGER DEFAULT 0
         )
         """
     )
@@ -255,41 +304,61 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_detection_content_hash "
         "ON detection_results(content_hash)"
     )
+    # Migrate existing tables: rename ai_confidence -> ai_suspicion_level
+    try:
+        conn.execute(
+            "ALTER TABLE detection_results RENAME COLUMN ai_confidence"
+            " TO ai_suspicion_level"
+        )
+    except Exception:
+        pass  # Column already renamed or doesn't exist
+    # Add from_cache column to existing tables
+    try:
+        conn.execute(
+            "ALTER TABLE detection_results ADD COLUMN from_cache INTEGER DEFAULT 0"
+        )
+    except Exception:
+        pass  # Column already exists
 
 
 def _persist_sqlite(row: dict) -> bool:
-    try:
-        os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
-    except Exception:
-        pass
+    db_dir = os.path.dirname(_DB_PATH)
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception:
+            pass
     try:
         conn = sqlite3.connect(_DB_PATH, timeout=2.0)
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"[step3] sqlite connect failed: {exc}\n")
         return False
     try:
         _ensure_table(conn)
         conn.execute(
             """
             INSERT INTO detection_results
-                (content_hash, sender, subject, ai_is_phishing, ai_confidence,
-                 ai_reason, action, created_at, processed_time_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (content_hash, sender, subject, ai_is_phishing, ai_suspicion_level,
+                 ai_reason, action, created_at, processed_time_ms, from_cache)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("content_hash"),
                 row.get("sender"),
                 row.get("subject"),
                 1 if row.get("is_phishing") else 0,
-                float(row.get("confidence") or 0.0),
+                float(row.get("suspicion_level") or 0.0),
                 row.get("reason"),
                 row.get("suggested_action"),
                 row.get("created_at"),
                 int(row.get("processed_time_ms") or 0),
+                1 if row.get("from_cache") else 0,
             ),
         )
         conn.commit()
         return True
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"[step3] sqlite persist failed: {exc}\n")
         return False
     finally:
         try:
@@ -337,7 +406,7 @@ def main() -> int:
             "error": f"step3.input_parse: {exc}",
             "add_score": 0.0,
             "is_phishing": False,
-            "confidence": 0.0,
+            "suspicion_level": 0.0,
             "reason": "step3 input parse failed; defaulting add_score=0",
             "suggested_action": "放行",
             "from_cache": False,
@@ -352,6 +421,8 @@ def main() -> int:
     chash = step1.get("content_hash") or ""
     sender = features.get("sender_full") or ""
     subject = features.get("subject") or ""
+    # Use workflow_start_ms from step1 to calculate total processing time
+    workflow_start_ms = step1.get("workflow_start_ms") or 0
 
     cache_hit = bool(step1.get("cache_hit"))
     cached = step1.get("cached_result") or {}
@@ -360,13 +431,13 @@ def main() -> int:
         # Trust the cached judgement verbatim; recompute add_score so
         # tuning the matrix takes effect on next read without bumping TTL.
         is_phishing = bool(cached.get("is_phishing"))
-        confidence = float(cached.get("confidence") or 0.0)
+        suspicion_level = float(cached.get("confidence") or cached.get("suspicion_level") or 0.0)
         risk_level = str(cached.get("risk_level") or "")
         reason = str(cached.get("reason") or "(cached)")
         suggested_action = str(cached.get("suggested_action") or "")
         risk_factors = list(cached.get("risk_factors") or [])
         add_score = float(cached.get("add_score", _add_score_for(
-            is_phishing, confidence, risk_level
+            is_phishing, suspicion_level, risk_level
         )))
         from_cache = True
     else:
@@ -394,10 +465,13 @@ def main() -> int:
         if not isinstance(parsed, dict):
             # LLM was skipped (rspamd_score outside [4,10]) or errored.
             # Default to放行 with a clear reason.
-            _emit({
+            early_now_ms = int(time.time() * 1000)
+            early_processed = (early_now_ms - workflow_start_ms) if workflow_start_ms > 0 else int((time.time() - started) * 1000)
+            early_created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            early_result = {
                 "add_score": 0.0,
                 "is_phishing": False,
-                "confidence": 0.0,
+                "suspicion_level": 0.0,
                 "risk_level": "safe",
                 "reason": "LLM skipped or unavailable; default add_score=0",
                 "suggested_action": "放行",
@@ -407,26 +481,36 @@ def main() -> int:
                 "sender": sender,
                 "subject": subject,
                 "rspamd_score": rspamd_score,
-                "processed_time_ms": int((time.time() - started) * 1000),
-            })
+                "processed_time_ms": early_processed,
+                "created_at": early_created_at,
+            }
+            # Persist to SQLite even for LLM-skipped path
+            if chash:
+                _persist_sqlite(early_result)
+            _emit(early_result)
             return 0
 
         is_phishing = bool(parsed.get("is_phishing"))
-        confidence = float(parsed.get("confidence") or 0.0)
+        suspicion_level = float(parsed.get("confidence") or parsed.get("suspicion_level") or 0.0)
         risk_level = str(parsed.get("risk_level") or "")
         reason = str(parsed.get("reason") or "")
         suggested_action = str(parsed.get("suggested_action") or "")
         risk_factors = list(parsed.get("risk_factors") or [])
-        add_score = _add_score_for(is_phishing, confidence, risk_level)
+        add_score = _add_score_for(is_phishing, suspicion_level, risk_level)
         from_cache = False
 
-    processed_ms = int((time.time() - started) * 1000)
+    # Calculate total workflow processing time (from step1 start to now)
+    now_ms = int(time.time() * 1000)
+    if workflow_start_ms > 0:
+        processed_ms = now_ms - workflow_start_ms
+    else:
+        processed_ms = int((time.time() - started) * 1000)
     created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     result = {
         "add_score": float(add_score),
         "is_phishing": bool(is_phishing),
-        "confidence": float(confidence),
+        "suspicion_level": float(suspicion_level),
         "risk_level": risk_level,
         "reason": reason,
         "suggested_action": suggested_action,
@@ -440,18 +524,8 @@ def main() -> int:
         "created_at": created_at,
     }
 
-    # Best-effort persistence — never block the response on these.
-    if not from_cache and chash:
-        rds = _safe_load_redis()
-        if rds is not None:
-            try:
-                rds.set(
-                    f"ai:result:{chash}",
-                    json.dumps(result, ensure_ascii=False),
-                    ex=_CACHE_TTL_SEC,
-                )
-            except Exception:
-                pass
+    # Always persist to SQLite for dashboard visibility.
+    if chash:
         _persist_sqlite(result)
 
     _emit(result)
@@ -466,7 +540,7 @@ except Exception:
         "error": "step3.unhandled",
         "add_score": 0.0,
         "is_phishing": False,
-        "confidence": 0.0,
+        "suspicion_level": 0.0,
         "reason": "step3 unhandled exception; defaulting add_score=0",
         "suggested_action": "放行",
         "from_cache": False,
