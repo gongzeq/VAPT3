@@ -81,7 +81,7 @@ async def test_existing_chat_id_returns_entries_with_kind() -> None:
     assert body["chat_id"] == "chat-1"
     assert len(body["entries"]) == 2
     kinds = [row["kind"] for row in body["entries"]]
-    assert kinds == ["finding", None]
+    assert kinds == ["finding", "legacy_text"]
     # Canonical entry shape — id / agent_name / text / timestamp / kind.
     for row in body["entries"]:
         assert set(row.keys()) >= {"id", "agent_name", "text", "timestamp", "kind"}

@@ -11,11 +11,21 @@ Direct use of `sqlite3` / raw SQL outside this package is forbidden.
 """
 
 from secbot.cmdb.db import get_engine, get_session, init_engine
-from secbot.cmdb.models import Asset, Base, Scan, Service, Vulnerability
+from secbot.cmdb.models import (
+    Asset,
+    Base,
+    EvidenceFindingLinkModel,
+    EvidenceRecordModel,
+    Scan,
+    Service,
+    Vulnerability,
+)
 
 __all__ = [
     "Asset",
     "Base",
+    "EvidenceFindingLinkModel",
+    "EvidenceRecordModel",
     "Scan",
     "Service",
     "Vulnerability",

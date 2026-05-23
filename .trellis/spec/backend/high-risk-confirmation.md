@@ -1,5 +1,18 @@
 # High-Risk Confirmation
 
+> ⚠️ **SUPERSEDED BY `policy-engine.md` §3.3 DestructiveRule**
+>
+> The standalone `HighRiskGate` is being absorbed into a unified `PolicyEngine`
+> single-point check that combines destructive gating with scope, SSRF,
+> workspace, rate-limit, credential-boundary, and budget rules. The
+> user-facing confirmation payload (`high_risk_confirm` event) and
+> session-cached approve semantics are preserved bit-for-bit.
+>
+> Migration plan: PRD `.trellis/tasks/05-23-secbot-pi-worker/prd.md` PR2.
+> In PR2 `HighRiskGate` becomes a delegating shim; V2 deletes the shim.
+
+---
+
 > Defines `risk_level` semantics and the user-confirmation contract for skills that may cause harm.
 > Reuses `secbot/agent/tools/ask.py` (formerly `nanobot/agent/tools/ask.py`).
 

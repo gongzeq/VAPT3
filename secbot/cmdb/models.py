@@ -15,6 +15,7 @@ from typing import Optional
 from sqlalchemy import (
     JSON,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -216,6 +217,51 @@ class ReportMeta(Base):
         ),
         Index("ix_report_meta_scan", "scan_id"),
     )
+
+
+class EvidenceRecordModel(Base):
+    """Stored evidence metadata for Pi structured blackboard records."""
+
+    __tablename__ = "evidence_records"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # 12-char uuid
+    chat_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_tool: Mapped[str] = mapped_column(String, nullable=False)
+    evidence_type: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(String, nullable=False)
+    raw_ref: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    sanitised: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    sensitive_keys: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+    links: Mapped[list["EvidenceFindingLinkModel"]] = relationship(
+        back_populates="evidence", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_evidence_chat", "chat_id", "created_at"),
+    )
+
+
+class EvidenceFindingLinkModel(Base):
+    """Many-to-many link between evidence and blackboard finding ids."""
+
+    __tablename__ = "evidence_finding_link"
+
+    evidence_id: Mapped[str] = mapped_column(
+        String, ForeignKey("evidence_records.id", ondelete="CASCADE"), primary_key=True
+    )
+    finding_id: Mapped[str] = mapped_column(String, primary_key=True)
+    link_role: Mapped[str] = mapped_column(
+        String, nullable=False, default="primary", server_default="primary"
+    )
+
+    evidence: Mapped[EvidenceRecordModel] = relationship(back_populates="links")
 
 
 VALID_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info"})

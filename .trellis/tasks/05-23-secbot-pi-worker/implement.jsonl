@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Primary PR1 implementation contract for typed blackboard kinds, snapshot API, EvidenceStore, sanitizer, lifecycle, and tests."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Legacy compatibility contract for existing text/tag Blackboard API, REST response, and WebSocket mirror."}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Persistence rules for SQLite usage and schema/migration discipline when adding evidence records."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Migration context and boundaries for Pi architecture PR1 versus later PR2-PR5 work."}

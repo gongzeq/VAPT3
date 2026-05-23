@@ -1,5 +1,20 @@
 # Orchestrator System Prompt
 
+> ⚠️ **DEPRECATED — SUPERSEDED BY `pi-orchestrator.md`**
+>
+> This spec describes the legacy linear 5-stage pipeline orchestrator
+> (`asset_discovery → port_scan → vuln_scan → (weak_password | pentest) → report`)
+> and the now-frozen 7-expert hard-rules block. It is preserved for historical
+> reference only.
+>
+> The migration target is **phase-aware DAG exploration with worker presets +
+> budget enforcement**, defined in `pi-orchestrator.md`. New work MUST cite that
+> spec; do not extend this document.
+>
+> Migration plan: PRD `.trellis/tasks/05-23-secbot-pi-worker/prd.md` D1 + PR3.
+
+---
+
 > Defines the system prompt template for the Orchestrator (top-layer agent) and the multi-turn routing strategy it MUST follow.
 > Implementation: `secbot/templates/orchestrator.md` (loaded by `secbot/agent/runner.py` at startup).
 

@@ -1,7 +1,39 @@
 # Architecture: Two-Layer Agent Platform
 
+> ⚠️ **MIGRATION IN PROGRESS** — see migration note below for Pi-architecture target.
+
 > Authoritative architecture contract for `vapt3/` (formerly `nanobot/`).
 > Source: `.trellis/tasks/05-07-cybersec-agent-platform/prd.md` §"Architecture Snapshot" + ADR-001/002/003.
+
+---
+
+## 0. Migration Note (2026-05-23)
+
+The two-layer pipeline described below — **Orchestrator with 7 predefined
+experts in a linear `asset_discovery → port_scan → vuln_scan → ... → report`
+order** — is the **current shipping behaviour**. A migration is in flight to the
+**Pi architecture**: **Pi main orchestrator (judgement + DAG dispatch) + skill
+(method/tool constraints) + knowledge base (expert lookup) + sandboxed worker
+pool (parallel isolated subtasks) + structured blackboard (shared state) +
+PolicyEngine (the single point of "what must never happen")**.
+
+Authoritative migration spec set (`.trellis/spec/backend/`):
+
+| Spec | Scope | PR |
+|---|---|---|
+| `pi-orchestrator.md` | phase-aware DAG prompt + worker presets | PR3 |
+| `structured-blackboard.md` | typed kinds + EvidenceStore | PR1 |
+| `policy-engine.md` | unified gate (replaces HighRiskGate alone) | PR2 |
+| `budget-enforcer.md` | 15min/60-call budget + reflect-then-checkpoint | PR3 |
+| `finding-ontology.md` | CWE/OWASP/asset/impact/confidence schema | PR4 |
+| `event-stream.md` | append-only event_log + TaskGraph + replay | PR5 |
+
+PRD: `.trellis/tasks/05-23-secbot-pi-worker/prd.md`.
+
+The two-layer description in §1-§N below remains accurate for current code.
+Each migration PR will update the relevant section in-place; until then, **read
+both the migration specs and the legacy text**; when in conflict, the
+migration spec is the target state.
 
 ---
 

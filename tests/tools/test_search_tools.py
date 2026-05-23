@@ -300,6 +300,7 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
         "list_teammates",
         "read_assets",
         "read_blackboard",
+        "read_blackboard_full",
         "read_teammate_inbox",
         "request_approval",
         "send_teammate_message",

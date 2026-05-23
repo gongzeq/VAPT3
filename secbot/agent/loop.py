@@ -33,8 +33,13 @@ from secbot.agent.tools.ask import (
     pending_ask_user_call,
 )
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
-from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
+from secbot.agent.tools.blackboard import (
+    BlackboardReadFullTool,
+    BlackboardReadTool,
+    BlackboardWriteTool,
+)
 from secbot.agent.tools.cron import CronTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.message import MessageTool
@@ -56,7 +61,6 @@ from secbot.agent.tools.teammate import (
     ShutdownTeammateTool,
     SpawnTeammateTool,
 )
-from secbot.agent.tools.curl import CurlTool
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
@@ -651,6 +655,7 @@ class AgentLoop:
         self.tools.register(ReadTeammateInboxTool(self.teammates))
         self.tools.register(ShutdownTeammateTool(self.teammates))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
+        self.tools.register(BlackboardReadFullTool(blackboard=lambda: self.blackboard))
         self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
         self.tools.register(RequestApprovalTool())
         self.tools.register(WritePlanTool(chat_id_getter=lambda: self._current_chat_id))

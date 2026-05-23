@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from secbot.agent.blackboard import Blackboard
+from secbot.agent.blackboard import STRUCTURED_KINDS, Blackboard, BlackboardValueError
 from secbot.agent.tools.base import Tool
 
 # Either a concrete Blackboard or a zero-arg callable that returns the
@@ -33,19 +33,12 @@ class BlackboardWriteTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Write a CONCISE AGGREGATE / MILESTONE note to the shared "
+            "Write a structured blackboard entry or a legacy concise note to the shared "
             "blackboard. The blackboard is now a high-level dashboard for "
             "the orchestrator and the human UI — NOT a per-asset feed. "
-            "Use it for stage summaries, totals, blockers, and milestones. "
-            "Recommended tags:\n"
-            "  [milestone] a phase you just completed (e.g. 'crawl_web "
-            "finished, found 12 URLs / 3 forms / 1 OAuth endpoint')\n"
-            "  [blocker]   something stopping progress (missing creds, "
-            "denied approval, unreachable target, ambiguous scope)\n"
-            "  [progress]  in-flight status (e.g. '2/12 hosts scanned')\n"
-            "  [finding]   a strategic, decision-altering insight that "
-            "the orchestrator must see (e.g. 'target is a Node.js / "
-            "OAuth stack — recommend loading auth-bypass skills')\n\n"
+            "Prefer typed writes with kind+payload. Legacy text remains supported "
+            "for short summaries, optionally prefixed with [milestone], [blocker], "
+            "[finding], or [progress].\n\n"
             "DO NOT use the blackboard for individual asset discoveries. "
             "Per-asset entries (each URL, port, service, credential, "
             "vulnerability, tech fingerprint) MUST go to ``asset_push`` "
@@ -67,29 +60,54 @@ class BlackboardWriteTool(Tool):
         return {
             "type": "object",
             "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": list(STRUCTURED_KINDS),
+                    "description": "Structured entry kind. Required when payload is provided.",
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Structured payload for kind. Required when kind is provided.",
+                    "additionalProperties": True,
+                },
                 "text": {
                     "type": "string",
                     "description": (
-                        "Free-form note for the shared blackboard. Keep it "
-                        "short. Optionally prefix with [milestone] / "
-                        "[blocker] / [finding] / [progress] so other agents "
-                        "can triage at a glance."
+                        "Legacy free-form note for the shared blackboard. Keep it "
+                        "short. Use this only when a typed kind/payload is not practical."
                     ),
                 },
             },
-            "required": ["text"],
+            "anyOf": [
+                {"required": ["kind", "payload"]},
+                {"required": ["text"]},
+            ],
         }
 
     async def execute(self, **kwargs: Any) -> str:
+        board = _resolve(self._blackboard)
+        kind = kwargs.get("kind")
+        payload = kwargs.get("payload")
+        if kind is not None or payload is not None:
+            if not isinstance(kind, str) or not kind.strip():
+                return "Error: kind is required for structured blackboard writes."
+            if not isinstance(payload, dict):
+                return "Error: payload must be an object for structured blackboard writes."
+            try:
+                entry = await board.write(self._agent_name, kind, payload)
+            except BlackboardValueError as exc:
+                return f"Error: {exc}"
+            return f"Written to blackboard (id={entry.id}, kind={entry.kind})."
+
         text = kwargs.get("text", "")
-        if not text.strip():
+        if not isinstance(text, str) or not text.strip():
             return "Error: text cannot be empty."
-        entry = await _resolve(self._blackboard).write(self._agent_name, text.strip())
+        entry = await board.write_text(self._agent_name, text.strip())
         return f"Written to blackboard (id={entry.id}): {text.strip()}"
 
 
 class BlackboardReadTool(Tool):
-    """Read all entries from the shared blackboard."""
+    """Read a compact snapshot from the shared blackboard."""
 
     def __init__(self, blackboard: BlackboardSource) -> None:
         self._blackboard = blackboard
@@ -101,8 +119,9 @@ class BlackboardReadTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Read all entries from the shared blackboard. "
-            "Shows findings written by all agents in this orchestration task."
+            "Read a compact structured snapshot from the shared blackboard: "
+            "scope, current phase, findings, open hypotheses, approvals, "
+            "recent blockers, and recent milestones."
         )
 
     @property
@@ -117,10 +136,61 @@ class BlackboardReadTool(Tool):
         return True
 
     async def execute(self, **kwargs: Any) -> str:
-        entries = await _resolve(self._blackboard).read_all()
+        board = _resolve(self._blackboard)
+        if len(board) == 0:
+            return "Blackboard is empty. No entries yet."
+        snapshot = await board.snapshot()
+        return snapshot.to_markdown()
+
+
+class BlackboardReadFullTool(Tool):
+    """Read raw blackboard entries, optionally filtered by kind."""
+
+    def __init__(self, blackboard: BlackboardSource) -> None:
+        self._blackboard = blackboard
+
+    @property
+    def name(self) -> str:
+        return "read_blackboard_full"
+
+    @property
+    def description(self) -> str:
+        return "Read raw blackboard entries. Use only when the compact snapshot omits needed detail."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "kinds": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(STRUCTURED_KINDS)},
+                    "description": "Optional kind filter.",
+                }
+            },
+        }
+
+    @property
+    def read_only(self) -> bool:
+        return True
+
+    async def execute(self, **kwargs: Any) -> str:
+        kinds = kwargs.get("kinds")
+        board = _resolve(self._blackboard)
+        try:
+            if kinds:
+                entries = await board.read_by_kind(kinds)
+            else:
+                entries = await board.read_all()
+        except BlackboardValueError as exc:
+            return f"Error: {exc}"
+
         if not entries:
             return "Blackboard is empty. No entries yet."
-        lines = []
+
+        lines: list[str] = []
         for e in entries:
-            lines.append(f"[{e.agent_name}] ({e.id}): {e.text}")
+            payload = e.payload or {}
+            text = e.text if e.text is not None else payload
+            lines.append(f"[{e.agent_name}] ({e.id}, kind={e.kind}): {text}")
         return "\n".join(lines)

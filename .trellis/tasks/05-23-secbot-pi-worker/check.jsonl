@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Check PR1 against typed kind validation, legacy compatibility, EvidenceStore behavior, sanitizer rules, and required tests."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Verify existing REST/WS/legacy Blackboard behavior remains compatible."}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Verify persistence changes follow SQLite and migration discipline."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify PR1 does not accidentally implement or regress later Pi migration layers."}

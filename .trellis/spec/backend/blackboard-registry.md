@@ -1,5 +1,17 @@
 # Blackboard Registry
 
+> ⚠️ **EXTENDED BY `structured-blackboard.md`**
+>
+> The blackboard described here (free-text `text` + `[milestone/blocker/finding/
+> progress]` tag) remains the **legacy/compat** path. The Pi architecture
+> migration adds **typed `kind` + structured `payload`** + an independent
+> `EvidenceStore`. New writes MUST use the typed API; the `text+tag` form is
+> auto-translated by `Blackboard.write_text` for backward compatibility.
+>
+> Migration plan: PRD `.trellis/tasks/05-23-secbot-pi-worker/prd.md` D4 + PR1.
+
+---
+
 > Authoritative contract for `BlackboardRegistry`, the `GET /api/blackboard` endpoint, and the `BlackboardEntry.kind` auto-extraction rule.
 > Implementation: `secbot/agent/blackboard.py`, `secbot/agent/tools/blackboard.py`, `secbot/api/blackboard.py`, wired from `secbot/api/server.py`.
 
@@ -43,9 +55,11 @@ class Blackboard:
     def __init__(self, *, chat_id: str | None = None) -> None: ...
 
     def write(self, agent_name: str, text: str) -> BlackboardEntry:
-        """Append a new entry. Auto-extracts ``kind`` from ``^\\s*\\[<tag>\\]``.
-        Unknown tags → ``kind=None``.  Emits ``agent_event.blackboard_entry``
-        if the owning ``AgentLoop`` has a channel attached."""
+        """Append a legacy text entry. Auto-extracts ``kind`` from
+        ``^\\s*\\[<tag>\\]``. Unknown/unprefixed text is stored as typed
+        ``legacy_text`` during the Pi migration. Emits
+        ``agent_event.blackboard_entry`` if the owning ``AgentLoop`` has a
+        channel attached."""
 
     def read(self, *, limit: int | None = None) -> list[BlackboardEntry]: ...
 
@@ -103,7 +117,7 @@ Response (200):
 
 - `entries` is ordered by write time (oldest → newest). Consumers that render "latest N" MUST slice from the tail, not re-sort.
 - `timestamp` is **epoch seconds as float** (UTC). This is **distinct** from the ISO-8601 timestamps used by `agent_event.agent_status` (`last_heartbeat_at`). The frontend renders via `new Date(ts * 1000)`.
-- `kind` is either one of `KNOWN_KINDS` or `null`. **Unknown tags regress to `null`** — never invent new kind values server-side.
+- `kind` is either one of `KNOWN_KINDS` or `legacy_text` for unprefixed/unknown legacy text during the Pi migration. Pre-PR1 consumers that still expect `null` MUST treat unknown string kinds defensively; server-side no longer uses `null` for new unstructured writes because `legacy_text` must be retrievable by the typed `read_by_kind(["legacy_text"])` API.
 - Field order in the JSON object is NOT contractual (consumers MUST key by name).
 
 ### 3.3 Kind extraction regex
@@ -121,7 +135,7 @@ def _extract_kind(text: str) -> str | None:
 Rules:
 - **Case-insensitive match** on the tag; stored value is **lowercase**.
 - Matches only at the very start (allowing leading whitespace). Mid-text `[milestone]` does NOT trigger.
-- Unknown tags (e.g. `[wip]`, `[todo]`) → `kind=None`. The frontend applies the same regex as a fallback (see `webui/src/components/BlackboardPanel.tsx::KIND_REGEX`), so the render is defensive even when the agent forgets or typos the prefix.
+- Unknown tags (e.g. `[wip]`, `[todo]`) and unprefixed text → `kind="legacy_text"` for entries written after PR1. The legacy `_extract_kind(text)` helper still returns `None`; `Blackboard.write_text(...)` translates that fallback to `legacy_text`.
 
 ### 3.4 WebSocket mirror
 
@@ -157,7 +171,7 @@ Constraint: `payload.kind` MUST equal the stored `BlackboardEntry.kind` on the s
 | Unknown `chat_id` (never written) | 200 + `entries: []` | — (no subscription target) |
 | `chat_id` missing / empty | 400 | n/a |
 | AgentLoop writes before `register()` | write still succeeds on the local `Blackboard`, but HTTP lookup returns empty until `register()` runs. **Implementation MUST call `register()` in `AgentLoop.__init__`** so the window is zero-length in practice. |
-| Text has mid-string `[blocker]` | entry stored with `kind=None` | same |
+| Text has mid-string `[blocker]` | entry stored with `kind="legacy_text"` | same |
 | Text `"[BLOCKER] X"` | stored with `kind="blocker"` (lowercase normalised) | same |
 
 ---
@@ -169,7 +183,7 @@ Constraint: `payload.kind` MUST equal the stored `BlackboardEntry.kind` on the s
 board = registry.get("chat-a") or Blackboard(chat_id="chat-a")
 registry.register("chat-a", board)
 board.write("port_scan", "[finding] 22/tcp open")   # kind="finding"
-board.write("port_scan", "progress: 30%")           # kind=None (no prefix)
+board.write("port_scan", "progress: 30%")           # kind="legacy_text" (no prefix)
 ```
 
 ### Base (defensive rehydrate)
@@ -181,8 +195,8 @@ for e in entries:
 
 ### Bad
 ```python
-# BAD — inventing kind values that diverge from KNOWN_KINDS.
-board.write("agent", "[urgent] fire!")  # kind=None, not "urgent"
+# BAD — inventing arbitrary kind values that diverge from the typed set.
+board.write("agent", "[urgent] fire!")  # kind="legacy_text", not "urgent"
 
 # BAD — assuming entries are sorted newest-first.
 entries = registry.entries_for(chat_id)[:10]  # These are OLDEST 10, not latest.
@@ -198,7 +212,7 @@ entries = registry.entries_for(chat_id)[:10]  # These are OLDEST 10, not latest.
 `tests/agent/test_blackboard.py` (existing) MUST cover:
 - `Blackboard.write()` extracts kind for each of `milestone / blocker / finding / progress` (case-insensitive).
 - Mid-string `[kind]` does NOT trigger extraction.
-- Unknown tag → `kind=None`.
+- Unknown/unprefixed text → `kind="legacy_text"`.
 
 `tests/api/test_blackboard_route.py` (existing) MUST cover:
 - Missing `chat_id` → 400.
