@@ -135,6 +135,11 @@ class SkillTool(Tool):
         return self._meta.name
 
     @property
+    def metadata(self) -> SkillMetadata:
+        """Metadata used by the PolicyEngine router."""
+        return self._meta
+
+    @property
     def description(self) -> str:
         return self._description
 
@@ -155,6 +160,42 @@ class SkillTool(Tool):
         # the confirmation dialog. Non-critical skills still share the sandbox
         # subprocess slot, so keep them exclusive for simplicity.
         return self._meta.is_critical()
+
+    def is_policy_approved(self) -> bool:
+        """Whether the backing high-risk gate already approved this skill."""
+        return self._high_risk_gate.is_approved(self._meta.name)
+
+    def mark_policy_approved(
+        self,
+        args: Mapping[str, Any],
+        scan_id: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Cache and audit a router-level destructive approval."""
+        del args, payload
+        self._high_risk_gate.record_policy_approve(self._meta, scan_id)
+
+    def record_policy_request(
+        self,
+        args: Mapping[str, Any],
+        scan_id: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Audit a router-level destructive approval request."""
+        return self._high_risk_gate.record_policy_request(
+            self._meta, args, scan_id, payload=payload
+        )
+
+    def record_policy_denied(self, scan_id: str, *, timeout: bool = False) -> None:
+        """Audit a router-level denial/timeout."""
+        if timeout:
+            self._high_risk_gate.record_policy_timeout(self._meta, scan_id)
+        else:
+            self._high_risk_gate.record_policy_deny(self._meta, scan_id)
+
+    def policy_approval_timeout_sec(self) -> int:
+        """Return the legacy high-risk confirmation timeout."""
+        return self._high_risk_gate.timeout_sec
 
     async def execute(self, **kwargs: Any) -> str:
         """Run the skill. Returns a JSON string (LLM-friendly)."""

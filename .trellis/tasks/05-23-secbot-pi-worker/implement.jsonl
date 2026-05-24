@@ -1,4 +1,6 @@
-{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Primary PR1 implementation contract for typed blackboard kinds, snapshot API, EvidenceStore, sanitizer, lifecycle, and tests."}
-{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Legacy compatibility contract for existing text/tag Blackboard API, REST response, and WebSocket mirror."}
-{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Persistence rules for SQLite usage and schema/migration discipline when adding evidence records."}
-{"file": ".trellis/spec/backend/architecture.md", "reason": "Migration context and boundaries for Pi architecture PR1 versus later PR2-PR5 work."}
+{"file": ".trellis/spec/backend/policy-engine.md", "reason": "Primary PR2 implementation contract for PolicyEngine, PolicyDecision, action taxonomy, rule order, worker restrictions, and Tool Router integration."}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Compatibility contract for preserving HighRiskGate confirmation payload and approval semantics while folding destructive checks into PolicyEngine."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Existing tool and SkillTool safety invariants that PR2 must preserve when routing all tool calls through policy checks."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Skill metadata contract for risk_level, network_egress, expected_runtime_sec, and confirmation behavior used by PolicyEngine rules."}
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "PR2 worker caller restrictions apply to structured blackboard write kinds introduced by PR1."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Migration context and boundaries for PR2 versus later PR3-PR5 work."}

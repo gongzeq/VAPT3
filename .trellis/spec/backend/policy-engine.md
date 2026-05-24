@@ -91,7 +91,7 @@ Action = Literal[
     "blackboard.write",   # 含 kind 限制
     "exec.shell",         # ExecTool（默认禁用）
     "http.fetch",         # CurlTool / WebFetch
-    "fs.read",            # ReadFileTool
+    "fs.read",            # ReadFileTool / ListDirTool / GlobTool / GrepTool
     "fs.write",           # WriteFileTool / EditFileTool
     "fs.delete",          # （新工具引入时）
     "approval.request",   # request_approval
@@ -140,6 +140,12 @@ class ScopeContract:
 - URL 前缀（含路径）
 - 时间窗校验（now ∈ [auth_window_start, auth_window_end]）
 
+`http.fetch` / curl 命令可能包含多个网络目标；ScopeRule MUST scope-check
+**every** extracted URL/host target, not only the first one. For URL-prefix atoms,
+matching MUST parse URL components (scheme, host, optional port, path boundary)
+rather than raw string `startswith`, so `https://app.example.test.evil.net` does
+not match `https://app.example.test` and `/administer` does not match `/admin`.
+
 #### SSRFRule
 
 ```python
@@ -156,6 +162,17 @@ class SSRFRule(Rule):
                 suggest="Pi: target is internal; require user to whitelist via configure_ssrf_whitelist")
         return PolicyDecision("allow")
 ```
+
+For curl-shaped `http.fetch` commands, SSRFRule also rejects command forms that
+can change or bypass the validated target before execution:
+
+- shell control syntax such as `;`, `&&`, pipes, redirects, backticks, or `$()`
+- curl network-routing overrides such as `--resolve`, `--connect-to`, proxies,
+  and `--unix-socket`
+- curl local file read/write/upload options such as `-o`, `--output`,
+  `--upload-file`, `--data-binary @file`, `--form name=@file`, `--cookie`
+  file paths, TLS certificate/key file options, `--config`, `--netrc-file`,
+  and non-HTTP URL schemes such as `file://`
 
 #### WorkspaceRule
 
@@ -278,6 +295,18 @@ RateLimitRule → DestructiveRule → BudgetRule
 
 理由：先确认目标合法（scope / SSRF / workspace），再资源类（rate），再人工审批
 （destructive），最后 budget（最重，且其他规则可能让其无关）。
+
+`CallerKindRule` 是 §4.2 的 worker 授权限制，不属于上述七个跨 caller 的安全规则。
+PR2 执行顺序中它插在 `CredentialBoundaryRule` 之后、`RateLimitRule` 之前：
+
+```
+ScopeRule → SSRFRule → WorkspaceRule → CredentialBoundaryRule →
+CallerKindRule → RateLimitRule → DestructiveRule → BudgetRule
+```
+
+这样目标/凭据边界优先给出最具体的越权原因；worker 永远不能执行的动作（如
+`worker.spawn`、`report.publish`、`blackboard.write(kind="finding")`）也不会消耗
+rate-limit bucket。
 
 ## 4. Tool Router 集成
 

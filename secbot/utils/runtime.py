@@ -71,6 +71,10 @@ def external_lookup_signature(tool_name: str, arguments: dict[str, Any]) -> str 
         command = str(arguments.get("command") or "").strip()
         if command:
             return f"curl:{command.lower()}"
+    if tool_name == "web_fetch":
+        url = str(arguments.get("url") or "").strip()
+        if url:
+            return f"web_fetch:{url.lower()}"
     return None
 
 

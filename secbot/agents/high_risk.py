@@ -86,7 +86,7 @@ def build_confirmation_payload(
     }
 
 
-class HighRiskDenied(Exception):
+class HighRiskDenied(Exception):  # noqa: N818 - public legacy exception name
     """Raised internally when the user denies a critical confirmation."""
 
 
@@ -105,6 +105,40 @@ class HighRiskGate:
         Callable[[SkillMetadata, Mapping[str, Any]], str]
     ] = None
     _approved_skills: set[str] = field(default_factory=set, repr=False)
+
+    def is_approved(self, skill_name: str) -> bool:
+        """Return whether *skill_name* is approved in this gate instance."""
+        return skill_name in self._approved_skills
+
+    def mark_approved(self, skill_name: str) -> None:
+        """Record a router-level approval so guard() will not re-prompt."""
+        self._approved_skills.add(skill_name)
+
+    def record_policy_request(
+        self,
+        meta: SkillMetadata,
+        args: Mapping[str, Any],
+        scan_id: str,
+        *,
+        payload: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record a confirmation request emitted by PolicyEngine."""
+        approval_payload = dict(payload or build_confirmation_payload(meta, args, scan_id))
+        self.audit.emit(scan_id, meta.name, "confirm_request", approval_payload)
+        return approval_payload
+
+    def record_policy_approve(self, meta: SkillMetadata, scan_id: str) -> None:
+        """Record an approval already collected by PolicyEngine."""
+        self._approved_skills.add(meta.name)
+        self.audit.emit(scan_id, meta.name, "confirm_approve")
+
+    def record_policy_deny(self, meta: SkillMetadata, scan_id: str) -> None:
+        """Record a denial already collected by PolicyEngine."""
+        self.audit.emit(scan_id, meta.name, "confirm_deny")
+
+    def record_policy_timeout(self, meta: SkillMetadata, scan_id: str) -> None:
+        """Record a timeout already collected by PolicyEngine."""
+        self.audit.emit(scan_id, meta.name, "confirm_timeout")
 
     async def guard(
         self,

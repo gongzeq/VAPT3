@@ -66,6 +66,7 @@ from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.command import CommandContext, CommandRouter, register_builtin_commands
 from secbot.config.schema import AgentDefaults
+from secbot.policy import PolicyContext, ScopeContract
 from secbot.providers.base import LLMProvider
 from secbot.providers.factory import ProviderSnapshot
 from secbot.session.manager import Session, SessionManager
@@ -975,8 +976,8 @@ class AgentLoop:
         # When the turn originates from the WebSocket channel, wire up the
         # ``ctx.confirm`` callback so critical-risk skills can surface a
         # blocking dialog to the WebUI via ``surface_confirm``. Non-WS
-        # channels (CLI/API) leave confirm=None which causes HighRiskGate to
-        # run skills unconditionally (no UI to ask).
+        # channels (CLI/API) leave confirm=None; critical skills then fail
+        # closed through the policy/high-risk confirmation path.
         confirm_fn = None
         if channel == "websocket":
             from secbot.channels.websocket import WebSocketChannel
@@ -997,6 +998,19 @@ class AgentLoop:
         # and across spawned subagents.
         active_blackboard = await self.blackboard_registry.get_or_create(chat_id)
         self.blackboard = active_blackboard
+        scope = ScopeContract.from_mapping((await active_blackboard.snapshot()).scope)
+        set_policy_context = getattr(self.tools, "set_policy_context", None)
+        if callable(set_policy_context):
+            set_policy_context(
+                PolicyContext(
+                    caller_kind="pi",
+                    scan_id=scan_id,
+                    workspace=self.workspace,
+                    workspace_strict=self.restrict_to_workspace,
+                    scope=scope,
+                    confirm=confirm_fn,
+                )
+            )
 
         # PR-1: rebind the active asset feed for the current chat. The
         # registered AssetPushTool / ReadAssetsTool resolve via a

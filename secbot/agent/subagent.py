@@ -18,15 +18,16 @@ from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.tools.ask import AskUserTool
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
-from secbot.agent.tools.curl import CurlTool
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
+from secbot.policy import PolicyContext, ScopeContract
 from secbot.providers.base import LLMProvider
 from secbot.utils.prompt_templates import render_template
 
@@ -579,6 +580,18 @@ class SubagentManager:
             # Crucially, preserve the ``confirm`` callback so critical skills
             # inside the subagent still surface the WebUI approval dialog.
             parent_confirm = current_skill_confirm()
+            scope = ScopeContract.from_mapping((await resolved_blackboard.snapshot()).scope)
+            tools.set_policy_context(
+                PolicyContext(
+                    caller_kind="worker",
+                    worker_id=task_id,
+                    scan_id=task_id,
+                    workspace=self.workspace,
+                    workspace_strict=self.restrict_to_workspace,
+                    scope=scope,
+                    confirm=parent_confirm,
+                )
+            )
             bind_skill_context(
                 scan_id=task_id,
                 scan_dir=self.workspace / ".secbot" / "scans" / task_id,

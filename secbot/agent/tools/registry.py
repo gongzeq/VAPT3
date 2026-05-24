@@ -1,8 +1,12 @@
 """Tool registry for dynamic tool management."""
 
+import asyncio
+from dataclasses import replace
 from typing import Any
 
 from secbot.agent.tools.base import Tool
+from secbot.policy import Action, PolicyContext, PolicyEngine
+from secbot.policy.engine import policy_denied_payload, user_denied_payload
 
 
 class ToolRegistry:
@@ -12,9 +16,20 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        policy: PolicyEngine | None = None,
+        policy_context: PolicyContext | None = None,
+    ):
         self._tools: dict[str, Tool] = {}
         self._cached_definitions: list[dict[str, Any]] | None = None
+        self.policy = policy or PolicyEngine()
+        self.policy_context = policy_context or PolicyContext()
+
+    def set_policy_context(self, context: PolicyContext) -> None:
+        """Replace per-run policy context used by future tool executions."""
+        self.policy_context = context
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -97,21 +112,118 @@ class ToolRegistry:
             )
         return tool, cast_params, None
 
+    async def execute_prepared(
+        self,
+        name: str,
+        tool: Tool,
+        params: dict[str, Any],
+    ) -> Any:
+        """Policy-check and execute an already prepared tool call."""
+        action = self._action_for(tool)
+        skill_meta = getattr(tool, "metadata", None)
+        policy_ctx = self.policy.with_context(
+            self.policy_context,
+            skill_metadata=skill_meta,
+        )
+        approved = getattr(tool, "is_policy_approved", None)
+        if skill_meta is not None and callable(approved) and approved():
+            policy_ctx = replace(
+                policy_ctx,
+                approved_skills=frozenset(
+                    set(policy_ctx.approved_skills) | {skill_meta.name}
+                ),
+            )
+        decision = await self.policy.check(action, params, policy_ctx)
+
+        if decision.verdict == "deny":
+            return policy_denied_payload(decision)
+
+        if decision.verdict == "need_approval":
+            request_recorder = getattr(tool, "record_policy_request", None)
+            approval_payload = decision.approval_payload
+            if approval_payload is not None and callable(request_recorder):
+                approval_payload = request_recorder(
+                    params,
+                    policy_ctx.scan_id,
+                    decision.approval_payload,
+                )
+            if policy_ctx.confirm is None or approval_payload is None:
+                denied_recorder = getattr(tool, "record_policy_denied", None)
+                if callable(denied_recorder):
+                    denied_recorder(policy_ctx.scan_id, timeout=False)
+                return user_denied_payload(decision)
+            timeout_sec = self._approval_timeout_for(tool)
+            try:
+                approved_by_user = await asyncio.wait_for(
+                    policy_ctx.confirm(approval_payload),
+                    timeout=timeout_sec,
+                )
+            except asyncio.TimeoutError:
+                denied_recorder = getattr(tool, "record_policy_denied", None)
+                if callable(denied_recorder):
+                    denied_recorder(policy_ctx.scan_id, timeout=True)
+                return user_denied_payload(
+                    replace(decision, reason="confirm_timeout")
+                )
+            if not approved_by_user:
+                denied_recorder = getattr(tool, "record_policy_denied", None)
+                if callable(denied_recorder):
+                    denied_recorder(policy_ctx.scan_id, timeout=False)
+                return user_denied_payload(decision)
+            mark_approved = getattr(tool, "mark_policy_approved", None)
+            if callable(mark_approved):
+                mark_approved(params, policy_ctx.scan_id, approval_payload)
+
+        return await tool.execute(**params)
+
+    @staticmethod
+    def _approval_timeout_for(tool: Tool) -> float | None:
+        timeout_getter = getattr(tool, "policy_approval_timeout_sec", None)
+        if not callable(timeout_getter):
+            return None
+        timeout = timeout_getter()
+        if isinstance(timeout, int | float):
+            return max(0.0, float(timeout))
+        return None
+
     async def execute(self, name: str, params: dict[str, Any]) -> Any:
         """Execute a tool by name with given parameters."""
-        _HINT = "\n\n[Analyze the error above and try a different approach.]"
+        hint = "\n\n[Analyze the error above and try a different approach.]"
         tool, params, error = self.prepare_call(name, params)
         if error:
-            return error + _HINT
+            return error + hint
 
         try:
             assert tool is not None  # guarded by prepare_call()
-            result = await tool.execute(**params)
+            result = await self.execute_prepared(name, tool, params)
             if isinstance(result, str) and result.startswith("Error"):
-                return result + _HINT
+                return result + hint
             return result
         except Exception as e:
-            return f"Error executing {name}: {str(e)}" + _HINT
+            return f"Error executing {name}: {str(e)}" + hint
+
+    @staticmethod
+    def _action_for(tool: Tool) -> Action:
+        name = tool.name
+        if name in {"report-html", "report-markdown", "report-docx", "report-pdf"}:
+            return "report.publish"
+        if getattr(tool, "metadata", None) is not None:
+            return "skill.invoke"
+        if name == "create_agent":
+            return "worker.spawn"
+        if name == "blackboard_write":
+            return "blackboard.write"
+        if name == "exec":
+            return "exec.shell"
+        if name in {"curl", "web_fetch"}:
+            return "http.fetch"
+        if name in {"read_file", "list_dir", "glob", "grep"}:
+            return "fs.read"
+        if name in {"write_file", "edit_file", "notebook_edit"}:
+            return "fs.write"
+        if name == "request_approval":
+            return "approval.request"
+        return "tool.invoke"
 
     @property
     def tool_names(self) -> list[str]:

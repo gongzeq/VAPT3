@@ -1,4 +1,6 @@
-{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Check PR1 against typed kind validation, legacy compatibility, EvidenceStore behavior, sanitizer rules, and required tests."}
-{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Verify existing REST/WS/legacy Blackboard behavior remains compatible."}
-{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Verify persistence changes follow SQLite and migration discipline."}
-{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify PR1 does not accidentally implement or regress later Pi migration layers."}
+{"file": ".trellis/spec/backend/policy-engine.md", "reason": "Check PR2 against PolicyEngine rule order, structured deny/approval responses, Tool Router integration, worker restrictions, and non-goals."}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Verify destructive approval UI payload and session-cached approval semantics remain compatible."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Verify PR2 does not loosen sandbox, SkillTool, or raw exec safety invariants."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Verify skill metadata-driven policy behavior respects risk_level/network/runtime contract."}
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Verify worker-level blackboard write restrictions are enforced without regressing PR1 typed blackboard behavior."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify PR2 does not accidentally implement later Pi migration layers such as BudgetEnforcer, EventStream, or FindingOntology."}

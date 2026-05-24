@@ -17,6 +17,8 @@ from secbot.agent.tools.blackboard import (
     BlackboardReadTool,
     BlackboardWriteTool,
 )
+from secbot.agent.tools.registry import ToolRegistry
+from secbot.policy import PolicyContext
 
 
 @pytest.mark.asyncio
@@ -139,6 +141,54 @@ async def test_write_tool_structured_validation_error() -> None:
 
     assert result.startswith("Error:")
     assert len(bb) == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_write_finding_denied_by_tool_router() -> None:
+    bb = Blackboard()
+    registry = ToolRegistry(
+        policy_context=PolicyContext(caller_kind="worker", worker_id="worker-1")
+    )
+    registry.register(BlackboardWriteTool(bb, agent_name="worker"))
+
+    result = await registry.execute(
+        "blackboard_write",
+        {
+            "kind": "finding",
+            "payload": {
+                "title": "must be promoted by pi",
+                "severity": "high",
+                "cwe": "CWE-79",
+                "owasp_category": "A03",
+                "asset_ref": "web",
+                "evidence_ids": [],
+            },
+        },
+    )
+
+    assert "policy_denied" in result
+    assert "caller_kind" in result
+    assert len(bb) == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_write_hypothesis_allowed_by_tool_router() -> None:
+    bb = Blackboard()
+    registry = ToolRegistry(
+        policy_context=PolicyContext(caller_kind="worker", worker_id="worker-1")
+    )
+    registry.register(BlackboardWriteTool(bb, agent_name="worker"))
+
+    result = await registry.execute(
+        "blackboard_write",
+        {
+            "kind": "hypothesis",
+            "payload": {"title": "possible SSRF", "kind": "ssrf", "confidence": 0.7},
+        },
+    )
+
+    assert "kind=hypothesis" in result
+    assert len(bb) == 1
 
 
 @pytest.mark.asyncio

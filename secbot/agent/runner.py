@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import os
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -793,7 +794,10 @@ class AgentRunner:
                 RuntimeError(prep_error) if spec.fail_on_tool_error else None
             )
         try:
-            if tool is not None:
+            execute_prepared = getattr(spec.tools, "execute_prepared", None)
+            if tool is not None and callable(execute_prepared):
+                result = await execute_prepared(tool_call.name, tool, params)
+            elif tool is not None:
                 result = await tool.execute(**params)
             else:
                 result = await spec.tools.execute(tool_call.name, params)
@@ -822,6 +826,17 @@ class AgentRunner:
             if spec.fail_on_tool_error:
                 return payload, event, exc
             return payload, event, None
+
+        policy_error = self._policy_tool_error(result)
+        if policy_error is not None:
+            event = {
+                "name": tool_call.name,
+                "status": "error",
+                "detail": self._event_detail("", policy_error),
+            }
+            if spec.fail_on_tool_error:
+                return result, event, RuntimeError(policy_error)
+            return result, event, None
 
         if isinstance(result, str) and result.startswith("Error"):
             event = {
@@ -892,6 +907,25 @@ class AgentRunner:
         if cls._is_ssrf_violation(lowered):
             return True
         return any(marker in lowered for marker in cls._WORKSPACE_VIOLATION_MARKERS)
+
+    @staticmethod
+    def _policy_tool_error(result: Any) -> str | None:
+        """Return a concise policy error label for structured router denials."""
+        if not isinstance(result, str) or "policy_denied" not in result and "user_denied" not in result:
+            return None
+        with suppress(Exception):
+            payload = json.loads(result)
+            error = payload.get("error")
+            if error in {"policy_denied", "user_denied"}:
+                rule = payload.get("rule")
+                reason = payload.get("reason")
+                detail = str(error)
+                if rule:
+                    detail += f": {rule}"
+                if reason:
+                    detail += f": {reason}"
+                return detail
+        return None
 
     def _classify_violation(
         self,
