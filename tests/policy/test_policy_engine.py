@@ -118,6 +118,25 @@ async def test_scope_rule_checks_every_curl_command_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_scope_rule_checks_scope_view_out_of_scope_targets() -> None:
+    policy = PolicyEngine()
+    decision = await policy.check(
+        "worker.spawn",
+        {
+            "scope_view": {
+                "in_scope": ["example.test"],
+                "out_of_scope": ["evil.example.net"],
+            }
+        },
+        PolicyContext(scope=ScopeContract(in_scope=("example.test",))),
+    )
+
+    assert decision.verdict == "deny"
+    assert decision.rule == "scope"
+    assert "evil.example.net" in (decision.reason or "")
+
+
+@pytest.mark.asyncio
 async def test_scope_contract_from_mapping_parses_auth_window() -> None:
     contract = ScopeContract.from_mapping(
         {
@@ -429,3 +448,68 @@ async def test_budget_rule_exceeded_denies() -> None:
 
     assert decision.verdict == "deny"
     assert decision.rule == "budget"
+
+
+@pytest.mark.asyncio
+async def test_budget_rule_exceeded_wins_before_rate_limit() -> None:
+    class Budget:
+        def status(self) -> str:
+            return "EXCEEDED"
+
+    policy = PolicyEngine(worker_limit_per_minute=1)
+    ctx = PolicyContext(
+        caller_kind="worker",
+        worker_id="worker-1",
+        budget=Budget(),
+    )
+
+    first = await policy.check("skill.invoke", {"target": "host.local"}, ctx)
+    second = await policy.check("skill.invoke", {"target": "host.local"}, ctx)
+
+    assert first.rule == "budget"
+    assert second.rule == "budget"
+
+
+@pytest.mark.asyncio
+async def test_budget_rule_exceeded_wins_before_destructive_approval() -> None:
+    class Budget:
+        def status(self) -> str:
+            return "EXCEEDED"
+
+    policy = PolicyEngine()
+    decision = await policy.check(
+        "skill.invoke",
+        {"target": "example.test"},
+        PolicyContext(
+            scan_id="scan-1",
+            skill_metadata=_meta(),
+            budget=Budget(),
+        ),
+    )
+
+    assert decision.verdict == "deny"
+    assert decision.rule == "budget"
+    assert decision.approval_payload is None
+
+
+@pytest.mark.asyncio
+async def test_budget_rule_exceeded_allows_reflect_checkpoint_tools() -> None:
+    class Budget:
+        def status(self) -> str:
+            return "EXCEEDED"
+
+    policy = PolicyEngine()
+    ctx = PolicyContext(budget=Budget())
+
+    summary = await policy.check("blackboard.write", {"kind": "summary"}, ctx)
+    phase = await policy.check("blackboard.write", {"kind": "phase_transition"}, ctx)
+    read = await policy.check("blackboard.read", {}, ctx)
+    message = await policy.check("message", {"content": "checkpoint"}, ctx)
+    finding = await policy.check("blackboard.write", {"kind": "finding"}, ctx)
+
+    assert summary.verdict == "allow"
+    assert phase.verdict == "allow"
+    assert read.verdict == "allow"
+    assert message.verdict == "allow"
+    assert finding.verdict == "deny"
+    assert finding.rule == "budget"

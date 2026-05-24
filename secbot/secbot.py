@@ -87,6 +87,8 @@ class Secbot:
             session_ttl_minutes=defaults.session_ttl_minutes,
             consolidation_ratio=defaults.consolidation_ratio,
             tools_config=config.tools,
+            agents_config=config.agents,
+            budget_config=config.budget,
         )
         return cls(loop)
 

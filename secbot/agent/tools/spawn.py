@@ -35,6 +35,54 @@ if TYPE_CHECKING:
 # a bug (e.g. dumping a whole repo into the field).
 MAX_TASK_LEN = 16_000
 
+_PRESET_AGENT_ALIASES = {
+    "recon": "asset_discovery",
+    "crawl": "crawl_web",
+    "triage": "vuln_scan",
+    "report": "report",
+}
+
+
+def _normalise_budget_share(value: Any | None, defaults: dict[str, Any]) -> dict[str, Any]:
+    if value is None:
+        return dict(defaults)
+    if not isinstance(value, dict):
+        raise ValueError("budget_share must be an object")
+    wall = value.get("max_wall_clock_sec", defaults["max_wall_clock_sec"])
+    calls = value.get("max_tool_calls", defaults["max_tool_calls"])
+    try:
+        wall_f = float(wall)
+        calls_i = int(calls)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("budget_share values must be numeric") from exc
+    if wall_f < 0 or calls_i < 0:
+        raise ValueError("budget_share values must be non-negative")
+    return {"max_wall_clock_sec": wall_f, "max_tool_calls": calls_i}
+
+
+def _target_from_scope_view(scope_view: Any) -> str | None:
+    if not isinstance(scope_view, dict):
+        return None
+    in_scope = scope_view.get("in_scope")
+    if isinstance(in_scope, list):
+        for item in in_scope:
+            text = str(item).strip()
+            if text:
+                return text
+    target = scope_view.get("target")
+    return str(target).strip() if target else None
+
+
+def _agent_for_preset(preset: str, registry: Any) -> str:
+    name = preset.strip()
+    if name.startswith("legacy:"):
+        return name.split(":", 1)[1]
+    if name in _PRESET_AGENT_ALIASES:
+        return _PRESET_AGENT_ALIASES[name]
+    if registry is not None and name in registry:
+        return name
+    return name
+
 
 @tool_parameters(
     tool_parameters_schema(
@@ -205,4 +253,175 @@ class SpawnTool(Tool):
             origin_chat_id=self._origin_chat_id.get(),
             session_key=self._session_key.get(),
             origin_message_id=self._origin_message_id.get(),
+        )
+
+
+class CreateWorkerTool(SpawnTool):
+    """Pi create_worker tool with a legacy-agent bridge."""
+
+    def __init__(self, manager: "SubagentManager"):
+        super().__init__(manager)
+        self._budget_defaults: ContextVar[dict[str, Any]] = ContextVar(
+            "worker_budget_defaults",
+            default={"max_wall_clock_sec": 300.0, "max_tool_calls": 15},
+        )
+
+    def set_budget_defaults(self, *, max_wall_clock_sec: float, max_tool_calls: int) -> None:
+        self._budget_defaults.set(
+            {
+                "max_wall_clock_sec": float(max_wall_clock_sec),
+                "max_tool_calls": int(max_tool_calls),
+            }
+        )
+
+    @property
+    def name(self) -> str:
+        return "create_worker"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Create a limited worker from a Pi worker preset. Provide preset, full "
+            "task prompt, scope_view, and budget_share. Presets recon/crawl/triage/"
+            "report are bridged to existing expert agents; legacy:<old_name> keeps "
+            "backward compatibility."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "preset": {
+                    "type": "string",
+                    "description": "Worker preset such as recon, crawl, triage, report, or legacy:<agent>.",
+                },
+                "task": {
+                    "type": "string",
+                    "description": f"Full worker prompt. Hard limit: {MAX_TASK_LEN} characters.",
+                },
+                "scope_view": {
+                    "type": "object",
+                    "properties": {
+                        "in_scope": {"type": "array", "items": {"type": "string"}},
+                        "out_of_scope": {"type": "array", "items": {"type": "string"}},
+                        "target": {"type": "string"},
+                    },
+                    "additionalProperties": True,
+                },
+                "budget_share": {
+                    "type": "object",
+                    "properties": {
+                        "max_wall_clock_sec": {"type": "number", "minimum": 0},
+                        "max_tool_calls": {"type": "integer", "minimum": 0},
+                    },
+                    "additionalProperties": False,
+                },
+                "skills_subset": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional subset of the preset skills.",
+                },
+                "endpoint_url": {"type": ["string", "null"]},
+                "endpoint_param": {"type": ["string", "null"]},
+            },
+            "required": ["preset", "task", "scope_view"],
+        }
+
+    async def execute(
+        self,
+        preset: str | None = None,
+        task: str | None = None,
+        scope_view: dict[str, Any] | None = None,
+        budget_share: dict[str, Any] | None = None,
+        skills_subset: list[str] | None = None,
+        endpoint_url: str | None = None,
+        endpoint_param: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        if not isinstance(preset, str) or not preset.strip():
+            return "create_worker failed: 'preset' is required and must be non-empty."
+        if not isinstance(task, str) or not task.strip():
+            return "create_worker failed: 'task' is required and must be non-empty."
+        if len(task) > MAX_TASK_LEN:
+            return (
+                f"create_worker failed: 'task' length {len(task)} exceeds the "
+                f"maximum of {MAX_TASK_LEN} characters."
+            )
+        target = kwargs.get("target")
+        if not isinstance(target, str) or not target.strip():
+            target = _target_from_scope_view(scope_view)
+        if not isinstance(target, str) or not target.strip():
+            return "create_worker failed: scope_view.in_scope must include at least one target."
+        if skills_subset is not None and (
+            not isinstance(skills_subset, list)
+            or any(not isinstance(item, str) or not item.strip() for item in skills_subset)
+        ):
+            return "create_worker failed: skills_subset must be a list of non-empty strings."
+        try:
+            share = _normalise_budget_share(budget_share, self._budget_defaults.get())
+        except ValueError as exc:
+            return f"create_worker failed: {exc}"
+
+        registry = getattr(self._manager, "agent_registry", None)
+        name = _agent_for_preset(preset, registry)
+        if registry is None:
+            return (
+                "create_worker failed: no agent registry is attached to the "
+                "SubagentManager (server mis-configuration)."
+            )
+        if name not in registry:
+            available = ", ".join(registry.names()) or "<none registered>"
+            return (
+                f"create_worker failed: unknown preset '{preset}'. "
+                f"Available legacy agents: {available}."
+            )
+        spec = registry.get(name)
+        if not spec.available:
+            missing = ", ".join(spec.missing_binaries) or "<unknown>"
+            return (
+                f"create_worker failed: preset '{preset}' is offline (missing "
+                f"binaries: {missing}). Install them and retry."
+            )
+        if spec.endpoint_bound:
+            if not isinstance(endpoint_url, str) or not endpoint_url.strip():
+                return (
+                    f"create_worker failed: preset '{preset}' is endpoint-bound; "
+                    "'endpoint_url' is required."
+                )
+            if not isinstance(endpoint_param, str) or not endpoint_param.strip():
+                return (
+                    f"create_worker failed: preset '{preset}' is endpoint-bound; "
+                    "'endpoint_param' is required."
+                )
+            endpoint_url = endpoint_url.strip()
+            endpoint_param = endpoint_param.strip()
+        elif endpoint_url is not None or endpoint_param is not None:
+            return (
+                f"create_worker failed: preset '{preset}' is not endpoint-bound; "
+                "omit 'endpoint_url' and 'endpoint_param'."
+            )
+
+        running = self._manager.get_running_count()
+        limit = self._manager.max_concurrent_subagents
+        if running >= limit:
+            return (
+                f"Cannot spawn worker: concurrency limit reached "
+                f"({running}/{limit} running). Wait for a running worker "
+                "to complete before spawning a new one."
+            )
+
+        return await self._manager.spawn(
+            task=task,
+            label=None,
+            agent=name,
+            target=target.strip(),
+            endpoint_url=endpoint_url,
+            endpoint_param=endpoint_param,
+            origin_channel=self._origin_channel.get(),
+            origin_chat_id=self._origin_chat_id.get(),
+            session_key=self._session_key.get(),
+            origin_message_id=self._origin_message_id.get(),
+            budget_share=share,
+            skills_subset=skills_subset,
         )

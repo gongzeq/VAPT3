@@ -1,6 +1,6 @@
-{"file": ".trellis/spec/backend/policy-engine.md", "reason": "Primary PR2 implementation contract for PolicyEngine, PolicyDecision, action taxonomy, rule order, worker restrictions, and Tool Router integration."}
-{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Compatibility contract for preserving HighRiskGate confirmation payload and approval semantics while folding destructive checks into PolicyEngine."}
-{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Existing tool and SkillTool safety invariants that PR2 must preserve when routing all tool calls through policy checks."}
-{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Skill metadata contract for risk_level, network_egress, expected_runtime_sec, and confirmation behavior used by PolicyEngine rules."}
-{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "PR2 worker caller restrictions apply to structured blackboard write kinds introduced by PR1."}
-{"file": ".trellis/spec/backend/architecture.md", "reason": "Migration context and boundaries for PR2 versus later PR3-PR5 work."}
+{"file": ".trellis/spec/backend/budget-enforcer.md", "reason": "Primary PR3 implementation contract for BudgetTracker, BudgetView, budget-share semantics, reflect-then-checkpoint behavior, and tests."}
+{"file": ".trellis/spec/backend/pi-orchestrator.md", "reason": "Primary PR3 prompt contract for phase-aware DAG orchestration, dynamic budget/phase sections, and removal of hard-coded linear stage ordering."}
+{"file": ".trellis/spec/backend/policy-engine.md", "reason": "BudgetRule integration point for allowing only summary/phase-transition/message/read-blackboard actions when budget is exceeded."}
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Phase and summary payload kinds used by BudgetEnforcer checkpoint flow and Pi prompt phase rendering."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Legacy Blackboard API compatibility while reading phase/scope snapshots for prompt and budget checkpoint flows."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Migration context and boundaries for PR3 versus later PR4-PR5 work."}

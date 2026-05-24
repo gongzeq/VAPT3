@@ -116,6 +116,8 @@ Action = Literal[
     "fs.delete",
     "approval.request",
     "report.publish",
+    "blackboard.read",
+    "message",
 ]
 CallerKind = Literal["pi", "worker", "system"]
 Verdict = Literal["allow", "need_approval", "deny"]
@@ -260,9 +262,9 @@ class PolicyEngine:
             self._workspace_rule,
             self._credential_boundary_rule,
             self._caller_kind_rule,
+            self._budget_rule,
             self._rate_limit_rule,
             self._destructive_rule,
-            self._budget_rule,
         )
         for rule in rules:
             try:
@@ -538,18 +540,21 @@ class PolicyEngine:
         args: Mapping[str, Any],
         ctx: PolicyContext,
     ) -> PolicyDecision:
-        del action, args
         budget = ctx.budget
         if budget is None:
             return PolicyDecision("allow")
-        status_fn = getattr(budget, "status", None)
-        status = status_fn() if callable(status_fn) else getattr(budget, "status", None)
+        status = _budget_status(budget, worker_id=ctx.worker_id)
         if status == "EXCEEDED":
+            kind = args.get("kind")
+            if action == "blackboard.write" and kind in {"summary", "phase_transition"}:
+                return PolicyDecision("allow")
+            if action in {"blackboard.read", "message"}:
+                return PolicyDecision("allow")
             return PolicyDecision(
                 "deny",
                 rule="budget",
-                reason="budget exhausted; wait for reflect/checkpoint",
-                suggest="Pi: write summary then stop.",
+                reason="budget exhausted; write summary/phase_transition first",
+                suggest="see [BUDGET_EXCEEDED] instructions",
             )
         return PolicyDecision("allow")
 
@@ -578,6 +583,27 @@ def user_denied_payload(decision: PolicyDecision) -> str:
     )
 
 
+def _budget_status(budget: Any, *, worker_id: str | None = None) -> str | None:
+    status_fn = getattr(budget, "status", None)
+    if callable(status_fn):
+        try:
+            value = status_fn(worker_id=worker_id)
+        except TypeError:
+            value = status_fn()
+        if worker_id:
+            try:
+                master_value = status_fn()
+            except TypeError:
+                master_value = value
+            master_status = getattr(master_value, "status", master_value)
+            if str(master_status) == "EXCEEDED":
+                return "EXCEEDED"
+    else:
+        value = getattr(budget, "status", None)
+    status_value = getattr(value, "status", value)
+    return str(status_value) if status_value is not None else None
+
+
 def _extract_target(args: Mapping[str, Any]) -> str | None:
     for key in ("target", "url", "endpoint_url", "host", "hostname", "address"):
         value = args.get(key)
@@ -597,6 +623,14 @@ def _extract_scope_targets(args: Mapping[str, Any]) -> tuple[str, ...]:
         value = args.get(key)
         if isinstance(value, str) and value.strip():
             targets.append(value.strip())
+    scope_view = args.get("scope_view")
+    if isinstance(scope_view, Mapping):
+        in_scope = scope_view.get("in_scope")
+        if isinstance(in_scope, list):
+            targets.extend(str(item).strip() for item in in_scope if str(item).strip())
+        out_of_scope = scope_view.get("out_of_scope")
+        if isinstance(out_of_scope, list):
+            targets.extend(str(item).strip() for item in out_of_scope if str(item).strip())
     command = args.get("command")
     if isinstance(command, str):
         targets.extend(_extract_command_urls(command))

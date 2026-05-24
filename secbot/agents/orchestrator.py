@@ -1,24 +1,25 @@
-"""Orchestrator prompt renderer.
+"""Orchestrator prompt compatibility bridge.
 
-Spec: `.trellis/spec/backend/orchestrator-prompt.md`.
+Spec: `.trellis/spec/backend/pi-orchestrator.md`.
 
-The orchestrator system prompt is composed of four locked sections:
-``# Role``, ``# Hard rules``, ``# Available expert agents``, ``# Working style``.
-Only the expert-agent table is dynamic; everything else is a constant.
+The default renderer now emits the Pi phase-aware DAG prompt. The legacy
+linear expert prompt is kept behind ``render_legacy_orchestrator_prompt`` for
+diagnostics and config-level rollback.
 """
 
 from __future__ import annotations
 
 from typing import Iterable
 
+from secbot.agents.pi_orchestrator import render_pi_prompt
 from secbot.agents.registry import AgentRegistry, ExpertAgentSpec
 
-_ROLE = (
+_LEGACY_ROLE = (
     "You are secbot, a security operations assistant. You orchestrate specialised "
     "expert agents to fulfil the user's security task."
 )
 
-_HARD_RULES = (
+_LEGACY_HARD_RULES = (
     "- Your tools are `create_agent`, `read_blackboard`, `write_plan`, "
     "`request_approval`, and `message`. Use `create_agent` for every "
     "operational capability — pass `name` (one of the agents listed in "
@@ -91,7 +92,7 @@ _HARD_RULES = (
     "without authorisation, IM bridge configuration, marketplace).",
 )
 
-_WORKING_STYLE = (
+_LEGACY_WORKING_STYLE = (
     "- Plan in 1-3 steps before delegating; when a visible plan helps, call `write_plan`.",
     "- After each tool result, decide: continue / replan / request approval / answer.",
     "- Summarise findings with severity counts and link to the raw log path that "
@@ -118,21 +119,39 @@ def _render_agent_table(agents: Iterable[ExpertAgentSpec]) -> str:
     return "\n".join(rows)
 
 
-def render_orchestrator_prompt(registry: AgentRegistry) -> str:
-    """Render the locked orchestrator system prompt for *registry*.
-
-    Snapshot-stable: given the same registry the output is byte-identical.
-    """
+def render_legacy_orchestrator_prompt(registry: AgentRegistry) -> str:
+    """Render the deprecated linear expert-agent prompt for rollback tests."""
     parts: list[str] = []
     parts.append("# Role")
-    parts.append(_ROLE)
+    parts.append(_LEGACY_ROLE)
     parts.append("")
     parts.append("# Hard rules")
-    parts.extend(_HARD_RULES)
+    parts.extend(_LEGACY_HARD_RULES)
     parts.append("")
     parts.append("# Available expert agents")
     parts.append(_render_agent_table(registry))
     parts.append("")
     parts.append("# Working style")
-    parts.extend(_WORKING_STYLE)
+    parts.extend(_LEGACY_WORKING_STYLE)
     return "\n".join(parts) + "\n"
+
+
+def render_orchestrator_prompt(
+    registry: AgentRegistry,
+    *,
+    budget_view=None,
+    blackboard_snapshot=None,
+    use_pi_prompt: bool = True,
+) -> str:
+    """Render the orchestrator system prompt for *registry*.
+
+    ``use_pi_prompt=False`` returns the deprecated linear prompt as a temporary
+    bridge for rollback. New code should use the Pi prompt.
+    """
+    if not use_pi_prompt:
+        return render_legacy_orchestrator_prompt(registry)
+    return render_pi_prompt(
+        registry,
+        budget_view=budget_view,
+        blackboard_snapshot=blackboard_snapshot,
+    )

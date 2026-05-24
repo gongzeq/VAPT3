@@ -22,13 +22,20 @@ def _resolve(source: BlackboardSource) -> Blackboard:
 class BlackboardWriteTool(Tool):
     """Write a discovery/finding to the shared blackboard."""
 
-    def __init__(self, blackboard: BlackboardSource, agent_name: str = "unknown") -> None:
+    def __init__(
+        self,
+        blackboard: BlackboardSource,
+        agent_name: str = "unknown",
+        *,
+        tool_name: str = "blackboard_write",
+    ) -> None:
         self._blackboard = blackboard
         self._agent_name = agent_name
+        self._tool_name = tool_name
 
     @property
     def name(self) -> str:
-        return "blackboard_write"
+        return self._tool_name
 
     @property
     def description(self) -> str:

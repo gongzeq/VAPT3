@@ -174,7 +174,10 @@ class ToolRegistry:
             if callable(mark_approved):
                 mark_approved(params, policy_ctx.scan_id, approval_payload)
 
-        return await tool.execute(**params)
+        try:
+            return await tool.execute(**params)
+        finally:
+            self._tick_budget(policy_ctx)
 
     @staticmethod
     def _approval_timeout_for(tool: Tool) -> float | None:
@@ -209,10 +212,12 @@ class ToolRegistry:
             return "report.publish"
         if getattr(tool, "metadata", None) is not None:
             return "skill.invoke"
-        if name == "create_agent":
+        if name in {"create_agent", "create_worker"}:
             return "worker.spawn"
-        if name == "blackboard_write":
+        if name in {"blackboard_write", "write_blackboard"}:
             return "blackboard.write"
+        if name in {"read_blackboard", "read_blackboard_full"}:
+            return "blackboard.read"
         if name == "exec":
             return "exec.shell"
         if name in {"curl", "web_fetch"}:
@@ -223,7 +228,22 @@ class ToolRegistry:
             return "fs.write"
         if name == "request_approval":
             return "approval.request"
+        if name == "message":
+            return "message"
         return "tool.invoke"
+
+    @staticmethod
+    def _tick_budget(policy_ctx: PolicyContext) -> None:
+        budget = policy_ctx.budget
+        tick = getattr(budget, "on_tool_call", None)
+        if not callable(tick):
+            return
+        try:
+            tick(worker_id=policy_ctx.worker_id)
+        except TypeError:
+            tick()
+        except Exception:
+            return
 
     @property
     def tool_names(self) -> list[str]:

@@ -42,7 +42,6 @@ async def test_surface_confirm_approve():
     channel = _make_channel()
     # Spy on broadcast_agent_event to capture the ask_id.
     broadcast_calls: list[dict[str, Any]] = []
-    original_broadcast = channel.broadcast_agent_event
 
     async def _capture_broadcast(**kwargs):
         broadcast_calls.append(kwargs)

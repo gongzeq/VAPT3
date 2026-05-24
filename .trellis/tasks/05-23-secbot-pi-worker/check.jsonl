@@ -1,6 +1,6 @@
-{"file": ".trellis/spec/backend/policy-engine.md", "reason": "Check PR2 against PolicyEngine rule order, structured deny/approval responses, Tool Router integration, worker restrictions, and non-goals."}
-{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Verify destructive approval UI payload and session-cached approval semantics remain compatible."}
-{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Verify PR2 does not loosen sandbox, SkillTool, or raw exec safety invariants."}
-{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Verify skill metadata-driven policy behavior respects risk_level/network/runtime contract."}
-{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Verify worker-level blackboard write restrictions are enforced without regressing PR1 typed blackboard behavior."}
-{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify PR2 does not accidentally implement later Pi migration layers such as BudgetEnforcer, EventStream, or FindingOntology."}
+{"file": ".trellis/spec/backend/budget-enforcer.md", "reason": "Check PR3 against BudgetTracker/BudgetView status math, budget-share accounting, reflect-checkpoint allowlist, and non-goals."}
+{"file": ".trellis/spec/backend/pi-orchestrator.md", "reason": "Check PR3 prompt output for phase-aware DAG rules, dynamic budget/phase sections, and absence of hard-coded linear stage ordering."}
+{"file": ".trellis/spec/backend/policy-engine.md", "reason": "Verify BudgetRule behavior and structured denials integrate with the PR2 Tool Router without weakening existing rules."}
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Verify checkpoint summary and phase-transition writes align with typed blackboard contracts and legacy read compatibility."}
+{"file": ".trellis/spec/backend/blackboard-registry.md", "reason": "Verify blackboard snapshot compatibility for prompt rendering and checkpoint flow."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Verify PR3 does not accidentally implement later EventStream, FindingOntology, ReportBuilder, KnowledgeBase, or BrowserRunner layers."}

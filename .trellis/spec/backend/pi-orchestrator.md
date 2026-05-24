@@ -68,7 +68,7 @@ to dispatch and when to checkpoint. You DO NOT execute scans yourself.
    - `read_blackboard()` / `write_blackboard(kind, payload)`
    - `request_approval(action, args, justification)`
    - `write_plan(steps[])`
-   - `message(text)`（直接回用户）
+   - `message(content)`（直接回用户）
 
 2. **DAG 决策规则**：
    - 在 spawn worker 之前必须 `read_blackboard`，禁止重复探测已有事实。

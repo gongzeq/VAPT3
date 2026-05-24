@@ -263,6 +263,61 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
     await asyncio.gather(*mgr._running_tasks.values(), return_exceptions=True)
 
 
+@pytest.mark.asyncio
+async def test_create_worker_maps_preset_and_passes_budget_share():
+    """create_worker should bridge Pi presets onto the legacy subagent manager."""
+    from secbot.agent.tools.spawn import CreateWorkerTool
+
+    fake_spec = SimpleNamespace(
+        available=True,
+        endpoint_bound=False,
+        missing_binaries=[],
+    )
+
+    class FakeRegistry:
+        def __contains__(self, name: object) -> bool:
+            return name == "asset_discovery"
+
+        def get(self, name: str):
+            assert name == "asset_discovery"
+            return fake_spec
+
+        def names(self) -> list[str]:
+            return ["asset_discovery"]
+
+    manager = SimpleNamespace(
+        agent_registry=FakeRegistry(),
+        max_concurrent_subagents=1,
+        get_running_count=lambda: 0,
+        spawn=AsyncMock(return_value="started"),
+    )
+    tool = CreateWorkerTool(manager)
+    tool.set_context("websocket", "chat-1", "websocket:chat-1")
+    tool.set_origin_message_id("msg-1")
+    tool.set_budget_defaults(max_wall_clock_sec=60, max_tool_calls=3)
+
+    out = await tool.execute(
+        preset="recon",
+        task="map the target",
+        scope_view={"in_scope": ["example.test"]},
+        skills_subset=["qscan-host-discovery"],
+    )
+
+    assert out == "started"
+    manager.spawn.assert_awaited_once()
+    call = manager.spawn.await_args.kwargs
+    assert call["agent"] == "asset_discovery"
+    assert call["target"] == "example.test"
+    assert call["budget_share"] == {
+        "max_wall_clock_sec": 60.0,
+        "max_tool_calls": 3,
+    }
+    assert call["skills_subset"] == ["qscan-host-discovery"]
+    assert call["origin_channel"] == "websocket"
+    assert call["origin_chat_id"] == "chat-1"
+    assert call["origin_message_id"] == "msg-1"
+
+
 def test_subagent_default_max_concurrent_matches_agent_defaults(tmp_path):
     """Direct SubagentManager construction should use the agent default concurrency limit."""
     from secbot.agent.subagent import SubagentManager

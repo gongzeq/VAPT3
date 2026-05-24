@@ -21,6 +21,26 @@ if sys.platform == "win32":
 
 import typer
 from loguru import logger
+from prompt_toolkit import PromptSession, print_formatted_text
+from prompt_toolkit.application import run_in_terminal
+from prompt_toolkit.formatted_text import ANSI, HTML
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.patch_stdout import patch_stdout
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.table import Table
+from rich.text import Text
+
+from secbot import __logo__, __version__
+from secbot.cli.stream import StreamRenderer, ThinkingSpinner
+from secbot.config.paths import get_workspace_path, is_default_workspace
+from secbot.config.schema import Config
+from secbot.utils.helpers import sync_workspace_templates
+from secbot.utils.restart import (
+    consume_restart_notice_from_env,
+    format_restart_completed_message,
+    should_show_cli_restart_notice,
+)
 
 # Remove default handler and re-add with unified secbot format
 logger.remove()
@@ -37,18 +57,6 @@ _log_handler_id = logger.add(
     filter=lambda record: record["extra"].setdefault("channel", "-") or True,
 )
 
-from prompt_toolkit import PromptSession, print_formatted_text
-from prompt_toolkit.application import run_in_terminal
-from prompt_toolkit.formatted_text import ANSI, HTML
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.patch_stdout import patch_stdout
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.table import Table
-from rich.text import Text
-
-from secbot import __logo__, __version__
-
 
 class SafeFileHistory(FileHistory):
     """FileHistory subclass that sanitizes surrogate characters on write.
@@ -61,15 +69,6 @@ class SafeFileHistory(FileHistory):
     def store_string(self, string: str) -> None:
         safe = string.encode("utf-8", errors="surrogateescape").decode("utf-8", errors="replace")
         super().store_string(safe)
-from secbot.cli.stream import StreamRenderer, ThinkingSpinner
-from secbot.config.paths import get_workspace_path, is_default_workspace
-from secbot.config.schema import Config
-from secbot.utils.helpers import sync_workspace_templates
-from secbot.utils.restart import (
-    consume_restart_notice_from_env,
-    format_restart_completed_message,
-    should_show_cli_restart_notice,
-)
 
 app = typer.Typer(
     name="secbot",
@@ -602,7 +601,6 @@ def serve(
         console.print("[red]aiohttp is required. Install with: pip install 'secbot-ai[api]'[/red]")
         raise typer.Exit(1)
 
-    from loguru import logger
     from secbot.agent.loop import AgentLoop
     from secbot.api.server import create_app
     from secbot.bus.queue import MessageBus
@@ -646,6 +644,8 @@ def serve(
         consolidation_ratio=runtime_config.agents.defaults.consolidation_ratio,
         max_messages=runtime_config.agents.defaults.max_messages,
         tools_config=runtime_config.tools,
+        agents_config=runtime_config.agents,
+        budget_config=runtime_config.budget,
     )
 
     model_name = runtime_config.agents.defaults.model
@@ -783,6 +783,8 @@ def _run_gateway(
         consolidation_ratio=config.agents.defaults.consolidation_ratio,
         max_messages=config.agents.defaults.max_messages,
         tools_config=config.tools,
+        agents_config=config.agents,
+        budget_config=config.budget,
         provider_snapshot_loader=load_provider_snapshot,
         provider_signature=provider_snapshot.signature,
     )
@@ -1368,6 +1370,8 @@ def agent(
         consolidation_ratio=config.agents.defaults.consolidation_ratio,
         max_messages=config.agents.defaults.max_messages,
         tools_config=config.tools,
+        agents_config=config.agents,
+        budget_config=config.budget,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):

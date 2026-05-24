@@ -171,6 +171,80 @@ async def test_execute_worker_report_publish_denied() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_ticks_budget_after_allowed_tool() -> None:
+    class Budget:
+        def __init__(self) -> None:
+            self.calls: list[str | None] = []
+
+        def status(self) -> str:
+            return "HEALTHY"
+
+        def on_tool_call(self, worker_id: str | None = None) -> None:
+            self.calls.append(worker_id)
+
+    budget = Budget()
+    registry = ToolRegistry(
+        policy_context=PolicyContext(
+            caller_kind="worker",
+            worker_id="worker-1",
+            budget=budget,
+        )
+    )
+    registry.register(_FakeTool("read_blackboard"))
+
+    result = await registry.execute("read_blackboard", {})
+
+    assert result == {}
+    assert budget.calls == ["worker-1"]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_blackboard_alias_routes_to_budget_allowlist() -> None:
+    class Budget:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def status(self) -> str:
+            return "EXCEEDED"
+
+        def on_tool_call(self, worker_id: str | None = None) -> None:
+            del worker_id
+            self.calls += 1
+
+    budget = Budget()
+    registry = ToolRegistry(policy_context=PolicyContext(budget=budget))
+    registry.register(_FakeTool("write_blackboard"))
+
+    result = await registry.execute("write_blackboard", {"kind": "summary"})
+
+    assert result == {"kind": "summary"}
+    assert budget.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_does_not_tick_budget_after_policy_denial() -> None:
+    class Budget:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def status(self) -> str:
+            return "EXCEEDED"
+
+        def on_tool_call(self, worker_id: str | None = None) -> None:
+            del worker_id
+            self.calls += 1
+
+    budget = Budget()
+    registry = ToolRegistry(policy_context=PolicyContext(budget=budget))
+    registry.register(_FakeTool("create_agent"))
+
+    result = await registry.execute("create_agent", {"target": "example.test"})
+
+    assert "policy_denied" in result
+    assert budget.calls == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tool_name", ["list_dir", "glob", "grep"])
 async def test_execute_filesystem_read_tools_route_through_workspace_policy(
     tmp_path,

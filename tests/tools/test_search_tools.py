@@ -297,6 +297,7 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
 
     assert set(loop.tools.tool_names) == {
         "create_agent",
+        "create_worker",
         "list_teammates",
         "read_assets",
         "read_blackboard",
@@ -306,6 +307,7 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
         "send_teammate_message",
         "shutdown_teammate",
         "spawn_teammate",
+        "write_blackboard",
         "write_plan",
         "message",
     }

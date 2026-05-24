@@ -262,6 +262,18 @@ def _query_first(query: dict[str, list[str]], key: str) -> str | None:
     return values[0] if values else None
 
 
+def _format_heartbeat(timestamp: float | int | None) -> str | None:
+    """Return an ISO-8601 UTC timestamp for a heartbeat epoch value."""
+    if timestamp is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(timestamp), tz=timezone.utc).isoformat(
+            timespec="seconds"
+        )
+    except (OSError, OverflowError, TypeError, ValueError):
+        return None
+
+
 def _parse_inbound_payload(raw: str) -> str | None:
     """Parse a client frame into text; return None for empty or unrecognized content."""
     text = raw.strip()
@@ -517,6 +529,10 @@ class WebSocketChannel(BaseChannel):
         # Stop button after a refresh or chat switch, replacing the older
         # ``hasPendingToolCalls`` heuristic that inspected persisted history.
         self._active_turns: set[str] = set()
+        # ask_id -> Future resolved by ``scan.user_reply``. ``surface_confirm``
+        # awaits these futures to bridge high-risk skill confirmation from the
+        # agent loop to the WebUI.
+        self._pending_confirms: dict[str, asyncio.Future[bool]] = {}
         # Single-use tokens consumed at WebSocket handshake.
         self._issued_tokens: dict[str, float] = {}
         # Multi-use tokens for the embedded webui's REST surface; checked but not consumed.
@@ -1850,6 +1866,60 @@ class WebSocketChannel(BaseChannel):
             body["duration_ms"] = int(duration_ms)
         return await self._broadcast_frame(body, chat_id=chat_id)
 
+    async def broadcast_agent_event(
+        self,
+        *,
+        chat_id: str,
+        type: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Emit an ``agent_event`` frame and persist non-ephemeral events."""
+        body = {
+            "event": "agent_event",
+            "chat_id": chat_id,
+            "type": type,
+            "payload": dict(payload),
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        sent = await self._broadcast_frame(body, chat_id=chat_id)
+
+        ephemeral = {"agent_status", "subagent_status", "high_risk_confirm"}
+        if type not in ephemeral and self._session_manager is not None:
+            session = self._session_manager.get_or_create(f"websocket:{chat_id}")
+            sender_id = str(payload.get("agent") or payload.get("agent_name") or "agent")
+            session.add_message(
+                "assistant",
+                "",
+                sender_id=sender_id,
+                _kind="agent_event",
+                agent_event={"type": type, "payload": dict(payload)},
+            )
+            self._session_manager.save(session)
+
+        return sent
+
+    async def surface_confirm(self, payload: dict[str, Any], *, chat_id: str) -> bool:
+        """Broadcast a high-risk confirmation request and await approve/deny."""
+        ask_id = uuid.uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+        self._pending_confirms[ask_id] = future
+
+        outbound = dict(payload)
+        outbound["type"] = "high_risk_confirm"
+        outbound["ask_id"] = ask_id
+        try:
+            await self.broadcast_agent_event(
+                chat_id=chat_id,
+                type="high_risk_confirm",
+                payload=outbound,
+            )
+            return await future
+        finally:
+            self._pending_confirms.pop(ask_id, None)
+            if not future.done():
+                future.cancel()
+
     async def _broadcast_frame(
         self, body: dict[str, Any], *, chat_id: str | None
     ) -> bool:
@@ -2265,8 +2335,8 @@ class WebSocketChannel(BaseChannel):
         finally:
             self._cleanup_connection(connection)
 
-    @staticmethod
     def _save_envelope_media(
+        self,
         media: list[Any],
     ) -> tuple[list[str], str | None]:
         """Decode and persist ``media`` items from a ``message`` envelope.
@@ -2386,6 +2456,9 @@ class WebSocketChannel(BaseChannel):
                 metadata=metadata,
             )
             return
+        if t == "scan.user_reply":
+            await self._handle_scan_user_reply(connection, envelope)
+            return
         if t == "message":
             cid = envelope.get("chat_id")
             content = envelope.get("content")
@@ -2441,7 +2514,36 @@ class WebSocketChannel(BaseChannel):
             return
         await self._send_event(connection, "error", detail=f"unknown type: {t!r}")
 
+    async def _handle_scan_user_reply(
+        self,
+        connection: Any,
+        envelope: dict[str, Any],
+    ) -> None:
+        """Resolve a pending high-risk confirmation from a WebUI reply."""
+        ask_id = envelope.get("ask_id")
+        if not isinstance(ask_id, str) or not ask_id:
+            await self._send_event(connection, "error", detail="missing ask_id")
+            return
+
+        future = self._pending_confirms.get(ask_id)
+        if future is None or future.done():
+            self._pending_confirms.pop(ask_id, None)
+            await self._send_event(connection, "error", detail="unknown ask_id")
+            return
+
+        decision = envelope.get("decision")
+        if decision not in {"approve", "deny"}:
+            await self._send_event(connection, "error", detail="invalid decision")
+            return
+
+        future.set_result(decision == "approve")
+
     async def stop(self) -> None:
+        pending_confirms = list(self._pending_confirms.values())
+        self._pending_confirms.clear()
+        for future in pending_confirms:
+            if not future.done():
+                future.cancel()
         if not self._running:
             return
         self._running = False

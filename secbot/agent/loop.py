@@ -53,7 +53,7 @@ from secbot.agent.tools.self import MyTool
 # all shell access for security workflows MUST go through SkillTool. See
 # _register_operational_tools and subagent.py for the matching policy.
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
-from secbot.agent.tools.spawn import SpawnTool
+from secbot.agent.tools.spawn import CreateWorkerTool, SpawnTool
 from secbot.agent.tools.teammate import (
     ListTeammatesTool,
     ReadTeammateInboxTool,
@@ -65,11 +65,12 @@ from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.command import CommandContext, CommandRouter, register_builtin_commands
-from secbot.config.schema import AgentDefaults
+from secbot.config.schema import AgentDefaults, AgentsConfig, BudgetConfig
 from secbot.policy import PolicyContext, ScopeContract
 from secbot.providers.base import LLMProvider
 from secbot.providers.factory import ProviderSnapshot
 from secbot.session.manager import Session, SessionManager
+from secbot.state import BudgetTracker, inject_exceeded_message
 from secbot.utils.document import extract_documents
 from secbot.utils.helpers import image_placeholder_text
 from secbot.utils.helpers import truncate_text as truncate_text_fn
@@ -438,6 +439,8 @@ class AgentLoop:
         unified_session: bool = False,
         disabled_skills: list[str] | None = None,
         tools_config: ToolsConfig | None = None,
+        agents_config: AgentsConfig | None = None,
+        budget_config: BudgetConfig | None = None,
         provider_snapshot_loader: Callable[[], ProviderSnapshot] | None = None,
         provider_signature: tuple[object, ...] | None = None,
         is_orchestrator: bool = True,
@@ -445,6 +448,7 @@ class AgentLoop:
         from secbot.config.schema import ExecToolConfig, ToolsConfig, WebToolsConfig
 
         _tc = tools_config or ToolsConfig()
+        _ac = agents_config or AgentsConfig()
         defaults = AgentDefaults()
         self.bus = bus
         self.channels_config = channels_config
@@ -480,6 +484,9 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
         self.is_orchestrator = is_orchestrator
+        self.use_pi_prompt = bool(_ac.use_pi_prompt)
+        self.budget_config = budget_config or BudgetConfig()
+        self._budget_trackers: dict[str, BudgetTracker] = {}
         self._current_chat_id: str | None = None
 
         self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
@@ -544,6 +551,8 @@ class AgentLoop:
             blackboard=self.blackboard,
             blackboard_registry=self.blackboard_registry,
             asset_feed_registry=self.asset_feed_registry,
+            budget_getter=self._budget_for_chat,
+            worker_share_defaults=self.budget_config.worker_share_defaults,
         )
         self.teammates = TeammateManager(
             provider=provider,
@@ -608,6 +617,55 @@ class AgentLoop:
         self.subagents.max_iterations = self.max_iterations
         self.teammates.max_iterations = self.max_iterations
 
+    def _budget_for_chat(self, chat_id: str) -> BudgetTracker:
+        """Return the in-memory budget tracker for a chat."""
+        key = chat_id or "direct"
+        tracker = self._budget_trackers.get(key)
+        if tracker is None:
+            cfg = self.budget_config
+            tracker = BudgetTracker(
+                key,
+                wall_clock_max_sec=cfg.wall_clock_max_sec,
+                tool_calls_max=cfg.tool_calls_max,
+                low_threshold_pct=cfg.low_threshold_pct,
+                enabled=cfg.enabled,
+                allow_extend=cfg.allow_extend,
+            )
+            self._budget_trackers[key] = tracker
+        return tracker
+
+    async def _broadcast_checkpoint_required(
+        self,
+        *,
+        channel: str,
+        chat_id: str,
+        budget_view: Any,
+    ) -> None:
+        """Best-effort checkpoint event for WebSocket clients."""
+        if channel != "websocket":
+            return
+        from secbot.channels.websocket import WebSocketChannel
+
+        ws_channel = WebSocketChannel.get_active_instance()
+        if ws_channel is None:
+            return
+        try:
+            await ws_channel.broadcast_agent_event(
+                chat_id=chat_id,
+                type="checkpoint_required",
+                payload={
+                    "chat_id": chat_id,
+                    "reason": "budget_exhausted",
+                    "budget": budget_view.as_dict(),
+                    "summary_excerpt": "",
+                    "blockers_excerpt": "",
+                    "next_steps_excerpt": "",
+                    "actions": ["resume", "abort", "extend_budget"],
+                },
+            )
+        except Exception:
+            logger.debug("agent_event (checkpoint_required) broadcast failed", exc_info=True)
+
     def _apply_provider_snapshot(self, snapshot: ProviderSnapshot) -> None:
         """Swap model/provider for future turns without disturbing an active one."""
         provider = snapshot.provider
@@ -650,11 +708,19 @@ class AgentLoop:
     def _register_orchestrator_tools(self) -> None:
         """Register the orchestrator's coordination + message tool surface."""
         self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(CreateWorkerTool(manager=self.subagents))
         self.tools.register(SpawnTeammateTool(self.teammates))
         self.tools.register(ListTeammatesTool(self.teammates))
         self.tools.register(SendTeammateMessageTool(self.teammates))
         self.tools.register(ReadTeammateInboxTool(self.teammates))
         self.tools.register(ShutdownTeammateTool(self.teammates))
+        self.tools.register(
+            BlackboardWriteTool(
+                blackboard=lambda: self.blackboard,
+                agent_name="orchestrator",
+                tool_name="write_blackboard",
+            )
+        )
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         self.tools.register(BlackboardReadFullTool(blackboard=lambda: self.blackboard))
         self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
@@ -764,13 +830,19 @@ class AgentLoop:
         else:
             effective_key = f"{channel}:{chat_id}"
         self._current_chat_id = chat_id
-        for name in ("message", "create_agent", "cron", "my"):
+        for name in ("message", "create_agent", "create_worker", "cron", "my"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    if name == "create_agent":
+                    if name in {"create_agent", "create_worker"}:
                         tool.set_context(channel, chat_id, effective_key=effective_key)
                         if hasattr(tool, "set_origin_message_id"):
                             tool.set_origin_message_id(message_id)
+                        if hasattr(tool, "set_budget_defaults"):
+                            defaults = self.budget_config.worker_share_defaults
+                            tool.set_budget_defaults(
+                                max_wall_clock_sec=defaults.max_wall_clock_sec,
+                                max_tool_calls=defaults.max_tool_calls,
+                            )
                     elif name == "cron":
                         tool.set_context(channel, chat_id, metadata=metadata, session_key=session_key)
                     elif name == "message":
@@ -998,7 +1070,36 @@ class AgentLoop:
         # and across spawned subagents.
         active_blackboard = await self.blackboard_registry.get_or_create(chat_id)
         self.blackboard = active_blackboard
-        scope = ScopeContract.from_mapping((await active_blackboard.snapshot()).scope)
+        blackboard_snapshot = await active_blackboard.snapshot()
+        budget_tracker = self._budget_for_chat(chat_id)
+        budget_view = budget_tracker.status()
+        scope = ScopeContract.from_mapping(blackboard_snapshot.scope)
+        if initial_messages and initial_messages[0].get("role") == "system":
+            rebuilt_system = self.context.build_system_prompt(
+                channel=channel,
+                is_orchestrator=self.is_orchestrator,
+                agent_registry=self._agent_registry,
+                budget_view=budget_view,
+                blackboard_snapshot=blackboard_snapshot,
+                use_pi_prompt=self.use_pi_prompt,
+            )
+            initial_messages = [dict(initial_messages[0], content=rebuilt_system), *initial_messages[1:]]
+            if self.budget_config.enabled and budget_view.status == "EXCEEDED":
+                initial_messages.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": inject_exceeded_message(
+                            budget_view,
+                            current_phase=blackboard_snapshot.current_phase,
+                        ),
+                    },
+                )
+                await self._broadcast_checkpoint_required(
+                    channel=channel,
+                    chat_id=chat_id,
+                    budget_view=budget_view,
+                )
         set_policy_context = getattr(self.tools, "set_policy_context", None)
         if callable(set_policy_context):
             set_policy_context(
@@ -1009,6 +1110,7 @@ class AgentLoop:
                     workspace_strict=self.restrict_to_workspace,
                     scope=scope,
                     confirm=confirm_fn,
+                    budget=budget_tracker,
                 )
             )
 

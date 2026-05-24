@@ -40,6 +40,9 @@ class ContextBuilder:
         channel: str | None = None,
         is_orchestrator: bool = False,
         agent_registry: Any = None,
+        budget_view: Any = None,
+        blackboard_snapshot: Any = None,
+        use_pi_prompt: bool = True,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills.
 
@@ -67,7 +70,14 @@ class ContextBuilder:
             # ``skills_summary`` — orchestrator never calls skill tools directly.
             from secbot.agents.orchestrator import render_orchestrator_prompt
 
-            parts.append(render_orchestrator_prompt(agent_registry))
+            parts.append(
+                render_orchestrator_prompt(
+                    agent_registry,
+                    budget_view=budget_view,
+                    blackboard_snapshot=blackboard_snapshot,
+                    use_pi_prompt=use_pi_prompt,
+                )
+            )
         else:
             always_skills = self.skills.get_always_skills()
             if always_skills:
@@ -167,6 +177,9 @@ class ContextBuilder:
         sender_id: str | None = None,
         is_orchestrator: bool = False,
         agent_registry: Any = None,
+        budget_view: Any = None,
+        blackboard_snapshot: Any = None,
+        use_pi_prompt: bool = True,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         runtime_ctx = self._build_runtime_context(channel, chat_id, self.timezone, session_summary=session_summary, sender_id=sender_id)
@@ -186,6 +199,9 @@ class ContextBuilder:
                     channel=channel,
                     is_orchestrator=is_orchestrator,
                     agent_registry=agent_registry,
+                    budget_view=budget_view,
+                    blackboard_snapshot=blackboard_snapshot,
+                    use_pi_prompt=use_pi_prompt,
                 ),
             },
             *history,

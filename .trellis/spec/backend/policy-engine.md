@@ -89,6 +89,7 @@ Action = Literal[
     "skill.invoke",       # SkillTool（subset of tool.invoke）
     "worker.spawn",       # create_worker
     "blackboard.write",   # 含 kind 限制
+    "blackboard.read",    # read_blackboard / read_blackboard_full
     "exec.shell",         # ExecTool（默认禁用）
     "http.fetch",         # CurlTool / WebFetch
     "fs.read",            # ReadFileTool / ListDirTool / GlobTool / GrepTool
@@ -96,6 +97,7 @@ Action = Literal[
     "fs.delete",          # （新工具引入时）
     "approval.request",   # request_approval
     "report.publish",     # 报告发布（report-html）
+    "message",            # 直接通知用户
 ]
 ```
 
@@ -269,7 +271,10 @@ class CredentialBoundaryRule(Rule):
 
 #### BudgetRule
 
-代理调用 `BudgetEnforcer.check(ctx)`（见 `budget-enforcer.md` §4.3）：
+代理调用 `BudgetEnforcer.check(ctx)`（见 `budget-enforcer.md` §4.3）。PR3
+启用 reflect-then-checkpoint 后，`EXCEEDED` 状态只允许 Pi 完成 checkpoint 三件套：
+`blackboard.write(kind="summary")`、`blackboard.write(kind="phase_transition")`、
+`blackboard.read` 与 `message`。
 
 ```python
 class BudgetRule(Rule):
@@ -278,9 +283,16 @@ class BudgetRule(Rule):
     def check(self, args, ctx):
         status = ctx.budget.status()  # HEALTHY | LOW | EXCEEDED
         if status == "EXCEEDED":
+            if (ctx.action, args.get("kind")) in {
+                ("blackboard.write", "summary"),
+                ("blackboard.write", "phase_transition"),
+            }:
+                return PolicyDecision("allow")
+            if ctx.action in {"blackboard.read", "message"}:
+                return PolicyDecision("allow")
             return PolicyDecision("deny", rule="budget",
-                reason="budget exhausted; wait for reflect/checkpoint",
-                suggest="Pi: write summary then stop")
+                reason="budget exhausted; write summary/phase_transition first",
+                suggest="see [BUDGET_EXCEEDED] instructions")
         return PolicyDecision("allow")
 ```
 
@@ -290,19 +302,13 @@ PolicyEngine 串行执行，**第一个非 allow 即返回**。顺序：
 
 ```
 ScopeRule → SSRFRule → WorkspaceRule → CredentialBoundaryRule →
-RateLimitRule → DestructiveRule → BudgetRule
+CallerKindRule → BudgetRule → RateLimitRule → DestructiveRule
 ```
 
-理由：先确认目标合法（scope / SSRF / workspace），再资源类（rate），再人工审批
-（destructive），最后 budget（最重，且其他规则可能让其无关）。
-
-`CallerKindRule` 是 §4.2 的 worker 授权限制，不属于上述七个跨 caller 的安全规则。
-PR2 执行顺序中它插在 `CredentialBoundaryRule` 之后、`RateLimitRule` 之前：
-
-```
-ScopeRule → SSRFRule → WorkspaceRule → CredentialBoundaryRule →
-CallerKindRule → RateLimitRule → DestructiveRule → BudgetRule
-```
+理由：先确认目标合法（scope / SSRF / workspace / credential），再确认 caller
+是否有权做这类动作；然后执行 BudgetRule，使 `EXCEEDED` 时不会消耗 rate-limit
+bucket，也不会先弹 destructive approval。预算健康时再进入资源类（rate）和人工审批
+（destructive）。
 
 这样目标/凭据边界优先给出最具体的越权原因；worker 永远不能执行的动作（如
 `worker.spawn`、`report.publish`、`blackboard.write(kind="finding")`）也不会消耗

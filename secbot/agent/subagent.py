@@ -29,6 +29,7 @@ from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
 from secbot.policy import PolicyContext, ScopeContract
 from secbot.providers.base import LLMProvider
+from secbot.state import BudgetExhausted
 from secbot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
@@ -250,6 +251,8 @@ class SubagentManager:
         blackboard: Blackboard | None = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
         asset_feed_registry: "AssetFeedRegistry | None" = None,
+        budget_getter: Callable[[str], Any] | None = None,
+        worker_share_defaults: Any | None = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -278,6 +281,8 @@ class SubagentManager:
         # channel (URL / port / vuln / ...). When None, sub-agents still
         # boot but ``asset_push`` / ``read_assets`` are not registered.
         self.asset_feed_registry = asset_feed_registry
+        self._budget_getter = budget_getter
+        self._worker_share_defaults = worker_share_defaults
         # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
         # resolves the named spec and ``_run_subagent`` filters the skill tool
         # set down to ``spec.scoped_skills``.
@@ -285,6 +290,7 @@ class SubagentManager:
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
+        self._task_budget_trackers: dict[str, Any] = {}
         # D5 endpoint-level mutex: maps normalised ``(endpoint_url, endpoint_param)``
         # tuples to the task_id that currently owns them. ``spawn`` rejects a
         # second endpoint-bound subagent targeting the same key; the per-task
@@ -361,6 +367,8 @@ class SubagentManager:
         target: str | None = None,
         endpoint_url: str | None = None,
         endpoint_param: str | None = None,
+        budget_share: dict[str, Any] | None = None,
+        skills_subset: list[str] | None = None,
     ) -> str:
         """Spawn a subagent to execute a task in the background.
 
@@ -402,6 +410,19 @@ class SubagentManager:
                     "it to finish before launching another."
                 )
 
+        budget_tracker: Any | None = None
+        if budget_share is not None and self._budget_getter is not None:
+            budget_tracker = self._budget_getter(origin_chat_id)
+            try:
+                budget_tracker.grant_share(
+                    task_id,
+                    float(budget_share.get("max_wall_clock_sec", 0.0)),
+                    int(budget_share.get("max_tool_calls", 0)),
+                )
+            except BudgetExhausted as exc:
+                return f"create_worker failed: {exc}"
+            self._task_budget_trackers[task_id] = budget_tracker
+
         status = SubagentStatus(
             task_id=task_id,
             label=display_label,
@@ -414,7 +435,16 @@ class SubagentManager:
             self._endpoint_inflight[endpoint_key] = task_id
 
         bg_task = asyncio.create_task(
-            self._run_subagent(task_id, task, display_label, origin, status, origin_message_id, spec)
+            self._run_subagent(
+                task_id,
+                task,
+                display_label,
+                origin,
+                status,
+                origin_message_id,
+                spec,
+                skills_subset,
+            )
         )
         self._running_tasks[task_id] = bg_task
         if session_key:
@@ -434,6 +464,9 @@ class SubagentManager:
             # (regardless of success/error), but only if WE still own it.
             if endpoint_key is not None and self._endpoint_inflight.get(endpoint_key) == task_id:
                 self._endpoint_inflight.pop(endpoint_key, None)
+            tracker = self._task_budget_trackers.pop(task_id, None)
+            if tracker is not None:
+                tracker.reclaim_share(task_id)
 
         bg_task.add_done_callback(_cleanup)
 
@@ -469,6 +502,7 @@ class SubagentManager:
         status: SubagentStatus,
         origin_message_id: str | None = None,
         spec: "ExpertAgentSpec | None" = None,
+        skills_subset: list[str] | None = None,
     ) -> None:
         """Execute the subagent task and announce the result."""
         logger.info("Subagent [{}] starting task: {}", task_id, label)
@@ -565,6 +599,9 @@ class SubagentManager:
             scoped: set[str] | None = (
                 set(spec.scoped_skills) if spec is not None else None
             )
+            if skills_subset is not None:
+                requested = {skill.strip() for skill in skills_subset if skill.strip()}
+                scoped = requested if scoped is None else scoped & requested
             critical_tool_names: set[str] = set()
             for skill_tool in discover_skill_tools(
                 BUILTIN_SKILLS_DIR,
@@ -581,6 +618,9 @@ class SubagentManager:
             # inside the subagent still surface the WebUI approval dialog.
             parent_confirm = current_skill_confirm()
             scope = ScopeContract.from_mapping((await resolved_blackboard.snapshot()).scope)
+            budget_tracker = self._task_budget_trackers.get(task_id)
+            if budget_tracker is None and self._budget_getter is not None:
+                budget_tracker = self._budget_getter(chat_id)
             tools.set_policy_context(
                 PolicyContext(
                     caller_kind="worker",
@@ -590,6 +630,7 @@ class SubagentManager:
                     workspace_strict=self.restrict_to_workspace,
                     scope=scope,
                     confirm=parent_confirm,
+                    budget=budget_tracker,
                 )
             )
             bind_skill_context(

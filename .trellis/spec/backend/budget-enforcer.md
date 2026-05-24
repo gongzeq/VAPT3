@@ -158,15 +158,11 @@ wall_clock: 15m12s / 15m00s (101.3%)
 tool_calls: 47 / 60 (78%)
 
 You MUST do the following BEFORE any further tool call:
-1. Write `summary` to blackboard:
-   - kind="summary", payload={kind="findings_summary", items=[...]}
-2. Write `summary` to blackboard:
-   - kind="summary", payload={kind="blockers_summary", items=[...]}
-3. Write `summary` to blackboard:
-   - kind="summary", payload={kind="next_steps", items=[...]}
-4. Transition phase to "Checkpoint":
-   - kind="phase_transition", payload={from=<current>, to="Checkpoint", reason="budget_exhausted"}
-5. Use `message(text)` to inform the user.
+1. Call `write_blackboard(kind="summary", payload={"kind":"findings_summary","items":[...]})`.
+2. Call `write_blackboard(kind="summary", payload={"kind":"blockers_summary","items":[...]})`.
+3. Call `write_blackboard(kind="summary", payload={"kind":"next_steps","items":[...]})`.
+4. Call `write_blackboard(kind="phase_transition", payload={"from":"<current>","to":"Checkpoint","reason":"budget_exhausted"})`.
+5. Use `message(content=...)` to inform the user.
 
 The PolicyEngine will deny any other tool call until you complete the above.
 ```

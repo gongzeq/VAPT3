@@ -112,10 +112,31 @@ class AgentDefaults(Base):
     dream: DreamConfig = Field(default_factory=DreamConfig)
 
 
+class WorkerShareConfig(Base):
+    """Default budget share granted to worker subagents."""
+
+    max_wall_clock_sec: float = Field(default=300.0, ge=0.0)
+    max_tool_calls: int = Field(default=15, ge=0)
+
+
+class BudgetConfig(Base):
+    """Pi runtime budget configuration."""
+
+    enabled: bool = True
+    wall_clock_max_sec: float = Field(default=900.0, ge=0.0)
+    tool_calls_max: int = Field(default=60, ge=0)
+    low_threshold_pct: float = Field(default=90.0, ge=0.0, le=100.0)
+    worker_share_defaults: WorkerShareConfig = Field(default_factory=WorkerShareConfig)
+    allow_extend: bool = True
+    extend_step_wall_clock_sec: float = Field(default=600.0, ge=0.0)
+    extend_step_tool_calls: int = Field(default=30, ge=0)
+
+
 class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    use_pi_prompt: bool = True
 
 
 class ProviderConfig(Base):
@@ -277,6 +298,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
 
     @property
     def workspace_path(self) -> Path:

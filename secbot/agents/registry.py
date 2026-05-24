@@ -127,6 +127,39 @@ class AgentRegistry:
         """Tool surface list for the Orchestrator (sorted for stable prompts)."""
         return [self.agents[name].to_tool_surface() for name in self.names()]
 
+    def render_preset_table(self) -> str:
+        """Render the Pi worker preset table for prompt composition."""
+        rows = [
+            "| Preset | Applicable when | Default skills | Risk ceiling |",
+            "|---|---|---|---|",
+            "| `recon` | target is a CIDR, domain, or unknown topology | `qscan-host-discovery, fscan-asset-discovery, httpx-probe` | low |",
+            "| `crawl` | known HTTP endpoint that needs a site map | `katana-crawl-web, httpx-probe` | low |",
+            "| `triage` | existing findings need dedupe, severity, or hypothesis cleanup | `(none)` | low |",
+            "| `report` | phase is Reporting | `report-html` | low |",
+        ]
+        for agent in sorted(self.agents.values(), key=lambda item: item.name):
+            alias = self._legacy_preset_alias(agent.name)
+            skills = ", ".join(sorted(agent.scoped_skills)) or "(none)"
+            rows.append(
+                f"| `{alias}` | legacy alias for `{agent.name}` | `{skills}` | "
+                f"{self._legacy_risk_ceiling(agent.name, agent.scoped_skills)} |"
+            )
+        return "\n".join(rows)
+
+    @staticmethod
+    def _legacy_preset_alias(name: str) -> str:
+        return f"legacy:{name}"
+
+    @staticmethod
+    def _legacy_risk_ceiling(name: str, scoped_skills: tuple[str, ...]) -> str:
+        if "hydra-bruteforce" in scoped_skills or name == "weak_password":
+            return "critical"
+        if "fscan-vuln-scan" in scoped_skills or "nuclei-template-scan" in scoped_skills:
+            return "medium"
+        if name in {"report", "crawl_web", "asset_discovery", "port_scan"}:
+            return "low"
+        return "low"
+
 
 # ---------------------------------------------------------------------------
 # Loading
