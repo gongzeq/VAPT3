@@ -5,6 +5,7 @@ import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
+import { QuickPrompts } from "@/components/QuickPrompts";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import { listSlashCommands } from "@/lib/api";
@@ -227,14 +228,17 @@ export function ThreadShell({
       {t("thread.loadingConversation")}
     </div>
   ) : (
-    <div className="flex flex-col items-center justify-center">
-      <img
-        src="/brand/text-logo.png"
-        alt="VAPT"
-        className="h-10 w-auto opacity-90"
-        draggable={false}
-      />
-    </div>
+    <>
+      <div className="flex flex-col items-center justify-center">
+        <img
+          src="/brand/text-logo.png"
+          alt="VAPT"
+          className="h-10 w-auto opacity-90"
+          draggable={false}
+        />
+      </div>
+      <QuickPrompts className="w-full" />
+    </>
   );
 
   return (

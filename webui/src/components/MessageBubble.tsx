@@ -513,7 +513,7 @@ const TOOL_STATUS_STYLE: Record<ToolCardVariant, { border: string; bg: string; i
 const DENIED_REASONS = new Set(["user_denied", "timeout"]);
 
 /** Compact status badge label for a tool call. */
-function toolStatusLabel(variant: ToolCardVariant, durationMs?: number, reason?: string): string {
+function toolStatusLabel(variant: ToolCardVariant, durationMs?: number): string {
   const dur =
     durationMs == null
       ? ""
@@ -528,9 +528,9 @@ function toolStatusLabel(variant: ToolCardVariant, durationMs?: number, reason?:
     case "ok":
       return `✓ 成功${dur}`;
     case "denied":
-      return `✕ 已拒绝${reason ? `: ${reason}` : ""}`;
+      return "✕ 已拒绝";
     case "error":
-      return `✕ 失败${reason ? `: ${reason}` : ""}`;
+      return "✕ 失败";
   }
 }
 
@@ -594,15 +594,17 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
             variant === "denied" && "bg-[hsl(var(--sev-info)/0.12)] text-[hsl(var(--sev-info))]",
           )}
         >
-          {toolStatusLabel(variant, payload.duration_ms, payload.reason)}
+          {toolStatusLabel(variant, payload.duration_ms)}
         </span>
       </button>
 
       {/* Body */}
       {open && (
         <div className="border-t border-border-subtle/60 bg-background/50 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed">
-          {status === "error" && payload.reason && variant !== "denied" ? (
-            <p className={cn("mb-1.5 text-red-400", style.text)}>{payload.reason}</p>
+          {payload.reason && (variant === "error" || variant === "denied") ? (
+            <p className={cn("mb-2 whitespace-pre-wrap break-words", style.text)}>
+              {payload.reason}
+            </p>
           ) : null}
           {hasArgs ? (
             <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words text-muted-foreground/90">
