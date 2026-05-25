@@ -141,7 +141,7 @@ export function ThreadViewport({
       <div
         ref={scrollRef}
         className={cn(
-          "absolute inset-0 overflow-y-auto scrollbar-thin",
+          "absolute inset-0 overflow-x-hidden overflow-y-auto scrollbar-thin",
           "[&::-webkit-scrollbar]:w-1.5",
           "[&::-webkit-scrollbar-thumb]:rounded-full",
           "[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30",
@@ -165,7 +165,7 @@ export function ThreadViewport({
           </div>
         ) : (
           <div className="mx-auto flex min-h-full w-full max-w-[72rem] flex-col px-4">
-            <div className="flex w-full flex-1 items-center justify-center pb-[7vh] pt-8">
+            <div className="flex w-full flex-1 flex-col items-center justify-center gap-6 pb-[7vh] pt-8">
               <div className="flex w-full max-w-[58rem] flex-col gap-6">
                 {emptyState}
                 <div className="w-full">{composer}</div>

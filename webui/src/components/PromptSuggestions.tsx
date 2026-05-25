@@ -2,13 +2,8 @@ import { useTranslation } from "react-i18next";
 import {
   Activity,
   AlertTriangle,
-  Bug,
   CheckCircle2,
-  FileText,
-  Key,
   PanelRightClose,
-  Radar,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,45 +26,18 @@ export interface ComposerPrefillDetail {
   focus?: boolean;
 }
 
-interface PromptDef {
-  /** i18n key under `home.prompts.<key>` (with defaultValue fallback). */
-  key: string;
-  title: string;
-  subtitle: string;
-  prefill: string;
-  icon: LucideIcon;
+/**
+ * Dispatches a composer prefill request. Exposed so other modules (tests,
+ * future quick-action menus) can replay the same UX without instantiating
+ * the suggestions panel.
+ */
+export function dispatchComposerPrefill(text: string, focus = true): void {
+  if (typeof window === "undefined") return;
+  const evt = new CustomEvent<ComposerPrefillDetail>(COMPOSER_PREFILL_EVENT, {
+    detail: { text, focus },
+  });
+  window.dispatchEvent(evt);
 }
-
-const PROMPTS: PromptDef[] = [
-  {
-    key: "scanAsset",
-    title: "全网资产发现",
-    subtitle: "扫描内网所有存活主机并入库 CMDB",
-    prefill: "对资产 192.168.1.0/24 发起一次轻量端口扫描，重点看 Web 服务",
-    icon: Radar,
-  },
-  {
-    key: "weakPwd",
-    title: "弱口令检测",
-    subtitle: "SSH/RDP/SMB 常见服务字典爆破",
-    prefill: "对最近一周新增的资产做一轮弱口令探测，结果按高危聚合",
-    icon: Key,
-  },
-  {
-    key: "summarize",
-    title: "月度合规报告",
-    subtitle: "汇总当月扫描数据导出 PDF",
-    prefill: "把今天的扫描发现按业务系统聚合，生成一份执行摘要",
-    icon: FileText,
-  },
-  {
-    key: "drill",
-    title: "CVE 影响排查",
-    subtitle: "输入 CVE 编号，自动定位受影响资产",
-    prefill: "针对最近一条高危漏洞，给我一个验证 PoC 与修复建议",
-    icon: Bug,
-  },
-];
 
 interface QuickStat {
   /** i18n key under `home.stats.<key>`. */
@@ -115,32 +83,6 @@ const TONE_CLASSES: Record<QuickStat["tone"], { stripe: string; icon: string }> 
   success: { stripe: "border-l-alert-success", icon: "text-alert-success" },
 };
 
-interface AgentDef {
-  key: string;
-  name: string;
-  icon: LucideIcon;
-  status: "idle" | "running" | "queued";
-}
-
-// AGENTS list moved to Sidebar (F6 — sidebar.agents group sources data from
-// /api/agents?include_status=true + agent_event.agent_status WS frames).
-// Static mock removed; AgentDef is kept for type stability if a future card
-// re-introduces a per-prompt-rail variant.
-void ([] as AgentDef[]);
-
-/**
- * Dispatches a composer prefill request. Exposed so other modules (tests,
- * future quick-action menus) can replay the same UX without instantiating
- * the suggestions panel.
- */
-export function dispatchComposerPrefill(text: string, focus = true): void {
-  if (typeof window === "undefined") return;
-  const evt = new CustomEvent<ComposerPrefillDetail>(COMPOSER_PREFILL_EVENT, {
-    detail: { text, focus },
-  });
-  window.dispatchEvent(evt);
-}
-
 export interface PromptSuggestionsProps {
   className?: string;
   onToggleSidebar?: () => void;
@@ -150,12 +92,13 @@ export interface PromptSuggestionsProps {
 /**
  * Right rail used by the HomePage chat surface. Combines:
  *   1. Quick stats card        — three KPI rows with mock values for now.
- *   2. PromptSuggestions chips — onClick prefills the composer textarea.
- *   3. Online agents card      — list of active expert agents.
  *
  * The rail is purely presentational — no data fetching, no navigation. It
  * never owns selection state, so it stays cheap to mount/unmount inside the
  * router shell.
+ *
+ * NOTE: Quick prompts (快捷指令) have been moved to the empty chat state
+ * (QuickPrompts component) and are no longer part of this rail.
  */
 export function PromptSuggestions({
   className,
@@ -211,46 +154,6 @@ export function PromptSuggestions({
             );
           })}
         </ul>
-      </section>
-
-      {/* 快捷指令 */}
-      <section className="gradient-card rounded-2xl border border-border p-5 space-y-3">
-        <header className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-primary" />
-          <h4 className="text-sm font-semibold">
-            {t("home.prompts.title", { defaultValue: "快捷指令" })}
-          </h4>
-        </header>
-        <div className="space-y-2">
-          {PROMPTS.map((p) => {
-            const Icon = p.icon;
-            const title = t(`home.prompts.${p.key}.title`, {
-              defaultValue: p.title,
-            });
-            const subtitle = t(`home.prompts.${p.key}.subtitle`, {
-              defaultValue: p.subtitle,
-            });
-            const prefill = t(`home.prompts.${p.key}.prefill`, {
-              defaultValue: p.prefill,
-            });
-            return (
-              <button
-                key={p.key}
-                type="button"
-                className="hover-lift group w-full rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
-                onClick={() => dispatchComposerPrefill(prefill)}
-              >
-                <div className="flex items-center gap-2 font-medium text-foreground">
-                  <Icon className="h-3.5 w-3.5 text-primary" />
-                  {title}
-                </div>
-                <p className="mt-0.5 text-xs text-muted-foreground group-hover:text-white/70">
-                  {subtitle}
-                </p>
-              </button>
-            );
-          })}
-        </div>
       </section>
 
       {/* 在线智能体已迁出 — 现由 Sidebar 底部 sidebar.agents 分组（F6）
