@@ -925,17 +925,17 @@ def _run_gateway(
 
         _wf_exec_registry = _WfToolRegistry()
         try:
-            _wf_exec_registry.register(
-                _WfExecTool(
-                    timeout=config.tools.exec.timeout,
-                    deny_patterns=config.tools.exec.deny_patterns,
-                    allow_patterns=config.tools.exec.allow_patterns,
-                    restrict_to_workspace=config.tools.restrict_to_workspace,
-                    sandbox=config.tools.exec.sandbox,
-                    path_append=config.tools.exec.path_append,
-                    allowed_env_keys=config.tools.exec.allowed_env_keys,
-                )
+            _wf_exec_tool = _WfExecTool(
+                timeout=config.tools.exec.timeout,
+                deny_patterns=config.tools.exec.deny_patterns,
+                allow_patterns=config.tools.exec.allow_patterns,
+                restrict_to_workspace=config.tools.restrict_to_workspace,
+                sandbox=config.tools.exec.sandbox,
+                path_append=config.tools.exec.path_append,
+                allowed_env_keys=config.tools.exec.allowed_env_keys,
             )
+            _wf_exec_tool._MAX_OUTPUT = 100_000  # workflow scripts may produce large output
+            _wf_exec_registry.register(_wf_exec_tool)
         except Exception:
             logger.exception("workflow: ExecTool init failed; script steps will fail")
 

@@ -312,7 +312,13 @@ class WorkflowRunner:
 
 
 def _resolve_inputs(workflow: Workflow, supplied: dict[str, Any]) -> dict[str, Any]:
-    """Merge ``supplied`` with defaults; raise on missing required fields."""
+    """Merge ``supplied`` with defaults; raise on missing required fields.
+
+    Every declared input is guaranteed to exist in the returned dict —
+    ``${inputs.<name>}`` in template expressions will never fail with
+    "no such variable" for a declared input. Optional inputs missing from
+    ``supplied`` and without an explicit ``default`` are filled with ``""``.
+    """
     out: dict[str, Any] = {}
     for spec in workflow.inputs:
         if spec.name in supplied:
@@ -323,6 +329,10 @@ def _resolve_inputs(workflow: Workflow, supplied: dict[str, Any]) -> dict[str, A
             raise RunnerError(
                 f"workflow.validation.input_missing: '{spec.name}' is required"
             )
+        else:
+            # Optional input without a value — still include it so
+            # template placeholders never break on "no such variable".
+            out[spec.name] = ""
     # Preserve any extra keys the caller passed in; the runner doesn't
     # police unknown keys so a tool step can reference ``${inputs.x}``
     # even when ``x`` isn't declared (handy during authoring).

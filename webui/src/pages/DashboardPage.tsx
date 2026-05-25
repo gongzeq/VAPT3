@@ -15,6 +15,7 @@ import {
 import { Navbar } from "@/components/Navbar";
 import { ActivityEventStream } from "@/components/ActivityEventStream";
 import { PhishingSummaryCard } from "@/components/PhishingSummaryCard";
+import { LogAnalysisSummaryCard } from "@/components/LogAnalysisSummaryCard";
 import { cn } from "@/lib/utils";
 import {
   assetCluster,
@@ -515,6 +516,10 @@ export function DashboardPage() {
         {/* Phishing Email Detection summary — single L1 card linking to
             ``/dashboard/phishing`` (L2). Per PRD §R6 + prototype.html. */}
         <PhishingSummaryCard />
+
+        {/* Log Security Analysis summary — latest result card linking to
+            ``/dashboard/log-analysis`` (L2 detail list). */}
+        <LogAnalysisSummaryCard />
       </main>
     </div>
   );

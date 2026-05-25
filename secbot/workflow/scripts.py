@@ -600,4 +600,406 @@ except Exception:
 '''
 
 
-__all__ = ["PHISHING_STEP1_CODE", "PHISHING_STEP3_CODE"]
+# ---------------------------------------------------------------------------
+# Log analysis — step1: 纯读取文件内容，不做解析，交给 LLM
+# ---------------------------------------------------------------------------
+
+
+LOG_ANALYSIS_STEP1_CODE = r'''
+import json
+import os
+import sys
+import traceback
+
+
+def _read_xlsx_as_text(file_path: str) -> str:
+    """Read xlsx file from disk, convert all cells to tab-separated text."""
+    try:
+        import openpyxl
+    except ImportError:
+        return "ERROR: openpyxl not available, cannot read .xlsx files"
+
+    try:
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    except Exception as exc:
+        return f"ERROR: Failed to open xlsx: {exc}"
+
+    parts = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        parts.append(f"[Sheet: {sheet_name}]")
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            parts.append("\t".join(cells))
+    wb.close()
+    return "\n".join(parts)
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw or "{}")
+    except Exception:
+        # Malformed input → emit safe empty payload so downstream
+        # (LLM) has something to work with.
+        sys.stdout.write(json.dumps({
+            "log_content": "",
+            "file_name": "unknown",
+            "log_format": "unknown",
+            "char_count": 0,
+        }))
+        return 0
+
+    log_path = str(data.get("log_path") or "").strip()
+
+    if not log_path:
+        # Upload mode — content flows directly from inputs.log_content
+        # into the LLM prompt.  This step just passes through empty
+        # content so the template interpolation in step2 (LLM) always
+        # sees a valid string.
+        sys.stdout.write(json.dumps({
+            "log_content": "",
+            "file_name": "uploaded",
+            "log_format": "uploaded_text",
+            "char_count": 0,
+        }))
+        return 0
+
+    # -------------------------------------------------------------------
+    # Path mode — read the file from the server filesystem
+    # -------------------------------------------------------------------
+    file_name = os.path.basename(log_path)
+    lower = log_path.lower()
+
+    # Format detection
+    if lower.endswith((".xlsx", ".xlsm", ".xls")):
+        fmt = "xlsx"
+        try:
+            content = _read_xlsx_as_text(log_path)
+        except Exception as exc:
+            sys.stdout.write(json.dumps({
+                "log_content": "",
+                "file_name": file_name,
+                "log_format": fmt,
+                "char_count": 0,
+                "error": f"xlsx_read: {exc}",
+            }))
+            return 0
+    else:
+        if lower.endswith(".csv"):
+            fmt = "csv"
+        elif lower.endswith((".tsv", ".tab")):
+            fmt = "tsv"
+        else:
+            fmt = "txt"
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except Exception as exc:
+            sys.stdout.write(json.dumps({
+                "log_content": "",
+                "file_name": file_name,
+                "log_format": fmt,
+                "char_count": 0,
+                "error": f"file_read: {exc}",
+            }))
+            return 0
+
+    # Truncate to stay within the exec tool _MAX_OUTPUT (100 KB).  The
+    # JSON wrapper adds ~15 % overhead; 50 000 chars is a safe ceiling.
+    max_chars = 50000
+    char_count = len(content)
+    if char_count > max_chars:
+        content = content[:max_chars]
+
+    sys.stdout.write(json.dumps({
+        "log_content": content,
+        "file_name": file_name,
+        "log_format": fmt,
+        "char_count": char_count,
+    }, ensure_ascii=False))
+    return 0
+
+
+try:
+    sys.exit(main())
+except Exception:
+    sys.stderr.write(traceback.format_exc())
+    sys.exit(0)
+'''
+
+
+# ---------------------------------------------------------------------------
+# Log analysis — step3: LLM 结果入库 + 报告生成
+# ---------------------------------------------------------------------------
+
+
+LOG_ANALYSIS_STEP3_CODE = r'''
+import json
+import os
+import sqlite3
+import sys
+import time
+import traceback
+
+
+_DB_PATH = os.environ.get(
+    "LOG_ANALYSIS_DB_PATH",
+    "/home/administrator/VAPT3/detection_results.db",
+)
+
+
+def _ensure_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS log_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_run_id TEXT,
+            file_name TEXT,
+            log_format TEXT,
+            char_count INTEGER,
+            analysis_timestamp TEXT,
+            anomaly_count INTEGER,
+            critical_count INTEGER,
+            high_count INTEGER,
+            medium_count INTEGER,
+            low_count INTEGER,
+            summary TEXT,
+            analysis_json TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_log_analysis_created_at "
+        "ON log_analysis(created_at)"
+    )
+    for col, typ in [
+        ("critical_count", "INTEGER"),
+        ("high_count", "INTEGER"),
+        ("medium_count", "INTEGER"),
+        ("low_count", "INTEGER"),
+        ("char_count", "INTEGER"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE log_analysis ADD COLUMN {col} {typ}")
+        except Exception:
+            pass
+
+
+def _persist(conn: sqlite3.Connection, row: dict) -> bool:
+    try:
+        _ensure_table(conn)
+        conn.execute(
+            """
+            INSERT INTO log_analysis
+                (workflow_run_id, file_name, log_format, char_count,
+                 analysis_timestamp, anomaly_count,
+                 critical_count, high_count, medium_count, low_count,
+                 summary, analysis_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row.get("workflow_run_id"),
+                row.get("file_name"),
+                row.get("log_format"),
+                int(row.get("char_count") or 0),
+                row.get("analysis_timestamp"),
+                int(row.get("anomaly_count") or 0),
+                int(row.get("critical_count") or 0),
+                int(row.get("high_count") or 0),
+                int(row.get("medium_count") or 0),
+                int(row.get("low_count") or 0),
+                row.get("summary"),
+                row.get("analysis_json"),
+                row.get("created_at"),
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception as exc:
+        sys.stderr.write(f"[log-analysis-step3] persist failed: {exc}\n")
+        return False
+
+
+def _emit(payload: dict) -> None:
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.write("\n")
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw or "{}")
+    except Exception as exc:
+        _emit({"error": f"step3.input_parse: {exc}", "report": "", "summary": ""})
+        return 0
+
+    # ── file_name ──
+    # Path mode: step1 extracts the basename from the path (e.g.
+    # "/var/log/auth.log" → "auth.log"); prefer it over the input
+    # default "unknown.log".
+    step1 = data.get("step1") or {}
+    if isinstance(step1, dict):
+        step1_name = str(step1.get("file_name") or "")
+        if step1_name:
+            file_name = step1_name
+        else:
+            file_name = str(data.get("file_name") or "")
+    else:
+        file_name = str(data.get("file_name") or "")
+    if not file_name:
+        file_name = "unknown.log"
+
+    # ── step1 metrics (available in path mode) ──
+    step1_valid = isinstance(step1, dict)
+    log_format = str(step1.get("log_format") or "unknown") if step1_valid else "unknown"
+    char_count = int(step1.get("char_count") or 0) if step1_valid else 0
+
+    # ── step2 = LLM judgement ──
+    step2 = data.get("step2") or {}
+    step2_parsed = step2 if isinstance(step2, dict) else {}
+    # Handle {parsed: {...}} wrapper or raw dict
+    if isinstance(step2_parsed, dict) and "parsed" in step2_parsed:
+        inner = step2_parsed.get("parsed")
+        if isinstance(inner, dict):
+            step2_parsed = inner
+
+    created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+    # Extract LLM result — all fields come from LLM now
+    llm_confidence = 0.0
+    llm_reason = ""
+    llm_risk_factors = []
+    llm_suggested_action = ""
+    anomaly_count = 0
+    anomaly_entries = []
+    sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+
+    if isinstance(step2_parsed, dict):
+        llm_confidence = float(step2_parsed.get("confidence") or 0.0)
+        llm_reason = str(step2_parsed.get("reason") or "")
+        llm_risk_factors = list(step2_parsed.get("risk_factors") or [])
+        llm_suggested_action = str(step2_parsed.get("suggested_action") or "")
+        anomaly_entries = list(step2_parsed.get("anomaly_entries") or [])
+        anomaly_count = int(step2_parsed.get("anomaly_count") or len(anomaly_entries))
+        sev_counts = {
+            "critical": int((step2_parsed.get("severity_distribution") or {}).get("critical", 0)),
+            "high": int((step2_parsed.get("severity_distribution") or {}).get("high", 0)),
+            "medium": int((step2_parsed.get("severity_distribution") or {}).get("medium", 0)),
+            "low": int((step2_parsed.get("severity_distribution") or {}).get("low", 0)),
+        }
+    elif isinstance(step2_parsed, str):
+        llm_reason = step2_parsed[:2000]
+
+    # Build text report
+    report_lines = [
+        "=" * 60,
+        "  日志分析报告",
+        "=" * 60,
+        f"文件名：{file_name}",
+        f"格式：{log_format}",
+        f"内容大小：{char_count} 字符",
+        f"分析时间：{created_at}",
+        "",
+        f"【LLM 分析结论】",
+        f"整体威胁置信度：{llm_confidence:.2f}",
+        f"分析依据：{llm_reason}",
+        f"建议处理：{llm_suggested_action}",
+        f"异常条目数：{anomaly_count}",
+        "",
+        f"【严重级别分布】",
+        f"  Critical: {sev_counts['critical']}",
+        f"  High: {sev_counts['high']}",
+        f"  Medium: {sev_counts['medium']}",
+        f"  Low: {sev_counts['low']}",
+    ]
+    if llm_risk_factors:
+        report_lines.append("")
+        report_lines.append("风险因素：")
+        for i, rf in enumerate(llm_risk_factors, 1):
+            report_lines.append(f"  {i}. {rf}")
+    if anomaly_entries:
+        report_lines.append("")
+        report_lines.append("异常详情（前20条）：")
+        for i, ae in enumerate(anomaly_entries[:20], 1):
+            report_lines.append(f"  {i}. {json.dumps(ae, ensure_ascii=False)[:300]}")
+    report_lines.append("=" * 60)
+    report = "\n".join(report_lines)
+
+    analysis_payload = {
+        "confidence": llm_confidence,
+        "reason": llm_reason,
+        "suggested_action": llm_suggested_action,
+        "risk_factors": llm_risk_factors,
+        "anomaly_entries": anomaly_entries[:50],
+        "anomaly_count": anomaly_count,
+        "severity_distribution": sev_counts,
+    }
+
+    # Persist
+    db_dir = os.path.dirname(_DB_PATH)
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception:
+            pass
+
+    persisted = False
+    try:
+        conn = sqlite3.connect(_DB_PATH, timeout=2.0)
+        persisted = _persist(conn, {
+            "workflow_run_id": "",
+            "file_name": file_name,
+            "log_format": log_format,
+            "char_count": char_count,
+            "analysis_timestamp": created_at,
+            "anomaly_count": anomaly_count,
+            "critical_count": sev_counts["critical"],
+            "high_count": sev_counts["high"],
+            "medium_count": sev_counts["medium"],
+            "low_count": sev_counts["low"],
+            "summary": report[:500],
+            "analysis_json": json.dumps(analysis_payload, ensure_ascii=False),
+            "created_at": created_at,
+        })
+        conn.close()
+    except Exception as exc:
+        sys.stderr.write(f"[log-analysis-step3] db error: {exc}\n")
+
+    _emit({
+        "report": report,
+        "summary": report[:200],
+        "anomaly_count": anomaly_count,
+        "confidence": llm_confidence,
+        "reason": llm_reason,
+        "suggested_action": llm_suggested_action,
+        "risk_factors": llm_risk_factors,
+        "severity_distribution": sev_counts,
+        "file_name": file_name,
+        "char_count": char_count,
+        "persisted": persisted,
+    })
+    return 0
+
+
+try:
+    sys.exit(main())
+except Exception:
+    sys.stderr.write(traceback.format_exc())
+    sys.stdout.write(json.dumps({
+        "error": "step3.unhandled_exception",
+        "report": "",
+        "summary": "",
+        "anomaly_count": 0,
+    }, ensure_ascii=False) + "\n")
+    sys.exit(0)
+'''
+
+
+__all__ = [
+    "PHISHING_STEP1_CODE",
+    "PHISHING_STEP3_CODE",
+    "LOG_ANALYSIS_STEP1_CODE",
+    "LOG_ANALYSIS_STEP3_CODE",
+]

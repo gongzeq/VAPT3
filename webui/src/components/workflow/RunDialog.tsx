@@ -116,24 +116,41 @@ export function RunDialog({
         const parsed = parser.parse(text);
         if (applyParsed(parsed, file.name)) return;
       }
-      // Fallback: fill first file/string input with raw content
+      // Fallback: fill first file/string input with raw content,
+      // and any file_name input with the uploaded file's name.
       const target = workflow?.inputs.find(
         (i) => i.type === "file" || i.type === "string",
       );
       if (target) {
-        setValues((prev) => ({ ...prev, [target.name]: text }));
+        setValues((prev) => {
+          const next = { ...prev, [target.name]: text };
+          for (const inp of workflow?.inputs ?? []) {
+            if (inp.name.includes("file_name") && !next[inp.name]) {
+              next[inp.name] = file.name;
+            }
+          }
+          return next;
+        });
       }
     };
     reader.readAsArrayBuffer(file);
   }
 
-  /** Apply parsed fields to form values. Returns true if any fields matched. */
-  function applyParsed(parsed: Record<string, string>, _fileName: string): boolean {
+  /** Apply parsed fields to form values, and auto-populate any
+   * ``*file_name*`` input from the uploaded file's name. */
+  function applyParsed(parsed: Record<string, string>, fileName: string): boolean {
     if (!workflow?.inputs || workflow.inputs.length === 0) return false;
     const patch: Record<string, string> = {};
     for (const input of workflow.inputs) {
       if (parsed[input.name] !== undefined) {
         patch[input.name] = parsed[input.name];
+      }
+    }
+    // Auto-populate file-name-related inputs from the uploaded file name
+    // (e.g. log_file_name, file_name — any input whose name contains "file_name").
+    for (const input of workflow.inputs) {
+      if (input.name.includes("file_name") && !patch[input.name]) {
+        patch[input.name] = fileName;
       }
     }
     if (Object.keys(patch).length > 0) {

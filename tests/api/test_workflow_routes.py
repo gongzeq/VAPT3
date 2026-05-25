@@ -472,7 +472,10 @@ async def test_templates_endpoint(client):
     resp = await client.get("/api/workflows/_templates")
     assert resp.status == 200
     data = await resp.json()
-    assert data == {"items": []}
+    assert len(data["items"]) == 2
+    tpl_ids = [item["id"] for item in data["items"]]
+    assert "log-analysis" in tpl_ids
+    assert "phishing-email-detect" in tpl_ids
 
 
 async def test_tools_endpoint_without_registry(tmp_path, client_factory):

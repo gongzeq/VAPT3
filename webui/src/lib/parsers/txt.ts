@@ -3,7 +3,7 @@
  *
  * Accepts .txt files (and common plain-text MIME types).
  * Outputs:
- *   body    — the full file content (≤ 10 000 chars)
+ *   body    — the full file content (≤ 100 000 chars)
  *   urls    — JSON array of unique http(s) URLs found in the text
  *   content — alias for body (some workflows may use this name)
  */
@@ -11,10 +11,11 @@
 import type { FileParser, FileParseResult } from "./types";
 
 export function parseTxt(raw: string): FileParseResult {
-  const body = raw.trim().slice(0, 10000);
+  const body = raw.trim().slice(0, 100000);
   const result: FileParseResult = {
     body,
     content: body,
+    log_content: body,
   };
 
   // Extract URLs

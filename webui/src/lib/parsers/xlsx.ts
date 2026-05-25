@@ -5,7 +5,7 @@
  * files in the browser. Binary format — reads ArrayBuffer.
  *
  * Outputs:
- *   body    — all sheets concatenated as tab-separated text (≤ 10 000 chars)
+ *   body    — all sheets concatenated as tab-separated text (≤ 100 000 chars)
  *   content — alias for body
  *   sheets  — JSON object mapping sheet name → 2D string array
  *   urls    — JSON array of unique http(s) URLs found in the text
@@ -38,10 +38,11 @@ export async function parseXlsx(buffer: ArrayBuffer): Promise<FileParseResult> {
     }
   }
 
-  const body = textParts.join("\n\n").trim().slice(0, 10000);
+  const body = textParts.join("\n\n").trim().slice(0, 100000);
   const result: FileParseResult = {
     body,
     content: body,
+    log_content: body,
     sheets: JSON.stringify(sheets),
   };
 
