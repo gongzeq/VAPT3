@@ -103,7 +103,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
 
     validate_target(target)
 
-    raw_log = ctx.raw_log_dir / "qscan-port-scan.log"
+    raw_log = ctx.raw_log_path("qscan-port-scan.log")
+    raw_log.write_bytes(b"")
     started = time.monotonic()
 
     if ports:

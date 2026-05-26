@@ -20,12 +20,10 @@ from pathlib import Path
 import pytest
 
 from secbot.agent.tools.skill import (
-    SkillTool,
     bind_skill_context,
     discover_skill_tools,
 )
 from secbot.agents.high_risk import HighRiskGate
-from secbot.skills.types import SkillContext, SkillResult
 
 
 def _write_skill(
@@ -36,6 +34,7 @@ def _write_skill(
     body: str = "Probe thing X.",
     handler_body: str,
     input_schema: dict | None = None,
+    external_binary: str = "none",
 ) -> Path:
     skill_dir = root / name
     skill_dir.mkdir(parents=True)
@@ -48,7 +47,7 @@ def _write_skill(
             version: 1.0.0
             risk_level: {risk}
             category: test
-            external_binary: none
+            external_binary: {external_binary}
             network_egress: none
             expected_runtime_sec: 5
             summary_size_hint: small
@@ -131,6 +130,30 @@ def test_schema_is_exposed_from_input_schema(tmp_path: Path, skills_root: Path) 
     assert fn["parameters"]["required"] == ["target"]
 
 
+def test_specialist_skill_description_prefers_dedicated_tool(tmp_path: Path) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "httpx-test",
+        body="Probe HTTP services.",
+        external_binary="httpx",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(summary={"ok": True})
+            """
+        ),
+    )
+
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    description = tools["httpx-test"].description
+    assert "Preferred specialist tool for HTTP probing" in description
+    assert "use this before curl" in description
+
+
 def test_execute_runs_handler_and_returns_json(tmp_path: Path, skills_root: Path) -> None:
     tools = {t.name: t for t in discover_skill_tools(skills_root, workspace=tmp_path)}
     scan_dir = tmp_path / "scan"
@@ -142,6 +165,40 @@ def test_execute_runs_handler_and_returns_json(tmp_path: Path, skills_root: Path
     assert payload["skill"] == "echo-skill"
     assert payload["summary"] == {"target": "example.com", "scan_id": "unit-1"}
     assert payload["findings"] == []
+
+
+def test_execute_returns_absolute_readable_raw_log_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "raw-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                raw_log = ctx.raw_log_path("raw-skill.log")
+                raw_log.write_text("raw log\\n", encoding="utf-8")
+                return SkillResult(summary={"ok": True}, raw_log_path=str(raw_log))
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+
+    monkeypatch.chdir(tmp_path)
+    bind_skill_context(scan_id="unit-raw", scan_dir=Path("scan-rel"))
+
+    raw = asyncio.run(tools["raw-skill"].execute(target="example.com"))
+    payload = json.loads(raw)
+    raw_log_path = Path(payload["raw_log_path"])
+
+    assert payload["summary"] == {"ok": True}
+    assert raw_log_path.is_absolute()
+    assert raw_log_path == (tmp_path / "scan-rel" / "raw" / "raw-skill.log").resolve()
+    assert raw_log_path.read_text(encoding="utf-8") == "raw log\n"
 
 
 def test_execute_invalid_handler_surface_error(tmp_path: Path) -> None:

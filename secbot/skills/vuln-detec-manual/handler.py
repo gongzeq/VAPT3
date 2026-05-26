@@ -8,6 +8,7 @@ structured findings with confidence ratings.
 from __future__ import annotations
 
 import ipaddress
+import json
 import random
 import re
 import time
@@ -491,9 +492,20 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
 
     cmdb_writes = _findings_to_cmdb_writes(all_findings)
 
+    raw_log = ctx.raw_log_path("vuln-detec-manual.log")
+    raw_log.write_text(
+        json.dumps(
+            {"summary": summary, "findings": all_findings},
+            ensure_ascii=False,
+            default=str,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     return SkillResult(
         summary=summary,
-        raw_log_path=str(ctx.raw_log_dir / "vuln-detec-manual.log"),
+        raw_log_path=str(raw_log),
         findings=all_findings,
         cmdb_writes=cmdb_writes,
     )

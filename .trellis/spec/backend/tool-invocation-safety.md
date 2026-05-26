@@ -14,7 +14,7 @@ The LLM's tool surface is **bounded** by the following invariants:
 
 1. `ExecToolConfig.enable` defaults to `False`. The free-form shell `exec` tool is **not exposed** to the LLM in any standard orchestration config. Re-enabling it is an explicit operator decision and MUST be recorded in config, not derived from defaults.
 2. Every external binary call reaches the LLM as a `SkillTool` — one skill = one tool, schema-validated, sandbox-backed. No skill MAY shell out outside `sandbox.run_command`.
-3. Specialist sub-loops (`SubagentManager._run_subagent(spec)`) register **only** `spec.scoped_skills` from the agent YAML. The orchestrator loop sees `spawn / blackboard_read / blackboard_write / request_approval` — NOT skill tools directly.
+3. Specialist sub-loops (`SubagentManager._run_subagent(spec)`) register every executable SkillTool that is not disabled. `spec.scoped_skills` and `skills_subset` are preference signals used in prompt ordering, not hard allow-lists. The orchestrator loop sees `create_agent` / `create_worker` plus orchestration helpers — NOT skill tools directly.
 4. Skills with `risk_level: critical` in SKILL.md front-matter MUST block on `ctx.confirm(...)` before execution. In non-interactive channels (cron, API, tests) `ctx.confirm` returns `False` → skill aborts with a denial tool-error; it never hangs waiting.
 
 Consequences:
@@ -189,7 +189,7 @@ Across all skills, the following characters in user-derived argv elements are un
 ## 4. Network Policy
 
 ```python
-class NetworkPolicy(StrEnum):
+class NetworkPolicy(str, Enum):
     REQUIRED = "required"   # external scans (nmap, fscan, nuclei)
     OPTIONAL = "optional"   # report renderer that may fetch fonts; warn but allow
     NONE     = "none"       # offline transforms only; sandbox MUST drop egress
@@ -208,6 +208,44 @@ The policy comes from the SKILL's `network_egress` field. `NONE` engages `secbot
 | `discard` | Fire-and-forget side-effects (rare) | Captures only exit code. |
 
 `file` capture is mandatory for every skill that runs an external scanner. The path returned populates `SkillResult.raw_log_path`.
+
+### 5.1 Scanner-Owned Output Files
+
+Some binaries write their own structured log via an argv option such as `-o <path>`
+instead of emitting useful stdout. If a skill uses this pattern with
+`capture="discard"`, it MUST still use `ctx.raw_log_path("<skill>.log")` for
+the output path and truncate/create that file before invoking the sandbox.
+
+This keeps timeout, cancellation, and non-zero-exit paths readable: the returned
+`SkillResult.raw_log_path` is always an absolute path under
+`<scan_dir>/raw/`, and it never points at a stale log from an earlier run.
+
+#### Wrong
+
+```python
+raw_log = ctx.raw_log_dir / "qscan-port-scan.log"
+result = await run_command(
+    binary="qscan",
+    args=["-t", target, "-o", str(raw_log)],
+    timeout_sec=600,
+    network=NetworkPolicy.REQUIRED,
+    capture="discard",
+)
+```
+
+#### Correct
+
+```python
+raw_log = ctx.raw_log_path("qscan-port-scan.log")
+raw_log.write_bytes(b"")
+result = await run_command(
+    binary="qscan",
+    args=["-t", target, "-o", str(raw_log)],
+    timeout_sec=600,
+    network=NetworkPolicy.REQUIRED,
+    capture="discard",
+)
+```
 
 ---
 

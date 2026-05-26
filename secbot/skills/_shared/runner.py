@@ -52,7 +52,7 @@ async def execute(
     *parser* may return either a plain summary dict, or a ``(summary,
     cmdb_writes)`` tuple so the skill can declaratively persist scan results.
     """
-    raw_log = ctx.raw_log_dir / raw_log_name
+    raw_log = ctx.raw_log_path(raw_log_name)
     started = time.monotonic()
 
     try:

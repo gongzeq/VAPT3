@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Defines SkillResult.raw_log_path contract and handler requirements."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Defines sandbox output capture and scanner raw-log requirements."}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "Defines canonical scan raw-log layout and summary/raw output split."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Requires searching/reusing existing helpers before introducing path normalization logic."}

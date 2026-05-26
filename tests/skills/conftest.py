@@ -68,6 +68,12 @@ def fake_run_command(monkeypatch):
             if exc is not None:
                 raise exc
             raw = kwargs.get("raw_log_path")
+            if raw is None:
+                args = list(kwargs.get("args") or [])
+                if "-o" in args:
+                    output_index = args.index("-o") + 1
+                    if output_index < len(args):
+                        raw = Path(args[output_index])
             if raw is not None:
                 Path(raw).parent.mkdir(parents=True, exist_ok=True)
                 Path(raw).write_bytes(stdout)

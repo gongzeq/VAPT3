@@ -112,7 +112,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     validate_target(target)
     validate_portspec(ports)
 
-    raw_log = ctx.raw_log_dir / "fscan-vuln-scan.log"
+    raw_log = ctx.raw_log_path("fscan-vuln-scan.log")
+    raw_log.write_bytes(b"")
     started = time.monotonic()
 
     cli = ["-h", target, "-p", ports, "-o", str(raw_log)]

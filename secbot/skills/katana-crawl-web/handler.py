@@ -492,7 +492,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     katana_dir = ctx.scan_dir / "katana"
     katana_dir.mkdir(parents=True, exist_ok=True)
     urls_file = katana_dir / "katana_urls.txt"
-    raw_log = ctx.raw_log_dir / "katana-crawl-web.log"
+    raw_log = ctx.raw_log_path("katana-crawl-web.log")
 
     cli = [
         "-u",

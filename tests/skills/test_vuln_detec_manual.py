@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,11 @@ async def test_run_no_targets(ctx: SkillContext) -> None:
         result = await run({"targets": []}, ctx)
         assert result.summary["targets"] == 0
         assert result.findings == []
+        raw_log_path = Path(result.raw_log_path or "")
+        assert raw_log_path.is_absolute()
+        assert raw_log_path.parent == ctx.raw_log_dir
+        raw_payload = json.loads(raw_log_path.read_text(encoding="utf-8"))
+        assert raw_payload["summary"]["targets"] == 0
 
 
 @pytest.mark.asyncio

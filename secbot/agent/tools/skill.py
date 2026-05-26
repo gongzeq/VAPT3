@@ -51,6 +51,21 @@ _FRONT_MATTER_RE = re.compile(r"^---\s*\r?\n.*?\r?\n---\s*\r?\n?", re.DOTALL)
 # Cache modules loaded by file path so repeated instantiation is cheap.
 _HANDLER_MODULE_CACHE: dict[str, Any] = {}
 
+_SPECIALIST_DESCRIPTION_PREFIX = {
+    "httpx": (
+        "Preferred specialist tool for HTTP probing and web-service inventory; "
+        "use this before curl for batch status/title/tech/TLS discovery. "
+    ),
+    "qscan": (
+        "Preferred specialist tool for host discovery and port scanning; "
+        "use this before generic HTTP/file helpers for network mapping. "
+    ),
+    "katana": (
+        "Preferred specialist tool for web crawling and URL candidate discovery; "
+        "use this before manual link collection. "
+    ),
+}
+
 
 # ---------------------------------------------------------------------------
 # SkillContext binding — ContextVars let the loop inject scan_id / scan_dir /
@@ -263,7 +278,7 @@ class SkillTool(Tool):
                     exc,
                 )
 
-        return _result_payload(self._meta, result)
+        return _result_payload(self._meta, result, scan_dir=scan_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -408,12 +423,15 @@ def _extract_description(skill_dir: Path, meta: SkillMetadata) -> str:
     first_para = body.split("\n\n", 1)[0].strip()
     # Collapse internal whitespace for a clean single-line schema.
     cleaned = " ".join(first_para.split())
-    if len(cleaned) > 400:
-        cleaned = cleaned[:397] + "..."
+    prefix = _SPECIALIST_DESCRIPTION_PREFIX.get(meta.external_binary or "")
+    if prefix:
+        cleaned = prefix + (cleaned or meta.display_name)
+    if len(cleaned) > 520:
+        cleaned = cleaned[:517] + "..."
     return cleaned or meta.display_name
 
 
-def _result_payload(meta: SkillMetadata, result: SkillResult) -> str:
+def _result_payload(meta: SkillMetadata, result: SkillResult, *, scan_dir: Path) -> str:
     """Serialise :class:`SkillResult` for the LLM.
 
     Keeping summary small is critical — handlers guarantee bounded sizes but
@@ -422,14 +440,25 @@ def _result_payload(meta: SkillMetadata, result: SkillResult) -> str:
     """
     findings = list(result.findings)[:50]
     cmdb_writes = list(result.cmdb_writes)[:50]
+    raw_log_path = _canonical_raw_log_path(result.raw_log_path, scan_dir=scan_dir)
+
     payload = {
         "skill": meta.name,
         "summary": result.summary,
-        "raw_log_path": result.raw_log_path,
+        "raw_log_path": raw_log_path,
         "findings": findings,
         "cmdb_writes": cmdb_writes,
     }
     return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _canonical_raw_log_path(raw_log_path: str | None, *, scan_dir: Path) -> str | None:
+    if not raw_log_path:
+        return None
+    path = Path(raw_log_path).expanduser()
+    if not path.is_absolute():
+        path = scan_dir.expanduser().resolve() / "raw" / path.name
+    return str(path.resolve())
 
 
 def _error_payload(skill_name: str, error_type: str, message: str) -> str:

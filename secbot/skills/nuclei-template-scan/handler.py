@@ -146,7 +146,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
 
     _validate(targets, severity, tags, templates)
 
-    raw_log = ctx.raw_log_dir / "nuclei.jsonl"
+    raw_log = ctx.raw_log_path("nuclei.jsonl")
+    raw_log.write_bytes(b"")
     targets_file = ctx.scan_dir / "nuclei-targets.txt"
     targets_file.parent.mkdir(parents=True, exist_ok=True)
     targets_file.write_text("\n".join(targets) + "\n", encoding="utf-8")

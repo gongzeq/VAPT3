@@ -73,7 +73,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     if not TARGET_PATTERN.match(target):
         raise InvalidSkillArg(f"target {target!r} does not match TARGET_PATTERN")
 
-    raw_log = ctx.raw_log_dir / "qscan-host-discovery.log"
+    raw_log = ctx.raw_log_path("qscan-host-discovery.log")
+    raw_log.write_bytes(b"")
     started = time.monotonic()
 
     binary, cmd_args = _resolve_qscan_binary(["-t", target, "-o", str(raw_log)])

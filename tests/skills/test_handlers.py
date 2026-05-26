@@ -52,9 +52,8 @@ async def test_qscan_host_discovery_happy(make_ctx, fake_run_command, monkeypatc
     monkeypatch.setattr(
         shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
     )
-    fake_run_command(mod, stdout=b"", exit_code=0)
+    fake_run_command(mod, stdout=_QSCAN_SN_OUT, exit_code=0)
     ctx = make_ctx()
-    (ctx.raw_log_dir / "qscan-host-discovery.log").write_bytes(_QSCAN_SN_OUT)
     res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     assert isinstance(res, SkillResult)
     assert res.summary["hosts_up"] == ["10.0.0.1", "10.0.0.7"]
@@ -75,8 +74,13 @@ async def test_qscan_host_discovery_timeout(make_ctx, fake_run_command, monkeypa
         shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
     )
     fake_run_command(mod, exc=SkillTimeout("timeout"))
-    res = await mod.run({"target": "10.0.0.0/24"}, make_ctx())
+    ctx = make_ctx()
+    res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     assert res.summary.get("error") == "timeout"
+    raw_log_path = Path(res.raw_log_path or "")
+    assert raw_log_path.is_absolute()
+    assert raw_log_path.parent == ctx.raw_log_dir
+    assert raw_log_path.exists()
 
 
 # --------------------------------------------------------------------------
@@ -131,9 +135,8 @@ async def test_qscan_port_scan_happy(make_ctx, fake_run_command, monkeypatch):
     monkeypatch.setattr(
         shutil, "which", lambda name: "/usr/bin/qscan" if name == "qscan" else None
     )
-    fake_run_command(mod, stdout=b"", exit_code=0)
+    fake_run_command(mod, stdout=_QSCAN_PS_OUT, exit_code=0)
     ctx = make_ctx()
-    (ctx.raw_log_dir / "qscan-port-scan.log").write_bytes(_QSCAN_PS_OUT)
     res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     svcs = res.summary["services"]
     hp = {(s["host"], s["port"]) for s in svcs}
@@ -148,6 +151,44 @@ async def test_qscan_port_scan_happy(make_ctx, fake_run_command, monkeypatch):
         ("10.0.0.1", 80),
         ("10.0.0.7", 443),
     }
+    raw_log_path = Path(res.raw_log_path or "")
+    assert raw_log_path.is_absolute()
+    assert raw_log_path.parent == ctx.raw_log_dir
+    assert raw_log_path.name == "qscan-port-scan.log"
+
+
+# --------------------------------------------------------------------------
+# httpx-probe
+# --------------------------------------------------------------------------
+
+_HTTPX_JSONL = (
+    b'{"url":"https://example.com","host":"example.com","port":443,'
+    b'"status_code":200,"title":"Example","tech":["nginx"],'
+    b'"webserver":"nginx","content_length":1234}\n'
+)
+
+
+async def test_httpx_probe_happy_raw_log_path(make_ctx, fake_run_command, monkeypatch):
+    mod = load_handler("httpx-probe")
+    monkeypatch.setattr(
+        mod,
+        "_resolve_httpx_binary",
+        lambda cli: ("httpx", cli),
+        raising=True,
+    )
+    from secbot.skills._shared import runner as runner_mod
+
+    fake_run_command(runner_mod, stdout=_HTTPX_JSONL, exit_code=0)
+    ctx = make_ctx()
+
+    res = await mod.run({"targets": ["https://example.com"]}, ctx)
+
+    assert res.summary["services"][0]["url"] == "https://example.com"
+    raw_log_path = Path(res.raw_log_path or "")
+    assert raw_log_path.is_absolute()
+    assert raw_log_path.parent == ctx.raw_log_dir
+    assert raw_log_path.name == "httpx-probe.jsonl"
+    assert raw_log_path.read_bytes() == _HTTPX_JSONL
 
 
 # --------------------------------------------------------------------------
@@ -198,11 +239,8 @@ _NUCLEI_JSONL = (
 
 async def test_nuclei_template_scan_happy(make_ctx, fake_run_command):
     mod = load_handler("nuclei-template-scan")
-    fake_run_command(mod, stdout=b"", exit_code=0)
+    fake_run_command(mod, stdout=_NUCLEI_JSONL, exit_code=0)
     ctx = make_ctx()
-    # The handler writes raw_log via `-o` option rather than sandbox capture,
-    # so populate the expected path ourselves.
-    (ctx.raw_log_dir / "nuclei.jsonl").write_bytes(_NUCLEI_JSONL)
 
     res = await mod.run(
         {"targets": ["http://10.0.0.1:8080", "http://10.0.0.7"]}, ctx
@@ -241,9 +279,8 @@ start fscan
 
 async def test_fscan_vuln_scan_happy(make_ctx, fake_run_command):
     mod = load_handler("fscan-vuln-scan")
-    fake_run_command(mod, stdout=b"", exit_code=0)
+    fake_run_command(mod, stdout=_FSCAN_VULN, exit_code=0)
     ctx = make_ctx()
-    (ctx.raw_log_dir / "fscan-vuln-scan.log").write_bytes(_FSCAN_VULN)
 
     res = await mod.run({"target": "10.0.0.0/24"}, ctx)
     assert res.summary["findings_count"] == 2
