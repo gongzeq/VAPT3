@@ -1533,6 +1533,9 @@ class WebSocketChannel(BaseChannel):
                     "display_name": spec.display_name,
                     "description": spec.description,
                     "scoped_skills": list(spec.scoped_skills),
+                    "available": spec.available,
+                    "required_binaries": list(spec.required_binaries),
+                    "missing_binaries": list(spec.missing_binaries),
                 }
             )
 
@@ -1575,12 +1578,28 @@ class WebSocketChannel(BaseChannel):
                         "_hb": last_hb,
                     }
             for entry in agents_payload:
+                snap = statuses_by_agent.get(entry["name"])
+                if snap is None:
+                    status_str = (
+                        "offline"
+                        if self._subagent_manager is None or not entry["available"]
+                        else "idle"
+                    )
+                    entry.update(
+                        {
+                            "status": status_str,
+                            "current_task_id": None,
+                            "progress": None,
+                            "last_heartbeat_at": None,
+                        }
+                    )
+                    continue
                 entry.update(
                     {
-                        "status": "offline",
-                        "current_task_id": None,
+                        "status": snap["status"],
+                        "current_task_id": snap["current_task_id"],
                         "progress": None,
-                        "last_heartbeat_at": None,
+                        "last_heartbeat_at": snap["last_heartbeat_at"],
                     }
                 )
         return _http_json_response({"agents": agents_payload})

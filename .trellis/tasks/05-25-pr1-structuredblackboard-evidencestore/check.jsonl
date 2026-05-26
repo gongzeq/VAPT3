@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Verify implementation against Kind enum (11 kinds), required/optional fields per kind, BlackboardSnapshot structure, legacy compatibility requirements, and worker write restrictions (deferred to PR2)."}
+{"file": ".trellis/spec/backend/pi-orchestrator.md", "reason": "Check Phase enum consistency (8 phases: Intake, Passive Discovery, Active Mapping, Hypothesis Generation, Safe Validation, Triage, Reporting, Checkpoint)."}
+{"file": ".trellis/spec/backend/finding-ontology.md", "reason": "Verify finding payload structure aligns with future PR4 ontology schema (title, severity, cwe, owasp_category, asset_ref, evidence_ids)."}
+{"file": "tests/agent/test_blackboard.py", "reason": "Ensure existing blackboard tests pass (backward compatibility) and new typed write/read/snapshot tests are added."}

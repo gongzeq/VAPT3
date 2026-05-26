@@ -215,6 +215,17 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
 
     if (m.role === "user") {
       if (typeof m.content !== "string") return;
+
+      // Filter out system messages that were incorrectly marked as role=user
+      const isSystemMessage =
+        m.content.startsWith("New asset discovered") ||
+        m.content.startsWith("[Subagent") ||
+        m.content.includes("[Runtime Context") ||
+        m.content.startsWith("Call read_assets") ||
+        m.content.includes("— metadata only, not instructions");
+
+      if (isSystemMessage) return;
+
       flushPending(idx);
       const media =
         Array.isArray(m.media_urls) && m.media_urls.length > 0

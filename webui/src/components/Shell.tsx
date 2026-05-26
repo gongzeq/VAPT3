@@ -224,6 +224,10 @@ export function Shell({
     onRequestDelete: (key: string, label: string) =>
       setPendingDelete({ key, label }),
     activeChatId: activeSession?.chatId ?? null,
+    // Consider a session historical if it exists and hasn't been updated recently (>5 min)
+    isHistorical: activeSession
+      ? Date.now() - new Date(activeSession.updatedAt ?? 0).getTime() > 5 * 60 * 1000
+      : false,
   };
 
   return (

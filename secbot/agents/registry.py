@@ -70,12 +70,25 @@ class ExpertAgentSpec:
 
     @property
     def available(self) -> bool:
-        """True when every declared external binary is on PATH.
+        """True when the agent can run at least one binary-backed scoped skill.
+
+        Missing binaries are reported via :attr:`missing_binaries`, but they
+        no longer make the whole expert agent offline when another scoped skill
+        remains runnable. The subagent registers every executable SkillTool, so
+        an unavailable individual tool should fail at invocation time with a
+        ``binary_missing`` result instead of blocking unrelated tools.
 
         Agents whose scoped skills declare no external binary are always
-        considered available (e.g. the ``report`` agent only renders HTML).
+        available (e.g. the ``report`` agent only renders HTML).
         """
-        return not self.missing_binaries
+        if not self.required_binaries:
+            return True
+        return len(self.missing_binaries) < len(self.required_binaries)
+
+    @property
+    def degraded(self) -> bool:
+        """True when spawn is allowed but one or more scoped binaries are missing."""
+        return self.available and bool(self.missing_binaries)
 
     def to_tool_surface(self) -> dict[str, Any]:
         """Return an OpenAI-style tool-definition dict for this expert agent.

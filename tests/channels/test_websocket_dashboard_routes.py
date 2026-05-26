@@ -473,8 +473,9 @@ async def test_agents_include_status_running_when_subagent_active(
     """A running ``SubagentStatus`` keyed by ``agent_name`` propagates as
     ``status='running'`` plus ``current_task_id`` + ISO ``last_heartbeat_at``.
     """
-    from secbot.agent.subagent import SubagentStatus
     import time as _time
+
+    from secbot.agent.subagent import SubagentStatus
 
     status = SubagentStatus(
         task_id="t-1",

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/structured-blackboard.md", "reason": "Primary implementation contract for typed BlackboardEntry, Kind/Phase enums, payload schema validation, BlackboardSnapshot, and LLM tool surface."}
+{"file": "secbot/agent/blackboard.py", "reason": "Existing blackboard implementation to extend with typed kinds, payload validation, snapshot() method, and legacy compatibility layer."}
+{"file": "secbot/agent/tools/blackboard.py", "reason": "LLM tool layer to update with new write(kind, payload) signature and snapshot-based read."}
+{"file": "secbot/cmdb/schema.py", "reason": "CMDB schema definitions to understand existing table structure before adding evidence tables."}
+{"file": "secbot/cmdb/migrations/", "reason": "Migration scripts directory to add 0007_evidence.sql for new evidence and evidence_finding_links tables."}

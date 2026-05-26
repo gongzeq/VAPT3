@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
+from secbot.skills.types import (
+    InvalidSkillArg,
+    SkillBinaryMissing,
+    SkillContext,
+    SkillResult,
+)
 
 
 def _resolve_httpx_binary(cli: list[str]) -> tuple[str, list[str]]:

@@ -47,7 +47,7 @@ class InvalidArgvCharacter(SkillError):  # noqa: N818 - public API predates Ruff
     """A forbidden character was found in an argv element."""
 
 
-class NetworkPolicy(enum.StrEnum):
+class NetworkPolicy(str, enum.Enum):
     REQUIRED = "required"
     OPTIONAL = "optional"
     NONE = "none"

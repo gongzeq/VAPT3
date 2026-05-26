@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["query", "category", "references", "unable_to_cite"],
+  "additionalProperties": false,
+  "properties": {
+    "query": {"type": "string"},
+    "category": {"type": "string"},
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "section", "excerpt"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"type": "string"},
+          "section": {"type": "string"},
+          "excerpt": {"type": "string"}
+        }
+      }
+    },
+    "guidance": {"type": "string"},
+    "unable_to_cite": {"type": "boolean"}
+  }
+}

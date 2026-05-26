@@ -92,10 +92,26 @@ output_schema:                       # required, declares the summary returned t
 |-------|------|
 | `name` | MUST equal filename stem; MUST match `^[a-z][a-z0-9_]*$`. |
 | `scoped_skills` | Each entry MUST exist as a registered skill (`secbot/skills/<entry>/SKILL.md`). Loader fails fast if missing. |
+| `scoped_skills` at runtime | Scoped skills are the agent's default/preferred tools, not an exclusive allow-list. `SubagentManager._run_subagent()` registers every executable SkillTool that is not disabled, then orders/presents `scoped_skills` first in the prompt. |
 | `system_prompt_file` | MUST exist; loader reads it and **appends** it to the subagent system prompt (after the safety scaffold). This gives the subagent both the hard-rules skeleton and the per-agent role instructions. |
 | `legacy_input_schema` / `output_schema` | MUST be valid JSON Schema 2020-12. `legacy_input_schema` is informational only — the Orchestrator no longer validates `args` against it (the `create_agent` tool has its own fixed schema). `output_schema` MAY still drive post-run summary validation. The legacy alias `input_schema` is accepted with a DeprecationWarning. |
 | `endpoint_bound` | Optional bool, default `false`. When `true`, `create_agent` MUST receive both `endpoint_url` and `endpoint_param`; `SubagentManager` rejects a second concurrent spawn against the same normalised `(endpoint_url, endpoint_param)` key. |
 | `emit_plan_steps` | When `false`, the agent's individual steps collapse in the WebUI; only the final summary renders. |
+
+### 2.2 Availability Semantics
+
+When `load_agent_registry(..., skills_root=...)` is used, the registry derives:
+
+- `required_binaries`: unique `external_binary` values declared by the agent's `scoped_skills`.
+- `missing_binaries`: the subset not resolved by config override or `PATH`.
+- `available`: `true` when the agent has no binary requirements, or at least one binary-backed scoped skill is runnable.
+- `degraded`: `true` when `available` is `true` but `missing_binaries` is non-empty.
+
+`create_agent` / `create_worker` MUST reject only fully unavailable agents
+(all binary-backed scoped skills missing). Partially missing binaries are a
+degraded mode: the subagent still starts, all executable skill tools remain
+registered, and an unavailable individual skill reports `binary_missing` when
+invoked.
 
 ---
 
@@ -108,7 +124,7 @@ secbot startup
         │     ├── parse + validate against this schema
         │     ├── resolve scoped_skills against skill registry
         │     ├── load system_prompt_file
-        │     └── register tool in OrchestratorTools as {name, description, input_schema}
+        │     └── expose the agent through the single create_agent(name=...) surface
         └── on ANY failure: abort startup with structured error
 ```
 

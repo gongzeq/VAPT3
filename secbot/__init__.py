@@ -4,7 +4,11 @@ secbot - A lightweight AI agent framework
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # type: ignore
 
 
 def _read_pyproject_version() -> str | None:

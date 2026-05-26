@@ -744,6 +744,54 @@ async def test_spawn_tool_rejects_offline_agent(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_spawn_tool_allows_degraded_agent_when_some_binaries_missing(
+    tmp_path, monkeypatch
+):
+    """One missing scoped binary must not block unrelated skill tools."""
+    from pathlib import Path as _Path
+
+    from secbot.agent.subagent import SubagentManager
+    from secbot.agent.tools.spawn import SpawnTool
+    from secbot.agents.registry import load_agent_registry
+    from secbot.bus.queue import MessageBus
+
+    def which(name: str):
+        return None if name == "sqlmap" else f"/usr/local/bin/{name}"
+
+    monkeypatch.setattr("secbot.agents.registry.shutil.which", which)
+    agents_dir = _Path(__file__).resolve().parents[3] / "secbot" / "agents"
+    skills_dir = _Path(__file__).resolve().parents[3] / "secbot" / "skills"
+    registry = load_agent_registry(
+        agents_dir, skill_names=None, skills_root=skills_dir
+    )
+    assert registry.get("vuln_scan").degraded is True
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        agent_registry=registry,
+    )
+    mgr.spawn = AsyncMock(return_value="started")
+
+    tool = SpawnTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    out = await tool.execute(
+        name="vuln_scan",
+        task="run nuclei/ffuf checks and skip sqlmap if unavailable",
+        target="https://example.test",
+    )
+
+    assert out == "started"
+    mgr.spawn.assert_awaited_once()
+    assert mgr.spawn.await_args.kwargs["agent"] == "vuln_scan"
+
+
+@pytest.mark.asyncio
 async def test_spawn_tool_endpoint_bound_requires_endpoint_fields(tmp_path, monkeypatch):
     """Endpoint-bound experts MUST receive endpoint_url + endpoint_param (D6/D8)."""
     from pathlib import Path as _Path
@@ -822,8 +870,8 @@ async def test_subagent_manager_endpoint_mutex(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_subagent_registers_only_scoped_skills(tmp_path):
-    """_run_subagent must filter skill tools to spec.scoped_skills."""
+async def test_subagent_registers_all_skill_tools_with_scoped_preferences(tmp_path):
+    """_run_subagent exposes all executable skills and prompts scoped ones first."""
     from pathlib import Path as _Path
 
     from secbot.agent.subagent import SubagentManager, SubagentStatus
@@ -874,8 +922,8 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
         spec,
     )
 
-    # Only crawl_web's scoped skill must appear; others are excluded. The
-    # orchestrator-only ``create_agent`` tool MUST NOT be available either.
+    # Every executable SkillTool must be callable by the subagent. The
+    # orchestrator-only ``create_agent`` tool MUST NOT be available.
     assert "create_agent" not in captured["tool_names"]
     assert "delegate_task" not in captured["tool_names"]
     assert "blackboard_write" in captured["tool_names"]
@@ -883,12 +931,24 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
     for skill in spec.scoped_skills:
         assert skill in captured["tool_names"], f"missing {skill}"
     assert "katana-crawl-web" in captured["tool_names"]
-    for skill in ("qscan-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
-        assert skill not in captured["tool_names"], f"{skill} must be scoped out"
+    for skill in (
+        "qscan-host-discovery",
+        "httpx-probe",
+        "nuclei-template-scan",
+        "hydra-bruteforce",
+        "secknowledge-skill",
+    ):
+        assert skill in captured["tool_names"], f"{skill} must remain callable"
 
     # The per-agent ``spec.system_prompt`` is now appended to the base scaffold
     # so the subagent receives both safety rules and its role instructions.
     sys_prompt = captured["system_prompt"]
+    assert "## Active Knowledge Skill" in sys_prompt
+    assert "### Skill: secknowledge-skill" in sys_prompt
+    assert "Preferred first for this assignment: `katana-crawl-web`" in sys_prompt
+    assert "use `httpx-probe` for HTTP service inventory" in sys_prompt
+    assert "Executable skill tools registered for this run:" in sys_prompt
+    assert "- `secknowledge-skill`" in sys_prompt
     spec_first_line = spec.system_prompt.strip().split("\n", 1)[0]
     if spec_first_line and len(spec_first_line) > 8:
         assert spec_first_line in sys_prompt

@@ -198,14 +198,13 @@ export function ThreadComposer({
   }, [filteredSlashCommands.length, selectedCommandIndex]);
 
   // Listen for cross-component prefill requests (e.g. PromptSuggestions in
-  // the HomePage left rail). We intentionally append to existing input —
-  // dropping in-progress text would be hostile to the user — except when the
-  // textarea is empty, in which case we replace.
+  // the HomePage right rail). Always replace the textarea content with the
+  // prefill text to provide a clean starting point for the user.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ComposerPrefillDetail>).detail;
       if (!detail || typeof detail.text !== "string" || !detail.text) return;
-      setValue((prev) => (prev.trim() === "" ? detail.text : `${prev}\n${detail.text}`));
+      setValue(detail.text);
       setInlineError(null);
       if (detail.focus !== false) {
         requestAnimationFrame(() => {

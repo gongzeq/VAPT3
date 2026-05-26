@@ -100,7 +100,7 @@ to dispatch and when to checkpoint. You DO NOT execute scans yourself.
 
 ### 3.3 `# Available worker presets` (dynamic)
 
-| Preset name | Applicable when | Default skills (subset of agents/{preset}.yaml::scoped_skills) | Risk ceiling |
+| Preset name | Applicable when | Preferred/default skills (from agents/{preset}.yaml::scoped_skills) | Risk ceiling |
 |---|---|---|---|
 | `recon` | 目标为 CIDR/域/未知拓扑 | `qscan-host-discovery, fscan-asset-discovery, httpx-probe` | low |
 | `crawl` | 已知 HTTP endpoint，需要 site map | `katana-crawl-web, httpx-probe` | low |
@@ -218,7 +218,7 @@ Intake
 }
 ```
 
-- `preset` 必填；`skills_subset` 可空（用 preset 默认）。
+- `preset` 必填；`skills_subset` 可空（用 preset 默认）。`skills_subset` 是 worker prompt 中的优先工具提示，不是硬隔离：worker 仍注册全部未禁用的可执行 SkillTool，以便在任务需要时切换到更精确的 httpx / qscan / katana / nuclei / ffuf / sqlmap / hydra 等工具。
 - `scope_view` 是从 ScopeContract 派生的**只读切片**；worker 看不到全局。
 - `budget_share` 从主控剩余 budget 划拨；BudgetEnforcer 强制不超主控总量。
 - `endpoint_url + endpoint_param` 用于 `_endpoint_inflight` 互斥锁（保留现有

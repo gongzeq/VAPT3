@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -14,7 +15,7 @@ from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
 from secbot.agent.hook import AgentHook, AgentHookContext
 from secbot.agent.runner import AgentRunner, AgentRunSpec
-from secbot.agent.skills import BUILTIN_SKILLS_DIR
+from secbot.agent.skills import BUILTIN_SKILLS_DIR, SkillsLoader
 from secbot.agent.tools.ask import AskUserTool
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
@@ -33,7 +34,33 @@ from secbot.state import BudgetExhausted
 from secbot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
+    from secbot.agent.teammate import TeammateManager
     from secbot.agents.registry import AgentRegistry, ExpertAgentSpec
+
+
+_SECURITY_KNOWLEDGE_SKILL = "secknowledge-skill"
+_SPECIALIST_SKILL_PREFIX_ORDER = (
+    "httpx-",
+    "qscan-",
+    "katana-",
+    "fscan-",
+    "nuclei-",
+    "ffuf-",
+    "sqlmap-",
+    "hydra-",
+)
+
+
+def _sanitize_paths(obj: Any) -> Any:
+    """Recursively sanitize absolute paths in tool arguments for frontend display."""
+    if isinstance(obj, str):
+        # Replace absolute paths like /Users/xxx/... with just the filename
+        return re.sub(r'/(?:Users|home)/[^/\s]+/([^\s]*)', lambda m: Path(m.group()).name or m.group(), obj)
+    elif isinstance(obj, dict):
+        return {k: _sanitize_paths(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize_paths(item) for item in obj]
+    return obj
 
 
 @dataclass(slots=True)
@@ -109,7 +136,7 @@ class _SubagentHook(AgentHook):
                     "agent_name": self._agent_name,
                     "tool_call_id": tool_call.id,
                     "tool_name": tool_call.name,
-                    "tool_args": tool_call.arguments,
+                    "tool_args": _sanitize_paths(tool_call.arguments),
                     "status": "critical" if is_critical else "running",
                     "is_critical": is_critical,
                 },
@@ -232,6 +259,23 @@ def _normalise_endpoint_key(endpoint_url: str, endpoint_param: str) -> tuple[str
     return (normalised_url, endpoint_param.strip().lower())
 
 
+def _ordered_unique(items: list[str] | tuple[str, ...]) -> list[str]:
+    """Return items without duplicates while preserving first-seen order."""
+    return list(dict.fromkeys(item for item in items if item))
+
+
+def _skill_sort_key(name: str, preferred: set[str]) -> tuple[int, int, str]:
+    """Sort preferred and specialist security skills toward the prompt front."""
+    if name in preferred:
+        return (0, 0, name)
+    for idx, prefix in enumerate(_SPECIALIST_SKILL_PREFIX_ORDER):
+        if name.startswith(prefix):
+            return (1, idx, name)
+    if name == _SECURITY_KNOWLEDGE_SKILL:
+        return (1, len(_SPECIALIST_SKILL_PREFIX_ORDER), name)
+    return (2, 0, name)
+
+
 class SubagentManager:
     """Manages background subagent execution."""
 
@@ -253,6 +297,7 @@ class SubagentManager:
         asset_feed_registry: "AssetFeedRegistry | None" = None,
         budget_getter: Callable[[str], Any] | None = None,
         worker_share_defaults: Any | None = None,
+        teammate_manager: "TeammateManager | None" = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -284,9 +329,13 @@ class SubagentManager:
         self._budget_getter = budget_getter
         self._worker_share_defaults = worker_share_defaults
         # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
-        # resolves the named spec and ``_run_subagent`` filters the skill tool
-        # set down to ``spec.scoped_skills``.
+        # resolves the named spec and ``_run_subagent`` uses scoped_skills as a
+        # preference signal. Executable SkillTools remain globally available to
+        # subagents so they can pivot to httpx/qscan/katana/etc. when the task
+        # requires a more precise tool than the legacy scope table anticipated.
         self.agent_registry: "AgentRegistry | None" = agent_registry
+        # Optional teammate manager for inter-agent communication tools
+        self.teammate_manager: "TeammateManager | None" = teammate_manager
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._task_statuses: dict[str, SubagentStatus] = {}
         self._session_tasks: dict[str, set[str]] = {}  # session_key -> {task_id, ...}
@@ -591,25 +640,54 @@ class SubagentManager:
                     )
                 )
             tools.register(CurlTool())
-            # Subagents also get SkillTool instances so they can run qscan /
-            # fscan / etc. without shelling out. When an expert-agent spec is
-            # provided (``spawn(agent=...)``), restrict the SkillTool set to
-            # that spec's ``scoped_skills`` so the subagent only sees tools
-            # relevant to its role.
-            scoped: set[str] | None = (
-                set(spec.scoped_skills) if spec is not None else None
+            # Register teammate communication tools if a TeammateManager is available
+            if self.teammate_manager is not None:
+                from secbot.agent.tools.teammate import (
+                    ListTeammatesTool,
+                    ReadTeammateInboxTool,
+                    SendTeammateMessageTool,
+                )
+                tools.register(ListTeammatesTool(self.teammate_manager))
+                tools.register(SendTeammateMessageTool(self.teammate_manager, sender=label))
+                tools.register(
+                    ReadTeammateInboxTool(
+                        self.teammate_manager,
+                        default_name=label,
+                        allow_name_override=False,
+                    )
+                )
+            # Subagents get every executable SkillTool so they can run qscan /
+            # httpx / katana / nuclei / ffuf / sqlmap / hydra without
+            # shelling out. ``spec.scoped_skills`` and ``skills_subset`` are
+            # preferences, not a hard allow-list; the prompt names them first
+            # while still keeping the complete skill surface callable.
+            preferred_skills: list[str] = (
+                list(spec.scoped_skills) if spec is not None else []
             )
             if skills_subset is not None:
-                requested = {skill.strip() for skill in skills_subset if skill.strip()}
-                scoped = requested if scoped is None else scoped & requested
+                requested = [skill.strip() for skill in skills_subset if skill.strip()]
+                if preferred_skills:
+                    selected = [skill for skill in preferred_skills if skill in set(requested)]
+                    preferred_skills = selected or requested
+                else:
+                    preferred_skills = requested
+            preferred_skills = _ordered_unique(preferred_skills)
+            preferred_set = set(preferred_skills)
+
+            skill_tools = [
+                skill_tool
+                for skill_tool in discover_skill_tools(
+                    BUILTIN_SKILLS_DIR,
+                    workspace=self.workspace,
+                )
+                if skill_tool.name not in self.disabled_skills
+            ]
+            skill_tools.sort(key=lambda tool: _skill_sort_key(tool.name, preferred_set))
+            available_skill_names: list[str] = []
             critical_tool_names: set[str] = set()
-            for skill_tool in discover_skill_tools(
-                BUILTIN_SKILLS_DIR,
-                workspace=self.workspace,
-            ):
-                if scoped is not None and skill_tool.name not in scoped:
-                    continue
+            for skill_tool in skill_tools:
                 tools.register(skill_tool)
+                available_skill_names.append(skill_tool.name)
                 if skill_tool._meta.is_critical():
                     critical_tool_names.add(skill_tool.name)
             # Inherit the parent loop's per-turn SkillContext binding so raw
@@ -638,7 +716,11 @@ class SubagentManager:
                 scan_dir=self.workspace / ".secbot" / "scans" / task_id,
                 confirm=parent_confirm,
             )
-            system_prompt = self._build_subagent_prompt(spec)
+            system_prompt = self._build_subagent_prompt(
+                spec,
+                available_skill_names=available_skill_names,
+                preferred_skill_names=preferred_skills,
+            )
             # D3: the shared-blackboard snapshot is NO LONGER auto-injected
             # into the subagent's system prompt. The orchestrator owns prompt
             # composition (it can read the blackboard via ``read_blackboard``
@@ -812,7 +894,11 @@ class SubagentManager:
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
 
     def _build_subagent_prompt(
-        self, spec: "ExpertAgentSpec | None" = None
+        self,
+        spec: "ExpertAgentSpec | None" = None,
+        *,
+        available_skill_names: list[str] | None = None,
+        preferred_skill_names: list[str] | None = None,
     ) -> str:
         """Build the system prompt for an expert subagent.
 
@@ -839,10 +925,42 @@ class SubagentManager:
             time_ctx=time_ctx,
             workspace=str(self.workspace),
             skills_dir=str(BUILTIN_SKILLS_DIR),
+            skill_tool_summary=self._format_skill_tool_summary(
+                available_skill_names or []
+            ),
+            preferred_skill_summary=self._format_preferred_skill_summary(
+                preferred_skill_names or []
+            ),
         )
+        knowledge = self._load_security_knowledge_skill()
+        if knowledge:
+            base = (
+                base.rstrip()
+                + "\n\n## Active Knowledge Skill\n\n"
+                + knowledge.strip()
+                + "\n"
+            )
         if spec is not None and spec.system_prompt:
             base = base.rstrip() + "\n\n" + spec.system_prompt.strip() + "\n"
         return base
+
+    @staticmethod
+    def _format_skill_tool_summary(skill_names: list[str]) -> str:
+        if not skill_names:
+            return "- (no executable skill tools registered)"
+        return "\n".join(f"- `{name}`" for name in skill_names)
+
+    @staticmethod
+    def _format_preferred_skill_summary(skill_names: list[str]) -> str:
+        if not skill_names:
+            return "No assignment-specific preference; choose the most precise specialist skill for the task."
+        return ", ".join(f"`{name}`" for name in skill_names)
+
+    def _load_security_knowledge_skill(self) -> str:
+        if _SECURITY_KNOWLEDGE_SKILL in self.disabled_skills:
+            return ""
+        loader = SkillsLoader(self.workspace, disabled_skills=self.disabled_skills)
+        return loader.load_skills_for_context([_SECURITY_KNOWLEDGE_SKILL])
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

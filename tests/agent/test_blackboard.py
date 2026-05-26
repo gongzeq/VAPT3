@@ -25,7 +25,7 @@ from secbot.policy import PolicyContext
 async def test_write_and_read():
     """Basic write and read."""
     bb = Blackboard()
-    entry = await bb.write("agent_a", "Found open port 80")
+    entry = await bb.write_text("agent_a", "Found open port 80")
     assert isinstance(entry, BlackboardEntry)
     assert entry.agent_name == "agent_a"
     assert entry.text == "Found open port 80"
@@ -40,9 +40,9 @@ async def test_write_and_read():
 async def test_multiple_writes():
     """Multiple agents writing."""
     bb = Blackboard()
-    await bb.write("agent_a", "Finding 1")
-    await bb.write("agent_b", "Finding 2")
-    await bb.write("agent_a", "Finding 3")
+    await bb.write_text("agent_a", "Finding 1")
+    await bb.write_text("agent_b", "Finding 2")
+    await bb.write_text("agent_a", "Finding 3")
 
     entries = await bb.read_all()
     assert len(entries) == 3
@@ -58,7 +58,7 @@ async def test_concurrent_writes():
 
     async def writer(name: str, count: int):
         for i in range(count):
-            await bb.write(name, f"entry-{i}")
+            await bb.write_text(name, f"entry-{i}")
 
     await asyncio.gather(
         writer("a", 50),
@@ -74,7 +74,7 @@ async def test_concurrent_writes():
 async def test_clear():
     """Clear should remove all entries."""
     bb = Blackboard()
-    await bb.write("agent_a", "something")
+    await bb.write_text("agent_a", "something")
     assert len(bb) == 1
 
     await bb.clear()
@@ -87,7 +87,7 @@ async def test_clear():
 async def test_read_returns_copy():
     """read_all returns a copy, modifications don't affect internal state."""
     bb = Blackboard()
-    await bb.write("agent_a", "entry1")
+    await bb.write_text("agent_a", "entry1")
     entries = await bb.read_all()
     entries.clear()
     assert len(bb) == 1  # internal not affected
@@ -97,7 +97,7 @@ async def test_read_returns_copy():
 async def test_to_dict_list():
     """Serialization to dict list."""
     bb = Blackboard()
-    await bb.write("agent_a", "finding")
+    await bb.write_text("agent_a", "finding")
     dicts = await bb.to_dict_list()
     assert len(dicts) == 1
     assert dicts[0]["agent_name"] == "agent_a"
@@ -215,7 +215,7 @@ async def test_read_tool_empty():
 async def test_read_tool_with_entries():
     """BlackboardReadTool with entries."""
     bb = Blackboard()
-    await bb.write("agent_a", "[milestone] mapping complete")
+    await bb.write_text("agent_a", "[milestone] mapping complete")
     await bb.write(
         "agent_b",
         "finding",
@@ -238,8 +238,8 @@ async def test_read_tool_with_entries():
 @pytest.mark.asyncio
 async def test_read_full_tool_filters_by_kind() -> None:
     bb = Blackboard()
-    await bb.write("agent_a", "[milestone] mapping complete")
-    await bb.write("agent_b", "[blocker] missing creds")
+    await bb.write_text("agent_a", "[milestone] mapping complete")
+    await bb.write_text("agent_b", "[blocker] missing creds")
     tool = BlackboardReadFullTool(bb)
 
     result = await tool.execute(kinds=["blocker"])
@@ -268,7 +268,7 @@ async def test_read_full_tool_filters_by_kind() -> None:
 )
 async def test_write_extracts_known_kind(text: str, expected: str) -> None:
     bb = Blackboard()
-    entry = await bb.write("agent_a", text)
+    entry = await bb.write_text("agent_a", text)
     assert entry.kind == expected
     assert entry.payload
     # to_dict must transparently surface the kind.
@@ -288,7 +288,7 @@ async def test_write_extracts_known_kind(text: str, expected: str) -> None:
 )
 async def test_write_kind_falls_back_to_legacy_text(text: str) -> None:
     bb = Blackboard()
-    entry = await bb.write("agent_a", text)
+    entry = await bb.write_text("agent_a", text)
     assert entry.kind == "legacy_text"
     assert entry.payload == {"text": text}
     assert entry.to_dict()["kind"] == "legacy_text"
@@ -297,8 +297,8 @@ async def test_write_kind_falls_back_to_legacy_text(text: str) -> None:
 @pytest.mark.asyncio
 async def test_to_dict_list_preserves_kind() -> None:
     bb = Blackboard()
-    await bb.write("agent_a", "[finding] open port 80")
-    await bb.write("agent_b", "no prefix here")
+    await bb.write_text("agent_a", "[finding] open port 80")
+    await bb.write_text("agent_b", "no prefix here")
     payload = await bb.to_dict_list()
     assert [row["kind"] for row in payload] == ["finding", "legacy_text"]
     assert payload[0]["payload"]["title"] == "open port 80"
@@ -353,9 +353,9 @@ async def test_write_structured_rejects_missing_required_field() -> None:
 @pytest.mark.asyncio
 async def test_read_by_kind_and_legacy_read_limit() -> None:
     bb = Blackboard()
-    await bb.write("agent", "[milestone] first")
-    await bb.write("agent", "[blocker] second")
-    await bb.write("agent", "third")
+    await bb.write_text("agent", "[milestone] first")
+    await bb.write_text("agent", "[blocker] second")
+    await bb.write_text("agent", "third")
 
     blockers = await bb.read_by_kind(["blocker"])
     assert [entry.text for entry in blockers] == ["[blocker] second"]
@@ -457,8 +457,8 @@ async def test_registry_isolates_boards_per_chat_id() -> None:
     board_b = await registry.get_or_create("chat-b")
     assert board_a is not board_b
 
-    await board_a.write("agent", "[milestone] for chat-a")
-    await board_b.write("agent", "[finding] for chat-b")
+    await board_a.write_text("agent", "[milestone] for chat-a")
+    await board_b.write_text("agent", "[finding] for chat-b")
 
     assert len(board_a) == 1
     assert len(board_b) == 1

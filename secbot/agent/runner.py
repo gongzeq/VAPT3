@@ -974,7 +974,14 @@ class AgentRunner:
 
     @staticmethod
     def _event_detail(prefix: str, text: str, limit: int = 160) -> str:
-        return (prefix + text.replace("\n", " ").strip())[:limit]
+        """Format event detail, stripping absolute paths for privacy."""
+        import re
+        from pathlib import Path
+
+        detail = (prefix + text.replace("\n", " ").strip())[:limit]
+        # Strip absolute paths like /Users/xxx/... or /home/xxx/...
+        detail = re.sub(r'/(?:Users|home)/[^/\s]+/[^\s]*', lambda m: Path(m.group()).name or m.group(), detail)
+        return detail
 
     async def _emit_checkpoint(
         self,

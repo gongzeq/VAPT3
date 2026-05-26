@@ -24,6 +24,8 @@ interface SidebarProps {
   onCollapse: () => void;
   /** Active chat id used to scope WS ``agent_status`` updates. */
   activeChatId?: string | null;
+  /** Whether viewing a historical session (no active stream). */
+  isHistorical?: boolean;
 }
 
 /** Status chip class map.  Tokens come from ``--status-*`` aliases declared
@@ -71,7 +73,10 @@ function AgentRow({ agent }: { agent: AgentRegistryRow }) {
 export function Sidebar(props: SidebarProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
-  const { agents } = useAgents({ chatId: props.activeChatId ?? null });
+  const { agents } = useAgents({
+    chatId: props.activeChatId ?? null,
+    isHistorical: props.isHistorical ?? false,
+  });
   const normalizedQuery = query.trim().toLowerCase();
   const filteredSessions = useMemo(() => {
     if (!normalizedQuery) return props.sessions;

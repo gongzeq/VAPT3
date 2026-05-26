@@ -142,7 +142,8 @@ def test_availability_some_missing(monkeypatch):
     assert "fscan" in asset.missing_binaries
     assert "httpx" in asset.missing_binaries
     assert "qscan" not in asset.missing_binaries
-    assert asset.available is False
+    assert asset.available is True
+    assert asset.degraded is True
 
     # weak_password only needs hydra which is missing.
     weak = reg.get("weak_password")
@@ -154,6 +155,7 @@ def test_availability_some_missing(monkeypatch):
     assert crawl.required_binaries == ("katana",)
     assert crawl.missing_binaries == ("katana",)
     assert crawl.available is False
+    assert crawl.degraded is False
 
 
 def test_skill_binary_overrides_resolve_when_path_missing(monkeypatch, tmp_path):
@@ -176,9 +178,11 @@ def test_skill_binary_overrides_resolve_when_path_missing(monkeypatch, tmp_path)
     asset = reg.get("asset_discovery")
     assert "httpx" in asset.required_binaries
     assert "httpx" not in asset.missing_binaries
-    # fscan is still missing — agent stays offline overall, but
+    # fscan is still missing, but the agent is degraded-spawnable because
     # the override took effect for httpx.
     assert "fscan" in asset.missing_binaries
+    assert asset.available is True
+    assert asset.degraded is True
 
 
 def test_skill_binary_overrides_ignored_when_path_does_not_exist(monkeypatch):
@@ -254,7 +258,7 @@ def test_sqlmap_resolved_via_config_override_pointing_at_sqlmap_py(
 
 
 def test_sqlmap_missing_when_neither_path_nor_override_present(monkeypatch):
-    """两种安装方式都没有 → registry 必须把 sqlmap 报告为 missing。"""
+    """两种安装方式都没有 → registry 报告 sqlmap missing，但不阻塞其他扫描技能。"""
     monkeypatch.setattr(
         "secbot.agents.registry.shutil.which",
         lambda name: None if name == "sqlmap" else f"/usr/local/bin/{name}",
@@ -266,7 +270,8 @@ def test_sqlmap_missing_when_neither_path_nor_override_present(monkeypatch):
     )
     vuln = reg.get("vuln_scan")
     assert "sqlmap" in vuln.missing_binaries
-    assert vuln.available is False
+    assert vuln.available is True
+    assert vuln.degraded is True
 
 
 # ---------------------------------------------------------------------------

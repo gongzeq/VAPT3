@@ -336,19 +336,26 @@ class Blackboard:
     async def write(
         self,
         agent_name: str,
-        text: str,
-        payload: Mapping[str, Any] | None = None,
+        kind: str,
+        payload: Mapping[str, Any],
     ) -> BlackboardEntry:
-        """Write a new entry to the blackboard.
+        """Write a structured entry to the blackboard.
 
-        Compatibility:
-        - ``write(agent, text)`` remains the legacy free-text API.
-        - ``write(agent, kind, payload)`` is the structured PR1 API.
+        This is the PR1 typed API. Use ``write_text(agent, text)`` for legacy
+        free-text writes.
+
+        Args:
+            agent_name: Name of the agent writing the entry
+            kind: One of the STRUCTURED_KINDS (scope, phase_transition, finding, etc.)
+            payload: Structured data matching the kind's schema
+
+        Returns:
+            The created BlackboardEntry
+
+        Raises:
+            BlackboardValueError: If kind is unknown or payload is invalid
         """
-        if payload is None:
-            return await self.write_text(agent_name, text)
-
-        kind = _normalise_kind(text)
+        kind = _normalise_kind(kind)
         normalised_payload = _normalise_payload(kind, payload)
         entry = BlackboardEntry(
             id=str(uuid.uuid4())[:8],

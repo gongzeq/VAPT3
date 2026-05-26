@@ -561,6 +561,8 @@ class AgentLoop:
             max_tool_result_chars=self.max_tool_result_chars,
             max_iterations=self.max_iterations,
         )
+        # Wire teammate_manager into subagents after both are created
+        self.subagents.teammate_manager = self.teammates
         self._unified_session = unified_session
         self._max_messages = max_messages if max_messages > 0 else 120
         self._running = False

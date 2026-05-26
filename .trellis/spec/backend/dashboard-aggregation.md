@@ -134,7 +134,9 @@ Rules:
 
 ### 2.6 `GET /api/agents?include_status=true`
 
-Backward-compatible extension: without the flag, response is unchanged (static YAML registry). With `include_status=true`, each agent entry is enriched:
+Without the flag, the response is the static registry plus availability fields.
+With `include_status=true`, each agent entry is also enriched with runtime
+status:
 
 ```json
 {
@@ -144,6 +146,9 @@ Backward-compatible extension: without the flag, response is unchanged (static Y
       "display_name": "资产发现智能体",
       "description": "…",
       "scoped_skills": ["…"],
+      "available": true,
+      "required_binaries": ["qscan", "fscan", "httpx"],
+      "missing_binaries": ["fscan"],
       "status": "idle|running|queued|offline",
       "current_task_id": "TASK-2026-0510-014",
       "progress": null,
@@ -154,7 +159,8 @@ Backward-compatible extension: without the flag, response is unchanged (static Y
 ```
 
 Rules:
-- `status` default `offline` when the runtime is not wired (no `SubagentManager` attached, or the binary is missing); else `idle` when there is no in-flight task.
+- `available`, `required_binaries`, and `missing_binaries` mirror the registry availability contract. `available=false` means all binary-backed scoped skills are missing; `available=true` with non-empty `missing_binaries` means degraded but spawnable.
+- `status` defaults to `offline` when the runtime is not wired (no `SubagentManager` attached), or when `available=false`; else `idle` when there is no in-flight task.
 - `progress` is **always `null`** in this endpoint today. A future `ScanProgress` aggregator may populate it when `status='running'`; until then the field is emitted so the schema stays stable. (Historical prototype in webui `dashboard.ts` assumed a 0..1 float — **do not** infer that shape from this handler.)
 - `last_heartbeat_at` is an **ISO-8601 UTC timestamp** (`+00:00` suffix). Client-side time-zone display is the frontend's responsibility. Sourced from the last `SubagentStatus.updated_at`; falls back to `HeartbeatService` when available.
 - HTTP and WebSocket surfaces MUST stay consistent: see `secbot/channels/websocket.py::WebSocketChannel.broadcast_agent_event` — the `agent_event.agent_status` frame (§3.3 below) carries the same tuple.

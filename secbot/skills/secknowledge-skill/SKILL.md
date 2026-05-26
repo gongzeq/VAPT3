@@ -1,5 +1,13 @@
 ---
 name: secknowledge-skill
+display_name: SecKnowledge security knowledge
+version: 2.0.0
+risk_level: low
+category: security_knowledge
+network_egress: none
+expected_runtime_sec: 5
+summary_size_hint: small
+always: true
 description: |
   Web+AI 安全测试知识库。
   TRIGGER when 任务是实战安全测试：渗透测试、漏洞挖掘/利用、红队攻防、安全审计 (SAST/DAST)、
@@ -156,17 +164,3 @@ description: |
 | 用户给的 URL 无响应 | "UNABLE TO ASSESS: 目标不可达" — 不基于 URL 结构猜测漏洞 |
 | 需要执行但无授权上下文 | "仅输出分析，不输出武器化链。如为授权测试，请明确授权范围" |
 | reference 与用户场景部分匹配 | 引用已匹配部分 + 明确标注未覆盖部分为 "UNABLE TO CITE" |
-
-## 与其他 Skill 的路由
-
-| 用户诉求 | 正确路由 |
-|---------|---------|
-| 渗透测试 / 红队 / CTF / 挖洞 | **本 Skill** |
-| Java/JS 深度白盒代码审计（Source-Sink）| code-audit-skill |
-| Mirawork 平台专项测试 | mirawork-security-tester |
-| WooYun 历史漏洞分析方法论 | wooyun-legacy |
-| 先知社区研究方法论 | xianzhi-research |
-
----
-
-*v2.0 | 知识源: WooYun 88,636 × 先知 5,600+ × GAARM 150 × OWASP LLM/ASI/WSTG*

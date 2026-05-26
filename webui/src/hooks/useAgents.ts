@@ -9,6 +9,9 @@ interface UseAgentsOptions {
    * ``agent_event.agent_status`` frames into the registry rows. ``null``
    * disables the subscription (HTTP snapshot only). */
   chatId?: string | null;
+  /** Whether viewing a historical session (no active stream). When true,
+   * agent status will be overridden to "idle" instead of "offline". */
+  isHistorical?: boolean;
 }
 
 /**
@@ -23,7 +26,7 @@ interface UseAgentsOptions {
  *    ``agent_event.agent_status`` and patches the row keyed by ``agent_name``
  *    in-place, so the chip transitions without a refetch.
  */
-export function useAgents({ chatId }: UseAgentsOptions = {}): {
+export function useAgents({ chatId, isHistorical = false }: UseAgentsOptions = {}): {
   agents: AgentRegistryRow[];
   loading: boolean;
 } {
@@ -39,7 +42,14 @@ export function useAgents({ chatId }: UseAgentsOptions = {}): {
     fetchAgents(token, { includeStatus: true })
       .then((rows) => {
         if (cancelled) return;
-        setAgents(rows);
+        // For historical sessions, override "offline" status to "idle"
+        const processedRows = isHistorical
+          ? rows.map((row) => ({
+              ...row,
+              status: row.status === "offline" ? "idle" : row.status,
+            }))
+          : rows;
+        setAgents(processedRows);
       })
       .catch((err) => {
         // Degrade-don't-crash: empty registry still renders the header.
@@ -51,7 +61,7 @@ export function useAgents({ chatId }: UseAgentsOptions = {}): {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, isHistorical]);
 
   // WS subscription: patch rows on agent_status frames.
   useEffect(() => {
