@@ -16,7 +16,7 @@ The runtime contract for each snippet:
 * On any internal failure: still emit a JSON object with ``error`` set so
   the next step has something to operate on. The script must NEVER print
   Python tracebacks to stdout; tracebacks go to stderr only.
-* No third-party imports. ``redis`` / ``sqlite3`` are pulled lazily and
+* No third-party imports. ``sqlite3`` is pulled lazily and
   failures degrade gracefully (the cache and write-back layers are best
   effort — the workflow keeps running without them).
 
@@ -27,36 +27,98 @@ from __future__ import annotations
 
 
 # ---------------------------------------------------------------------------
-# step1 — 特征提取 + Redis 7 天去重 + 脱敏
+# step1 — 特征提取 + SQLite 去重 + 脱敏
 # ---------------------------------------------------------------------------
 
 
 PHISHING_STEP1_CODE = r'''
+import email
+import email.policy
 import hashlib
 import json
 import os
 import re
+import sqlite3
 import sys
+import time
 import traceback
 from urllib.parse import urlparse
 
 
-def _safe_load_redis():
-    try:
-        import redis  # type: ignore[import-not-found]
-    except Exception:
+_DB_PATH = os.environ.get(
+    "PHISHING_DB_PATH",
+    "/home/administrator/VAPT3/detection_results.db",
+)
+
+
+def _lookup_sqlite_cache(chash: str) -> dict | None:
+    """Return the most recent LLM result for *chash* from the local SQLite DB.
+
+    Only genuine LLM results are used (reason not starting with
+    "LLM skipped").  Returns None when not found or on any DB error.
+    """
+    if not os.path.isfile(_DB_PATH):
         return None
     try:
-        return redis.Redis(
-            host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-            port=int(os.environ.get("REDIS_PORT", "6379")),
-            db=int(os.environ.get("REDIS_DB", "0")),
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0,
-            decode_responses=True,
-        )
+        conn = sqlite3.connect(_DB_PATH, timeout=1.0)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT ai_confidence, ai_reason, action, risk_factors
+            FROM   detection_results
+            WHERE  content_hash = ?
+              AND  ai_confidence IS NOT NULL
+              AND  (ai_reason IS NULL OR ai_reason NOT LIKE 'LLM skipped%')
+            ORDER  BY id DESC
+            LIMIT  1
+            """,
+            (chash,),
+        ).fetchone()
+        conn.close()
+        if row is None:
+            return None
+        import json as _json
+        try:
+            rf = _json.loads(row["risk_factors"]) if row["risk_factors"] else []
+        except Exception:
+            rf = []
+        return {
+            "confidence": float(row["ai_confidence"] or 0.0),
+            "reason": str(row["ai_reason"] or "(cached)"),
+            "suggested_action": str(row["action"] or ""),
+            "risk_factors": rf,
+        }
     except Exception:
         return None
+
+
+def _extract_plain_text(raw: str) -> str:
+    """Extract plain text from raw MIME email.
+
+    Uses Python email module to correctly parse multipart structure
+    and extract text/plain (preferred) or stripped text/html.
+    Falls back to regex-based HTML stripping if MIME parsing fails.
+    """
+    try:
+        msg = email.message_from_string(raw, policy=email.policy.default)
+        # Prefer text/plain, fall back to text/html
+        body_part = msg.get_body(preferencelist=("plain", "html"))
+        if body_part:
+            content = body_part.get_content()
+            if body_part.get_content_type() == "text/html":
+                content = re.sub(r"<[^>]+>", " ", content)
+            return content
+        # Walk parts as fallback
+        for part in msg.walk():
+            ct = part.get_content_type()
+            if ct == "text/plain":
+                return part.get_content()
+            if ct == "text/html":
+                return re.sub(r"<[^>]+>", " ", part.get_content())
+    except Exception:
+        pass
+    # Last resort: strip HTML from raw input
+    return re.sub(r"<[^>]+>", " ", raw)
 
 
 def _content_hash(sender: str, subject: str, body: str) -> str:
@@ -65,7 +127,10 @@ def _content_hash(sender: str, subject: str, body: str) -> str:
     h.update(b"|")
     h.update((subject or "").strip().encode("utf-8", "replace"))
     h.update(b"|")
-    h.update((body or "").strip().encode("utf-8", "replace"))
+    # Extract real text content from MIME body, then normalize.
+    plain = _extract_plain_text(body or "")
+    normalized = re.sub(r"\s+", " ", plain).strip().lower()
+    h.update(normalized.encode("utf-8", "replace"))
     return h.hexdigest()
 
 
@@ -133,24 +198,14 @@ def main() -> int:
     } - {""})
 
     chash = _content_hash(sender, subject, body)
-    cache_key = f"ai:result:{chash}"
 
     cache_hit = False
     cached_result = None
-    redis_ok = False
-    rds = _safe_load_redis()
-    if rds is not None:
-        try:
-            raw_cached = rds.get(cache_key)
-            redis_ok = True
-            if raw_cached:
-                try:
-                    cached_result = json.loads(raw_cached)
-                    cache_hit = True
-                except Exception:
-                    cached_result = None
-        except Exception:
-            redis_ok = False
+
+    # SQLite-based cache lookup (always available, no extra deps)
+    cached_result = _lookup_sqlite_cache(chash)
+    if cached_result is not None:
+        cache_hit = True
 
     try:
         rspamd_score = float(rspamd_score_raw)
@@ -160,9 +215,9 @@ def main() -> int:
     _emit({
         "cache_hit": cache_hit,
         "cached_result": cached_result,
-        "redis_ok": redis_ok,
         "content_hash": chash,
         "rspamd_score": rspamd_score,
+        "workflow_start_ms": int(time.time() * 1000),
         "features": {
             "sender_full": sender,
             "sender_local": sender_local,
@@ -192,7 +247,7 @@ except Exception:
 
 
 # ---------------------------------------------------------------------------
-# step3 — 聚合 + add_score 计算 + 回写 Redis & 业务 SQLite
+# step3 — 聚合 + add_score 计算 + 回写业务 SQLite
 # ---------------------------------------------------------------------------
 
 
@@ -205,32 +260,63 @@ import time
 import traceback
 
 
-_CACHE_TTL_SEC = int(os.environ.get("PHISHING_CACHE_TTL", "604800"))  # 7 days
 _DB_PATH = os.environ.get(
     "PHISHING_DB_PATH",
     "/home/administrator/VAPT3/detection_results.db",
 )
 
 
-def _safe_load_redis():
+def _migrate_drop_unique(conn: sqlite3.Connection) -> None:
+    """Drop UNIQUE on content_hash so repeated detections all get stored.
+
+    SQLite has no DROP CONSTRAINT; the only way is to recreate the table.
+    Safe to call repeatedly — checks the schema string first.
+    """
     try:
-        import redis  # type: ignore[import-not-found]
-    except Exception:
-        return None
-    try:
-        return redis.Redis(
-            host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-            port=int(os.environ.get("REDIS_PORT", "6379")),
-            db=int(os.environ.get("REDIS_DB", "0")),
-            socket_timeout=2.0,
-            socket_connect_timeout=2.0,
-            decode_responses=True,
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='table' AND name='detection_results'"
+        ).fetchone()
+        if row is None or "content_hash TEXT UNIQUE" not in (row[0] or ""):
+            return  # nothing to do
+        cols = [
+            r[1]
+            for r in conn.execute(
+                "PRAGMA table_info(detection_results)"
+            ).fetchall()
+        ]
+        cols_csv = ", ".join(cols)
+        new_sql = (
+            row[0]
+            .replace("detection_results", "detection_results_new", 1)
+            .replace("content_hash TEXT UNIQUE", "content_hash TEXT")
         )
-    except Exception:
-        return None
+        conn.execute(new_sql)
+        conn.execute(
+            f"INSERT INTO detection_results_new ({cols_csv})"
+            f" SELECT {cols_csv} FROM detection_results"
+        )
+        conn.execute("DROP TABLE detection_results")
+        conn.execute(
+            "ALTER TABLE detection_results_new RENAME TO detection_results"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_detection_created_at"
+            " ON detection_results(created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_detection_content_hash"
+            " ON detection_results(content_hash)"
+        )
+        conn.commit()
+    except Exception as exc:
+        sys.stderr.write(f"[step3] migrate_drop_unique failed: {exc}\n")
 
 
 def _ensure_table(conn: sqlite3.Connection) -> None:
+    # Drop UNIQUE on content_hash first so the following CREATE TABLE
+    # definition (content_hash TEXT NOT NULL, no UNIQUE) is the canonical one.
+    _migrate_drop_unique(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS detection_results (
@@ -238,12 +324,15 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             content_hash TEXT NOT NULL,
             sender TEXT,
             subject TEXT,
-            ai_is_phishing INTEGER,
             ai_confidence REAL,
             ai_reason TEXT,
             action TEXT,
             created_at TEXT,
-            processed_time_ms INTEGER
+            processed_time_ms INTEGER,
+            risk_factors TEXT,
+            rspamd_score REAL,
+            final_score REAL,
+            rspamd_action TEXT
         )
         """
     )
@@ -255,41 +344,71 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_detection_content_hash "
         "ON detection_results(content_hash)"
     )
+    # --- Migrations for existing tables ---
+    # Add new columns
+    for col, typ in [
+        ("risk_factors", "TEXT"),
+        ("rspamd_score", "REAL"),
+        ("final_score", "REAL"),
+        ("rspamd_action", "TEXT"),
+    ]:
+        try:
+            conn.execute(
+                f"ALTER TABLE detection_results ADD COLUMN {col} {typ}"
+            )
+        except Exception:
+            pass
+    # Rename ai_suspicion_level -> ai_confidence (legacy migration)
+    try:
+        conn.execute(
+            "ALTER TABLE detection_results RENAME COLUMN ai_suspicion_level"
+            " TO ai_confidence"
+        )
+    except Exception:
+        pass
 
 
 def _persist_sqlite(row: dict) -> bool:
-    try:
-        os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
-    except Exception:
-        pass
+    db_dir = os.path.dirname(_DB_PATH)
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception:
+            pass
     try:
         conn = sqlite3.connect(_DB_PATH, timeout=2.0)
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"[step3] sqlite connect failed: {exc}\n")
         return False
     try:
         _ensure_table(conn)
         conn.execute(
             """
             INSERT INTO detection_results
-                (content_hash, sender, subject, ai_is_phishing, ai_confidence,
-                 ai_reason, action, created_at, processed_time_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (content_hash, sender, subject, ai_confidence,
+                 ai_reason, action, created_at, processed_time_ms,
+                 risk_factors, rspamd_score, final_score, rspamd_action)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("content_hash"),
                 row.get("sender"),
                 row.get("subject"),
-                1 if row.get("is_phishing") else 0,
                 float(row.get("confidence") or 0.0),
                 row.get("reason"),
                 row.get("suggested_action"),
                 row.get("created_at"),
                 int(row.get("processed_time_ms") or 0),
+                json.dumps(row.get("risk_factors") or [], ensure_ascii=False),
+                float(row.get("rspamd_score") or 0.0) if row.get("rspamd_score") is not None else None,
+                float(row.get("final_score") or 0.0) if row.get("final_score") is not None else None,
+                row.get("rspamd_action") or "",
             ),
         )
         conn.commit()
         return True
-    except Exception:
+    except Exception as exc:
+        sys.stderr.write(f"[step3] sqlite persist failed: {exc}\n")
         return False
     finally:
         try:
@@ -298,33 +417,42 @@ def _persist_sqlite(row: dict) -> bool:
             pass
 
 
-def _add_score_for(
-    is_phishing: bool, confidence: float, risk_level: str
-) -> float:
-    """Map LLM judgement to rspamd score delta.
+def _add_score_for(suspicion_level: float) -> float:
+    """Map LLM suspicion level to rspamd score delta.
 
-    Mirrors `ai_detector.py`'s decision matrix:
-      high risk    → 5.0
-      medium risk  → 2.5
-      low risk     → 0.5
-      safe / unknown → 0.0
-    Cache hits use the cached `add_score` directly upstream.
+    Formula:  add_score = suspicion_level × 8.0
+
+    Suspicion level (0.0–1.0) represents how suspicious the email is.
+    A fixed multiplier keeps the scoring simple and predictable:
+      - 1.0 → 8.0 (max addition)
+      - 0.6 → 4.8
+      - 0.2 → 1.6
+      - 0.0 → 0.0
     """
-    rl = (risk_level or "").lower()
-    if not is_phishing:
-        return 0.0
-    if rl == "high" or confidence >= 0.85:
-        return 5.0
-    if rl == "medium" or confidence >= 0.6:
-        return 2.5
-    if rl == "low" or confidence >= 0.4:
-        return 0.5
-    return 0.0
+    return round(suspicion_level * 8.0, 2)
 
 
 def _emit(payload: dict) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False))
     sys.stdout.write("\n")
+
+
+def _rspamd_action(score: float) -> str:
+    """Derive the rspamd final action from total score.
+
+    Thresholds (from rspamadm configdump):
+      >= 15  → reject (拒绝投递，直接退信)
+      >=  6  → add_header (投递，标记为 spam)
+      >=  4  → greylist (临时拒绝，要求重试)
+      <   4  → accept (正常投递)
+    """
+    if score >= 15:
+        return "reject"
+    if score >= 6:
+        return "add_header"
+    if score >= 4:
+        return "greylist"
+    return "accept"
 
 
 def main() -> int:
@@ -336,11 +464,10 @@ def main() -> int:
         _emit({
             "error": f"step3.input_parse: {exc}",
             "add_score": 0.0,
-            "is_phishing": False,
             "confidence": 0.0,
             "reason": "step3 input parse failed; defaulting add_score=0",
             "suggested_action": "放行",
-            "from_cache": False,
+            "risk_factors": [],
         })
         return 0
 
@@ -352,6 +479,8 @@ def main() -> int:
     chash = step1.get("content_hash") or ""
     sender = features.get("sender_full") or ""
     subject = features.get("subject") or ""
+    # Use workflow_start_ms from step1 to calculate total processing time
+    workflow_start_ms = step1.get("workflow_start_ms") or 0
 
     cache_hit = bool(step1.get("cache_hit"))
     cached = step1.get("cached_result") or {}
@@ -359,22 +488,17 @@ def main() -> int:
     if cache_hit and cached:
         # Trust the cached judgement verbatim; recompute add_score so
         # tuning the matrix takes effect on next read without bumping TTL.
-        is_phishing = bool(cached.get("is_phishing"))
         confidence = float(cached.get("confidence") or 0.0)
-        risk_level = str(cached.get("risk_level") or "")
         reason = str(cached.get("reason") or "(cached)")
         suggested_action = str(cached.get("suggested_action") or "")
         risk_factors = list(cached.get("risk_factors") or [])
-        add_score = float(cached.get("add_score", _add_score_for(
-            is_phishing, confidence, risk_level
-        )))
-        from_cache = True
+        add_score = float(cached.get("add_score", _add_score_for(confidence)))
     else:
         # Accept two shapes for ``step2``:
         # 1. The full LlmExecutor wrapper ``{content, parsed, ...}`` --
         #    business JSON nested under ``.parsed``.
-        # 2. The already-unwrapped business dict (``{is_phishing,
-        #    confidence, ...}`` at the top level), which is what the
+        # 2. The already-unwrapped business dict (``{confidence,
+        #    reason, ...}`` at the top level), which is what the
         #    current phishing template's stdin produces by interpolating
         #    the step2 parsed result directly.
         # NOTE: do NOT write the ``$``+``{...}`` placeholder syntax here --
@@ -389,69 +513,71 @@ def main() -> int:
             inner = step2.get("parsed")
             if isinstance(inner, dict):
                 parsed = inner
-            elif "is_phishing" in step2 or "risk_level" in step2:
+            elif "confidence" in step2 or "reason" in step2:
                 parsed = step2
         if not isinstance(parsed, dict):
             # LLM was skipped (rspamd_score outside [4,10]) or errored.
             # Default to放行 with a clear reason.
-            _emit({
+            early_now_ms = int(time.time() * 1000)
+            early_processed = (early_now_ms - workflow_start_ms) if workflow_start_ms > 0 else int((time.time() - started) * 1000)
+            early_created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            early_result = {
                 "add_score": 0.0,
-                "is_phishing": False,
                 "confidence": 0.0,
-                "risk_level": "safe",
                 "reason": "LLM skipped or unavailable; default add_score=0",
                 "suggested_action": "放行",
                 "risk_factors": [],
-                "from_cache": False,
                 "content_hash": chash,
                 "sender": sender,
                 "subject": subject,
                 "rspamd_score": rspamd_score,
-                "processed_time_ms": int((time.time() - started) * 1000),
-            })
+                "final_score": float(rspamd_score or 0.0),
+                "rspamd_action": _rspamd_action(float(rspamd_score or 0.0)),
+                "processed_time_ms": early_processed,
+                "created_at": early_created_at,
+            }
+            # Persist to SQLite even for LLM-skipped path
+            if chash:
+                _persist_sqlite(early_result)
+            _emit(early_result)
             return 0
 
-        is_phishing = bool(parsed.get("is_phishing"))
         confidence = float(parsed.get("confidence") or 0.0)
-        risk_level = str(parsed.get("risk_level") or "")
         reason = str(parsed.get("reason") or "")
         suggested_action = str(parsed.get("suggested_action") or "")
         risk_factors = list(parsed.get("risk_factors") or [])
-        add_score = _add_score_for(is_phishing, confidence, risk_level)
-        from_cache = False
+        add_score = _add_score_for(confidence)
 
-    processed_ms = int((time.time() - started) * 1000)
+    # Calculate total workflow processing time (from step1 start to now)
+    now_ms = int(time.time() * 1000)
+    if workflow_start_ms > 0:
+        processed_ms = now_ms - workflow_start_ms
+    else:
+        processed_ms = int((time.time() - started) * 1000)
     created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+    rspamd_score_f = float(rspamd_score or 0.0)
+    final_score = round(rspamd_score_f + float(add_score), 2)
+    rspamd_action = _rspamd_action(final_score)
 
     result = {
         "add_score": float(add_score),
-        "is_phishing": bool(is_phishing),
         "confidence": float(confidence),
-        "risk_level": risk_level,
         "reason": reason,
         "suggested_action": suggested_action,
         "risk_factors": risk_factors,
-        "from_cache": from_cache,
         "content_hash": chash,
         "sender": sender,
         "subject": subject,
-        "rspamd_score": rspamd_score,
+        "rspamd_score": rspamd_score_f,
+        "final_score": final_score,
+        "rspamd_action": rspamd_action,
         "processed_time_ms": processed_ms,
         "created_at": created_at,
     }
 
-    # Best-effort persistence — never block the response on these.
-    if not from_cache and chash:
-        rds = _safe_load_redis()
-        if rds is not None:
-            try:
-                rds.set(
-                    f"ai:result:{chash}",
-                    json.dumps(result, ensure_ascii=False),
-                    ex=_CACHE_TTL_SEC,
-                )
-            except Exception:
-                pass
+    # Always persist to SQLite for dashboard visibility.
+    if chash:
         _persist_sqlite(result)
 
     _emit(result)
@@ -465,14 +591,415 @@ except Exception:
     sys.stdout.write(json.dumps({
         "error": "step3.unhandled",
         "add_score": 0.0,
-        "is_phishing": False,
         "confidence": 0.0,
         "reason": "step3 unhandled exception; defaulting add_score=0",
         "suggested_action": "放行",
-        "from_cache": False,
+        "risk_factors": [],
     }, ensure_ascii=False) + "\n")
     sys.exit(0)
 '''
 
 
-__all__ = ["PHISHING_STEP1_CODE", "PHISHING_STEP3_CODE"]
+# ---------------------------------------------------------------------------
+# Log analysis — step1: 纯读取文件内容，不做解析，交给 LLM
+# ---------------------------------------------------------------------------
+
+
+LOG_ANALYSIS_STEP1_CODE = r'''
+import json
+import os
+import sys
+import traceback
+
+
+def _read_xlsx_as_text(file_path: str) -> str:
+    """Read xlsx file from disk, convert all cells to tab-separated text."""
+    try:
+        import openpyxl
+    except ImportError:
+        return "ERROR: openpyxl not available, cannot read .xlsx files"
+
+    try:
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+    except Exception as exc:
+        return f"ERROR: Failed to open xlsx: {exc}"
+
+    parts = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        parts.append(f"[Sheet: {sheet_name}]")
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            parts.append("\t".join(cells))
+    wb.close()
+    return "\n".join(parts)
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw or "{}")
+    except Exception:
+        # Malformed input → emit safe empty payload so downstream
+        # (LLM) has something to work with.
+        sys.stdout.write(json.dumps({
+            "log_content": "",
+            "file_name": "unknown",
+            "log_format": "unknown",
+            "char_count": 0,
+        }))
+        return 0
+
+    log_path = str(data.get("log_path") or "").strip()
+
+    if not log_path:
+        # Upload mode — content flows directly from inputs.log_content
+        # into the LLM prompt.  This step just passes through empty
+        # content so the template interpolation in step2 (LLM) always
+        # sees a valid string.
+        sys.stdout.write(json.dumps({
+            "log_content": "",
+            "file_name": "uploaded",
+            "log_format": "uploaded_text",
+            "char_count": 0,
+        }))
+        return 0
+
+    # -------------------------------------------------------------------
+    # Path mode — read the file from the server filesystem
+    # -------------------------------------------------------------------
+    file_name = os.path.basename(log_path)
+    lower = log_path.lower()
+
+    # Format detection
+    if lower.endswith((".xlsx", ".xlsm", ".xls")):
+        fmt = "xlsx"
+        try:
+            content = _read_xlsx_as_text(log_path)
+        except Exception as exc:
+            sys.stdout.write(json.dumps({
+                "log_content": "",
+                "file_name": file_name,
+                "log_format": fmt,
+                "char_count": 0,
+                "error": f"xlsx_read: {exc}",
+            }))
+            return 0
+    else:
+        if lower.endswith(".csv"):
+            fmt = "csv"
+        elif lower.endswith((".tsv", ".tab")):
+            fmt = "tsv"
+        else:
+            fmt = "txt"
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except Exception as exc:
+            sys.stdout.write(json.dumps({
+                "log_content": "",
+                "file_name": file_name,
+                "log_format": fmt,
+                "char_count": 0,
+                "error": f"file_read: {exc}",
+            }))
+            return 0
+
+    # Truncate to stay within the exec tool _MAX_OUTPUT (100 KB).  The
+    # JSON wrapper adds ~15 % overhead; 50 000 chars is a safe ceiling.
+    max_chars = 50000
+    char_count = len(content)
+    if char_count > max_chars:
+        content = content[:max_chars]
+
+    sys.stdout.write(json.dumps({
+        "log_content": content,
+        "file_name": file_name,
+        "log_format": fmt,
+        "char_count": char_count,
+    }, ensure_ascii=False))
+    return 0
+
+
+try:
+    sys.exit(main())
+except Exception:
+    sys.stderr.write(traceback.format_exc())
+    sys.exit(0)
+'''
+
+
+# ---------------------------------------------------------------------------
+# Log analysis — step3: LLM 结果入库 + 报告生成
+# ---------------------------------------------------------------------------
+
+
+LOG_ANALYSIS_STEP3_CODE = r'''
+import json
+import os
+import sqlite3
+import sys
+import time
+import traceback
+
+
+_DB_PATH = os.environ.get(
+    "LOG_ANALYSIS_DB_PATH",
+    "/home/administrator/VAPT3/detection_results.db",
+)
+
+
+def _ensure_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS log_analysis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workflow_run_id TEXT,
+            file_name TEXT,
+            log_format TEXT,
+            char_count INTEGER,
+            analysis_timestamp TEXT,
+            anomaly_count INTEGER,
+            critical_count INTEGER,
+            high_count INTEGER,
+            medium_count INTEGER,
+            low_count INTEGER,
+            summary TEXT,
+            analysis_json TEXT,
+            created_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_log_analysis_created_at "
+        "ON log_analysis(created_at)"
+    )
+    for col, typ in [
+        ("critical_count", "INTEGER"),
+        ("high_count", "INTEGER"),
+        ("medium_count", "INTEGER"),
+        ("low_count", "INTEGER"),
+        ("char_count", "INTEGER"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE log_analysis ADD COLUMN {col} {typ}")
+        except Exception:
+            pass
+
+
+def _persist(conn: sqlite3.Connection, row: dict) -> bool:
+    try:
+        _ensure_table(conn)
+        conn.execute(
+            """
+            INSERT INTO log_analysis
+                (workflow_run_id, file_name, log_format, char_count,
+                 analysis_timestamp, anomaly_count,
+                 critical_count, high_count, medium_count, low_count,
+                 summary, analysis_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row.get("workflow_run_id"),
+                row.get("file_name"),
+                row.get("log_format"),
+                int(row.get("char_count") or 0),
+                row.get("analysis_timestamp"),
+                int(row.get("anomaly_count") or 0),
+                int(row.get("critical_count") or 0),
+                int(row.get("high_count") or 0),
+                int(row.get("medium_count") or 0),
+                int(row.get("low_count") or 0),
+                row.get("summary"),
+                row.get("analysis_json"),
+                row.get("created_at"),
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception as exc:
+        sys.stderr.write(f"[log-analysis-step3] persist failed: {exc}\n")
+        return False
+
+
+def _emit(payload: dict) -> None:
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.write("\n")
+
+
+def main() -> int:
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw or "{}")
+    except Exception as exc:
+        _emit({"error": f"step3.input_parse: {exc}", "report": "", "summary": ""})
+        return 0
+
+    # ── file_name ──
+    # Path mode: step1 extracts the basename from the path (e.g.
+    # "/var/log/auth.log" → "auth.log"); prefer it over the input
+    # default "unknown.log".
+    step1 = data.get("step1") or {}
+    if isinstance(step1, dict):
+        step1_name = str(step1.get("file_name") or "")
+        if step1_name:
+            file_name = step1_name
+        else:
+            file_name = str(data.get("file_name") or "")
+    else:
+        file_name = str(data.get("file_name") or "")
+    if not file_name:
+        file_name = "unknown.log"
+
+    # ── step1 metrics (available in path mode) ──
+    step1_valid = isinstance(step1, dict)
+    log_format = str(step1.get("log_format") or "unknown") if step1_valid else "unknown"
+    char_count = int(step1.get("char_count") or 0) if step1_valid else 0
+
+    # ── step2 = LLM judgement ──
+    step2 = data.get("step2") or {}
+    step2_parsed = step2 if isinstance(step2, dict) else {}
+    # Handle {parsed: {...}} wrapper or raw dict
+    if isinstance(step2_parsed, dict) and "parsed" in step2_parsed:
+        inner = step2_parsed.get("parsed")
+        if isinstance(inner, dict):
+            step2_parsed = inner
+
+    created_at = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+    # Extract LLM result — all fields come from LLM now
+    llm_confidence = 0.0
+    llm_reason = ""
+    llm_risk_factors = []
+    llm_suggested_action = ""
+    anomaly_count = 0
+    anomaly_entries = []
+    sev_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+
+    if isinstance(step2_parsed, dict):
+        llm_confidence = float(step2_parsed.get("confidence") or 0.0)
+        llm_reason = str(step2_parsed.get("reason") or "")
+        llm_risk_factors = list(step2_parsed.get("risk_factors") or [])
+        llm_suggested_action = str(step2_parsed.get("suggested_action") or "")
+        anomaly_entries = list(step2_parsed.get("anomaly_entries") or [])
+        anomaly_count = int(step2_parsed.get("anomaly_count") or len(anomaly_entries))
+        sev_counts = {
+            "critical": int((step2_parsed.get("severity_distribution") or {}).get("critical", 0)),
+            "high": int((step2_parsed.get("severity_distribution") or {}).get("high", 0)),
+            "medium": int((step2_parsed.get("severity_distribution") or {}).get("medium", 0)),
+            "low": int((step2_parsed.get("severity_distribution") or {}).get("low", 0)),
+        }
+    elif isinstance(step2_parsed, str):
+        llm_reason = step2_parsed[:2000]
+
+    # Build text report
+    report_lines = [
+        "=" * 60,
+        "  日志分析报告",
+        "=" * 60,
+        f"文件名：{file_name}",
+        f"格式：{log_format}",
+        f"内容大小：{char_count} 字符",
+        f"分析时间：{created_at}",
+        "",
+        f"【LLM 分析结论】",
+        f"整体威胁置信度：{llm_confidence:.2f}",
+        f"分析依据：{llm_reason}",
+        f"建议处理：{llm_suggested_action}",
+        f"异常条目数：{anomaly_count}",
+        "",
+        f"【严重级别分布】",
+        f"  Critical: {sev_counts['critical']}",
+        f"  High: {sev_counts['high']}",
+        f"  Medium: {sev_counts['medium']}",
+        f"  Low: {sev_counts['low']}",
+    ]
+    if llm_risk_factors:
+        report_lines.append("")
+        report_lines.append("风险因素：")
+        for i, rf in enumerate(llm_risk_factors, 1):
+            report_lines.append(f"  {i}. {rf}")
+    if anomaly_entries:
+        report_lines.append("")
+        report_lines.append("异常详情（前20条）：")
+        for i, ae in enumerate(anomaly_entries[:20], 1):
+            report_lines.append(f"  {i}. {json.dumps(ae, ensure_ascii=False)[:300]}")
+    report_lines.append("=" * 60)
+    report = "\n".join(report_lines)
+
+    analysis_payload = {
+        "confidence": llm_confidence,
+        "reason": llm_reason,
+        "suggested_action": llm_suggested_action,
+        "risk_factors": llm_risk_factors,
+        "anomaly_entries": anomaly_entries[:50],
+        "anomaly_count": anomaly_count,
+        "severity_distribution": sev_counts,
+    }
+
+    # Persist
+    db_dir = os.path.dirname(_DB_PATH)
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except Exception:
+            pass
+
+    persisted = False
+    try:
+        conn = sqlite3.connect(_DB_PATH, timeout=2.0)
+        persisted = _persist(conn, {
+            "workflow_run_id": "",
+            "file_name": file_name,
+            "log_format": log_format,
+            "char_count": char_count,
+            "analysis_timestamp": created_at,
+            "anomaly_count": anomaly_count,
+            "critical_count": sev_counts["critical"],
+            "high_count": sev_counts["high"],
+            "medium_count": sev_counts["medium"],
+            "low_count": sev_counts["low"],
+            "summary": report[:500],
+            "analysis_json": json.dumps(analysis_payload, ensure_ascii=False),
+            "created_at": created_at,
+        })
+        conn.close()
+    except Exception as exc:
+        sys.stderr.write(f"[log-analysis-step3] db error: {exc}\n")
+
+    _emit({
+        "report": report,
+        "summary": report[:200],
+        "anomaly_count": anomaly_count,
+        "confidence": llm_confidence,
+        "reason": llm_reason,
+        "suggested_action": llm_suggested_action,
+        "risk_factors": llm_risk_factors,
+        "severity_distribution": sev_counts,
+        "file_name": file_name,
+        "char_count": char_count,
+        "persisted": persisted,
+    })
+    return 0
+
+
+try:
+    sys.exit(main())
+except Exception:
+    sys.stderr.write(traceback.format_exc())
+    sys.stdout.write(json.dumps({
+        "error": "step3.unhandled_exception",
+        "report": "",
+        "summary": "",
+        "anomaly_count": 0,
+    }, ensure_ascii=False) + "\n")
+    sys.exit(0)
+'''
+
+
+__all__ = [
+    "PHISHING_STEP1_CODE",
+    "PHISHING_STEP3_CODE",
+    "LOG_ANALYSIS_STEP1_CODE",
+    "LOG_ANALYSIS_STEP3_CODE",
+]

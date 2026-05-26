@@ -25,6 +25,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { HomePage } from "@/pages/HomePage";
 import { LoginPage } from "@/pages/LoginPage";
 import { PhishingDetailPage } from "@/pages/PhishingDetailPage";
+import { LogAnalysisDetailPage } from "@/pages/LogAnalysisDetailPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { WorkflowListPage } from "@/pages/WorkflowListPage";
@@ -223,6 +224,10 @@ export default function App() {
             <Route
               path="/dashboard/phishing"
               element={<PhishingDetailPage />}
+            />
+            <Route
+              path="/dashboard/log-analysis"
+              element={<LogAnalysisDetailPage />}
             />
             <Route path="/tasks/:id" element={<TaskDetailPage />} />
             {WORKFLOW_BUILDER_ENABLED && (

@@ -33,6 +33,8 @@ from secbot.workflow.types import (
 from secbot.workflow.scripts import (
     PHISHING_STEP1_CODE,
     PHISHING_STEP3_CODE,
+    LOG_ANALYSIS_STEP1_CODE,
+    LOG_ANALYSIS_STEP3_CODE,
 )
 
 
@@ -42,16 +44,14 @@ from secbot.workflow.scripts import (
 
 
 _PHISHING_LLM_SYSTEM = (
-    "你是一个邮件安全分析专家。判断邮件是否为钓鱼邮件，"
+    "你是一个邮件安全分析专家。分析邮件的可疑程度，"
     "只输出 JSON，不输出多余文字。"
 )
 
 _PHISHING_LLM_USER = (
-    "请分析以下邮件特征，判断是否为钓鱼邮件，并输出 JSON：\n"
+    "请分析以下邮件特征，评估其可疑程度，并输出 JSON：\n"
     "{\n"
-    '  "is_phishing": true|false,\n'
-    '  "confidence": 0.0-1.0,\n'
-    '  "risk_level": "high|medium|low|safe",\n'
+    '  "confidence": 0.0-1.0,  // 可疑度，0.0=完全不可疑，1.0=极度可疑\n'
     '  "reason": "简要说明判断依据（≤200 字）",\n'
     '  "risk_factors": ["可疑特征 1", "可疑特征 2"],\n'
     '  "suggested_action": "拒绝|隔离|标记|放行"\n'
@@ -158,12 +158,7 @@ def _phishing_email_template() -> dict[str, Any]:
                     "systemPrompt": _PHISHING_LLM_SYSTEM,
                     "userPrompt": _PHISHING_LLM_USER,
                     "temperature": 0.1,
-                    # 1500 是给非 reasoning 模型的安全余量；reasoning
-                    # 模型会把大量 token 花在隐藏 chain-of-thought 上，
-                    # 600 token 实测被截断（llm_parse: Unterminated
-                    # string）。如果上线后仍出现 truncated，应改用
-                    # 非 reasoning 模型或继续上调。
-                    "maxTokens": 1500,
+                    "maxTokens": 10000,
                     "responseFormat": "json",
                 },
                 # Skip LLM when:
@@ -171,8 +166,7 @@ def _phishing_email_template() -> dict[str, Any]:
                 #     payload — the raw script result is the executor
                 #     wrapper {exit_code, stdout, stderr}, the business
                 #     fields live under .parsed)
-                #   - rspamd_score < 4.0 (likely benign) or > 10.0 (already
-                #     decided by other rules), saving an LLM call
+                #   - rspamd_score outside [-1.0, 15.0]
                 #
                 # NOTE: ``eval_bool`` forbids function calls in conditions
                 # (no ``float(inputs.x)`` allowed) — we therefore compare
@@ -180,8 +174,8 @@ def _phishing_email_template() -> dict[str, Any]:
                 # already coerces to a Python ``float`` before emitting.
                 condition=(
                     "steps.step1.result.parsed.cache_hit == False"
-                    " and steps.step1.result.parsed.rspamd_score >= 4.0"
-                    " and steps.step1.result.parsed.rspamd_score <= 10.0"
+                    " and steps.step1.result.parsed.rspamd_score >= -1.0"
+                    " and steps.step1.result.parsed.rspamd_score <= 15.0"
                 ),
                 on_error="continue",
                 retry=1,
@@ -225,10 +219,153 @@ def _phishing_email_template() -> dict[str, Any]:
         "name": "钓鱼邮件检测",
         "description": (
             "Per-Mail 触发：rspamd 同步调用本工作流，"
-            "脚本预筛（Redis 7 天去重 + 特征脱敏）→ LLM 判定（confidence + risk_level）"
+            "脚本预筛（Redis 7 天去重 + 特征脱敏）→ LLM 判定（confidence + risk_factors）"
             " → step3 聚合输出 add_score 给 Lua 插件。"
         ),
         "tags": ["email", "phishing", "llm"],
+        "workflow": payload,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Log analysis — 3-step (script → llm → script)
+# ---------------------------------------------------------------------------
+
+_LOG_ANALYSIS_LLM_SYSTEM = (
+    "你是一个专业的安全日志分析专家。分析用户提供的设备安全日志完整内容，"
+    "逐条识别攻击行为、异常流量、可疑访问、暴力破解等安全威胁。"
+    "日志格式可能为 TSV、CSV 或 Excel 导出文本，字段顺序和命名不固定，你需要自行理解表头和内容。"
+    "只输出 JSON，不输出多余文字。"
+)
+
+_LOG_ANALYSIS_LLM_USER = (
+    "请分析以下设备安全日志的全部内容，逐条识别异常行为和安全威胁。\n\n"
+    "=== 日志完整内容 ===\n"
+    "${inputs.log_content}"
+    "\n${steps.step1.result.parsed.log_content}"
+    "=== 内容结束 ===\n\n"
+    "请按以下 JSON 格式输出分析结果：\n"
+    "{\n"
+    '  "confidence": 0.0-1.0,  // 整体威胁置信度\n'
+    '  "reason": "综合分析依据（≤500 字）",\n'
+    '  "risk_factors": ["风险因素1", "风险因素2", ...],\n'
+    '  "suggested_action": "忽略|标记关注|告警|紧急处理",\n'
+    '  "anomaly_count": <int>,  // 检测到的异常条数\n'
+    '  "anomaly_entries": [\n'
+    '    {"desc": "异常描述和原始数据的关键字段值", "severity": "critical|high|medium|low"},\n'
+    '    ...\n'
+    '  ],\n'
+    '  "severity_distribution": {"critical": N, "high": N, "medium": N, "low": N}\n'
+    "}\n"
+)
+
+
+def _log_analysis_template() -> dict[str, Any]:
+    wf = Workflow.new(
+        name="日志安全分析",
+        description=(
+            "选择服务器日志文件路径 或 上传日志文本内容 → "
+            "LLM 智能分析异常和威胁 → 输出结构化报告并写入数据库。"
+        ),
+        tags=["log", "security", "analysis", "llm"],
+        inputs=[
+            WorkflowInput(
+                name="log_path",
+                label="日志文件路径",
+                type="string",
+                required=False,
+                default="",
+                description="服务器上的日志文件绝对路径（如 /var/log/auth.log），留空则使用上传/粘贴内容",
+            ),
+            WorkflowInput(
+                name="log_content",
+                label="日志内容",
+                type="file",
+                required=False,
+                default="",
+                description="直接粘贴或通过上传按钮加载日志文本内容（路径模式可留空）",
+            ),
+            WorkflowInput(
+                name="log_file_name",
+                label="文件名",
+                type="string",
+                required=False,
+                default="unknown.log",
+                description="日志文件名（用于入库标识，上传模式自动填入）",
+            ),
+        ],
+        steps=[
+            # ── step1: 从服务器路径读取文件（上传模式跳过实际读取）──
+            WorkflowStep(
+                id="step1",
+                name="文件预处理",
+                kind="script",
+                ref="python",
+                args={
+                    "kind": "python",
+                    "timeoutMs": 15000,
+                    "code": LOG_ANALYSIS_STEP1_CODE,
+                    # Always small — only the path string, never the
+                    # content itself.  Uses condition so the exec tool
+                    # is only invoked when a path is actually given.
+                    "stdin": '{"log_path": "${inputs.log_path}"}',
+                },
+                condition="inputs.log_path",
+                on_error="continue",
+                retry=0,
+            ),
+            # ── step2: LLM 智能分析 ──
+            WorkflowStep(
+                id="step2",
+                name="LLM 智能分析",
+                kind="llm",
+                ref="default",
+                args={
+                    "systemPrompt": _LOG_ANALYSIS_LLM_SYSTEM,
+                    "userPrompt": _LOG_ANALYSIS_LLM_USER,
+                    "temperature": 0.1,
+                    "maxTokens": 16000,
+                    "responseFormat": "json",
+                },
+                on_error="continue",
+                retry=1,
+            ),
+            # ── step3: 结果聚合与存储 ──
+            WorkflowStep(
+                id="step3",
+                name="结果聚合与存储",
+                kind="script",
+                ref="python",
+                args={
+                    "kind": "python",
+                    "timeoutMs": 15000,
+                    "code": LOG_ANALYSIS_STEP3_CODE,
+                    "stdin": (
+                        '{"file_name": "${inputs.log_file_name}",'
+                        ' "step1": ${steps.step1.result.parsed},'
+                        ' "step2": ${steps.step2.result.parsed}}'
+                    ),
+                },
+                on_error="continue",
+                retry=0,
+            ),
+        ],
+    )
+
+    payload = wf.to_dict()
+    payload.pop("id", None)
+    payload.pop("createdAtMs", None)
+    payload.pop("updatedAtMs", None)
+    payload.pop("scheduleRef", None)
+
+    return {
+        "id": "log-analysis",
+        "name": "日志安全分析",
+        "description": (
+            "选择服务器日志路径 或 上传日志文本，"
+            "LLM 智能分析异常行为和安全威胁，输出报告并持久化存储。"
+        ),
+        "tags": ["log", "security", "analysis", "llm"],
         "workflow": payload,
     }
 
@@ -244,7 +381,7 @@ def list_templates() -> list[dict[str, Any]]:
     Each call rebuilds the underlying :class:`Workflow` instances so two
     callers never share mutable state.
     """
-    return [_phishing_email_template()]
+    return [_phishing_email_template(), _log_analysis_template()]
 
 
 __all__ = ["list_templates"]

@@ -730,6 +730,15 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/dashboard/phishing/health":
             return await self._handle_dashboard_phishing_health(request)
 
+        # Log-analysis detection dashboard.
+        # Read-only views over ``detection_results.db`` -> ``log_analysis``
+        # table written by the log-analysis workflow's step2 script.
+        if got == "/api/dashboard/log-analysis/latest":
+            return await self._handle_dashboard_log_analysis_latest(request)
+
+        if got == "/api/dashboard/log-analysis/history":
+            return await self._handle_dashboard_log_analysis_history(request)
+
         # Report metadata surface (spec: `.trellis/spec/backend/report-meta.md`).
         # List + single-row detail endpoints read from the ``report_meta`` table
         # populated by the report skill handlers.
@@ -1395,6 +1404,67 @@ class WebSocketChannel(BaseChannel):
         except Exception:
             self.logger.exception("dashboard.phishing.health: error")
             return _http_error(500, "phishing health unavailable")
+        return _http_json_response(payload)
+
+    # -- Log-analysis detection dashboard ------------------------------------
+    #
+    # Read-only views over ``detection_results.db`` -> ``log_analysis`` table
+    # written by the log-analysis workflow's step2 script. The underlying
+    # module (:mod:`secbot.api.log_analysis_dashboard`) swallows missing-DB
+    # errors and returns empty/zeroed payloads automatically.
+
+    async def _handle_dashboard_log_analysis_latest(
+        self, request: WsRequest
+    ) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import log_analysis_dashboard
+
+        try:
+            payload = log_analysis_dashboard.latest()
+        except Exception:
+            self.logger.exception(
+                "dashboard.log_analysis.latest: error"
+            )
+            return _http_error(
+                500, "log-analysis latest unavailable"
+            )
+        return _http_json_response(payload)
+
+    async def _handle_dashboard_log_analysis_history(
+        self, request: WsRequest
+    ) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import log_analysis_dashboard
+
+        query = _parse_query(request.path)
+
+        def _int(key: str, default: int, *, lo: int, hi: int) -> int:
+            raw = _query_first(query, key)
+            if raw is None or raw == "":
+                return default
+            try:
+                v = int(raw)
+            except ValueError:
+                return default
+            return max(lo, min(hi, v))
+
+        page = _int("page", 1, lo=1, hi=10_000)
+        page_size = _int("page_size", 20, lo=1, hi=200)
+
+        try:
+            payload = log_analysis_dashboard.history(
+                page=page,
+                page_size=page_size,
+            )
+        except Exception:
+            self.logger.exception(
+                "dashboard.log_analysis.history: error"
+            )
+            return _http_error(
+                500, "log-analysis history unavailable"
+            )
         return _http_json_response(payload)
 
     # -- Report metadata surface --------------------------------------------

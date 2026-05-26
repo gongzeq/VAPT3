@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Play } from "lucide-react";
+import { Play, Upload } from "lucide-react";
 
 import {
   Dialog,
@@ -12,6 +12,42 @@ import {
 } from "@/components/ui/dialog";
 import { WORKFLOW_FIELD_CLASS } from "@/components/workflow/InputsEditor";
 import type { Workflow, WorkflowInput } from "@/lib/workflow-client";
+import { findParser } from "@/lib/parsers";
+
+/**
+ * Detect charset from raw email headers and decode accordingly.
+ * Scans the first 4KB of the file for a `charset=XXX` declaration.
+ * Falls back to UTF-8 if charset is not detected or decoding fails.
+ */
+function decodeWithCharsetDetection(buf: ArrayBuffer): string {
+  // Peek at first 4KB as ASCII to find charset= in headers
+  const peek = new TextDecoder("ascii", { fatal: false }).decode(
+    buf.slice(0, Math.min(buf.byteLength, 4096)),
+  );
+  // Match charset in Content-Type headers (e.g., charset=GBK, charset="gb2312")
+  const m = peek.match(/charset=["']?([^"';\s\r\n]+)/i);
+  const detected = m?.[1]?.toLowerCase() || "";
+
+  // Common CJK charset aliases
+  const charsetMap: Record<string, string> = {
+    gb2312: "gbk",
+    gb18030: "gb18030",
+    gbk: "gbk",
+    big5: "big5",
+    "euc-jp": "euc-jp",
+    "shift_jis": "shift_jis",
+    "iso-2022-jp": "iso-2022-jp",
+    "euc-kr": "euc-kr",
+  };
+
+  const encoding = charsetMap[detected] || detected || "utf-8";
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(buf);
+  } catch {
+    // If the detected encoding is not supported, fall back to UTF-8
+    return new TextDecoder("utf-8", { fatal: false }).decode(buf);
+  }
+}
 
 export interface RunDialogProps {
   workflow: Workflow | null;
@@ -31,7 +67,7 @@ export function RunDialog({
 }: RunDialogProps) {
   const { t } = useTranslation();
   const [values, setValues] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,20 +79,106 @@ export function RunDialog({
       }
     }
     setValues(seed);
+    setUploadedFileName("");
     setError(null);
   }, [open, workflow]);
 
+  function handleGlobalUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadedFileName(file.name);
+
+    const parser = findParser(file.name, file.type);
+
+    // Binary parsers (DOCX, XLSX) need ArrayBuffer
+    if (parser?.binary && parser.parseBuffer) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const parsed = await parser.parseBuffer!(reader.result as ArrayBuffer);
+          applyParsed(parsed, file.name);
+        } catch {
+          // If binary parsing fails, fallback to nothing
+          setError(`无法解析文件: ${file.name}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
+    // Text-based parsers (EML, TXT, etc.)
+    // Read as ArrayBuffer first to detect charset from headers
+    const reader = new FileReader();
+    reader.onload = () => {
+      const buf = reader.result as ArrayBuffer;
+      const text = decodeWithCharsetDetection(buf);
+      if (parser && workflow?.inputs && workflow.inputs.length > 0) {
+        const parsed = parser.parse(text);
+        if (applyParsed(parsed, file.name)) return;
+      }
+      // Fallback: fill first file/string input with raw content,
+      // and any file_name input with the uploaded file's name.
+      const target = workflow?.inputs.find(
+        (i) => i.type === "file" || i.type === "string",
+      );
+      if (target) {
+        setValues((prev) => {
+          const next = { ...prev, [target.name]: text };
+          for (const inp of workflow?.inputs ?? []) {
+            if (inp.name.includes("file_name") && !next[inp.name]) {
+              next[inp.name] = file.name;
+            }
+          }
+          return next;
+        });
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /** Apply parsed fields to form values, and auto-populate any
+   * ``*file_name*`` input from the uploaded file's name. */
+  function applyParsed(parsed: Record<string, string>, fileName: string): boolean {
+    if (!workflow?.inputs || workflow.inputs.length === 0) return false;
+    const patch: Record<string, string> = {};
+    for (const input of workflow.inputs) {
+      if (parsed[input.name] !== undefined) {
+        patch[input.name] = parsed[input.name];
+      }
+    }
+    // Auto-populate file-name-related inputs from the uploaded file name
+    // (e.g. log_file_name, file_name — any input whose name contains "file_name").
+    for (const input of workflow.inputs) {
+      if (input.name.includes("file_name") && !patch[input.name]) {
+        patch[input.name] = fileName;
+      }
+    }
+    if (Object.keys(patch).length > 0) {
+      setValues((prev) => ({ ...prev, ...patch }));
+      return true;
+    }
+    // If no field names matched but parser produced content, try body/content
+    const fallbackContent = parsed.body || parsed.content || "";
+    if (fallbackContent) {
+      const target = workflow.inputs.find(
+        (i) => i.type === "file" || i.type === "string",
+      );
+      if (target) {
+        setValues((prev) => ({ ...prev, [target.name]: fallbackContent }));
+        return true;
+      }
+    }
+    return false;
+  }
+
   async function submit() {
     if (!workflow) return;
-    setBusy(true);
     setError(null);
     try {
       await onSubmit(materialize(workflow.inputs, values));
-      onOpenChange(false);
+      // handleRun closes the dialog, bumps refreshKey, and switches tab.
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -71,6 +193,23 @@ export function RunDialog({
               : t("workflow.runDialog.description")}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Global file upload */}
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-border/40 bg-muted/10 p-3">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground">
+            <Upload className="h-3.5 w-3.5" />
+            {uploadedFileName || "上传文件"}
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleGlobalUpload}
+            />
+          </label>
+          {uploadedFileName && (
+            <span className="text-[10px] text-emerald-400">✓ 已加载 {uploadedFileName}</span>
+          )}
+        </div>
+
         {workflow && workflow.inputs.length > 0 && (
           <div className="space-y-3 py-2">
             {workflow.inputs.map((input) => (
@@ -107,6 +246,13 @@ export function RunDialog({
                     }
                     className={WORKFLOW_FIELD_CLASS}
                     type={input.type === "int" ? "number" : "text"}
+                    placeholder={
+                      uploadedFileName && workflow?.inputs.findIndex(
+                        (i) => i.type === "file" || i.type === "string"
+                      ) === workflow?.inputs.indexOf(input)
+                        ? `已加载: ${uploadedFileName}`
+                        : undefined
+                    }
                   />
                 )}
               </label>
@@ -129,7 +275,7 @@ export function RunDialog({
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={busy}
+            disabled={false}
             className="gradient-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white shadow-md disabled:opacity-50"
           >
             <Play className="h-4 w-4" />

@@ -24,7 +24,8 @@ export type WorkflowInputType =
   | "cidr"
   | "int"
   | "bool"
-  | "enum";
+  | "enum"
+  | "file";
 
 export interface WorkflowInput {
   name: string;
@@ -103,6 +104,7 @@ export interface WorkflowListResponse {
   total: number;
   stats: {
     running: number;
+    runningIds: string[];
     scheduled: number;
     failed24h: number;
   };
@@ -110,6 +112,15 @@ export interface WorkflowListResponse {
 
 export interface WorkflowRunsResponse {
   items: WorkflowRun[];
+}
+
+export interface FailedRunItem extends WorkflowRun {
+  workflowName: string;
+}
+
+export interface FailedRunsResponse {
+  items: FailedRunItem[];
+  total: number;
 }
 
 export interface RunStartResponse {
@@ -334,7 +345,7 @@ export class WorkflowClient {
 
   run(id: string, inputs: Record<string, unknown>): Promise<RunStartResponse> {
     return wfRequest<RunStartResponse>(
-      `${this.base}/api/workflows/${encodeURIComponent(id)}/run`,
+      `${this.base}/api/workflows/${encodeURIComponent(id)}/run?async=true`,
       {
         token: this.token,
         method: "POST",
@@ -362,6 +373,13 @@ export class WorkflowClient {
   getRun(id: string, runId: string): Promise<WorkflowRun> {
     return wfRequest<WorkflowRun>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`,
+      { token: this.token },
+    );
+  }
+
+  listFailedRuns(limit = 50): Promise<FailedRunsResponse> {
+    return wfRequest<FailedRunsResponse>(
+      `${this.base}/api/workflows/_failed-runs${qs({ limit })}`,
       { token: this.token },
     );
   }

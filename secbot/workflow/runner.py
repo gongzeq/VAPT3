@@ -88,10 +88,22 @@ class WorkflowRunner:
         self._env_snapshot = (
             dict(env_snapshot) if env_snapshot is not None else dict(os.environ)
         )
+        # Cancellation flag — set via cancel() to stop the run between steps.
+        self._cancelled = False
+        # The asyncio.Task running the current step, so cancel() can
+        # interrupt it immediately (e.g. during an LLM call).
+        self._step_task: asyncio.Task[StepResult] | None = None
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
+
+    def cancel(self) -> None:
+        """Request cancellation. Interrupts the current step immediately."""
+        self._cancelled = True
+        task = self._step_task
+        if task is not None and not task.done():
+            task.cancel()
 
     async def run(
         self,
@@ -101,6 +113,18 @@ class WorkflowRunner:
         trigger: str = "manual",
     ) -> WorkflowRun:
         """Execute ``workflow`` and return the completed :class:`WorkflowRun`."""
+        run, ctx = self._prepare_run(workflow, inputs, trigger=trigger)
+        await self._execute_steps(run, workflow, ctx)
+        return run
+
+    def _prepare_run(
+        self,
+        workflow: Workflow,
+        inputs: dict[str, Any],
+        *,
+        trigger: str = "manual",
+    ) -> tuple["WorkflowRun", StepContext]:
+        """Create + persist a *running* run record. Returns ``(run, ctx)``."""
         resolved_inputs = _resolve_inputs(workflow, inputs)
 
         run = WorkflowRun.new(
@@ -109,7 +133,6 @@ class WorkflowRunner:
             trigger=trigger,  # type: ignore[arg-type]
         )
         self._store.upsert_run(run)
-        await self._emit("workflow.run.started", _run_event(workflow, run))
 
         ctx = StepContext(
             inputs=dict(resolved_inputs),
@@ -117,11 +140,27 @@ class WorkflowRunner:
             env=self._env_snapshot,
             run_id=run.id,
         )
+        return run, ctx
+
+    async def _execute_steps(
+        self,
+        run: WorkflowRun,
+        workflow: Workflow,
+        ctx: StepContext,
+    ) -> None:
+        """Run every step in *workflow*, updating *run* in place."""
+        await self._emit("workflow.run.started", _run_event(workflow, run))
 
         run_status: str = "ok"
         run_error: str | None = None
 
         for step in workflow.steps:
+            # Check cancellation before each step
+            if self._cancelled:
+                run_status = "cancelled"
+                run_error = "cancelled by user"
+                break
+
             should_run, skip_reason = self._evaluate_condition(step, ctx)
             if not should_run:
                 skipped = StepResult.skipped()
@@ -135,11 +174,34 @@ class WorkflowRunner:
                 continue
 
             await self._emit("workflow.step.started", _step_event(run, step, None))
-            result = await self._run_step_with_retry(step, ctx)
+
+            # Wrap step execution in a cancellable asyncio.Task so that
+            # cancel() can interrupt an in-flight LLM / subprocess call.
+            step_coro = self._run_step_with_retry(step, ctx)
+            self._step_task = asyncio.ensure_future(step_coro)
+            try:
+                result = await self._step_task
+            except asyncio.CancelledError:
+                now = _now_ms()
+                result = StepResult(
+                    status="error",
+                    started_at_ms=now,
+                    finished_at_ms=now,
+                    duration_ms=0,
+                    error="cancelled by user",
+                )
+                run_status = "cancelled"
+                run_error = "cancelled by user"
+            finally:
+                self._step_task = None
+
             run.step_results[step.id] = result
             ctx.steps[step.id] = _step_view(result)
             self._store.upsert_run(run)
             await self._emit("workflow.step.finished", _step_event(run, step, result))
+
+            if run_status == "cancelled":
+                break
 
             if result.status == "error":
                 if step.on_error == "stop":
@@ -156,7 +218,6 @@ class WorkflowRunner:
         run.finished_at_ms = _now_ms()
         self._store.upsert_run(run)
         await self._emit("workflow.run.finished", _run_event(workflow, run))
-        return run
 
     # ------------------------------------------------------------------
     # Helpers
@@ -217,6 +278,8 @@ class WorkflowRunner:
             return last
 
         for attempt in range(1, attempts + 1):
+            if self._cancelled:
+                return last  # Let the outer CancelledError handling kick in
             await asyncio.sleep(_RETRY_BACKOFF_S)
             retried = await executor.execute(step, args, ctx)
             if retried.status != "error":
@@ -249,7 +312,13 @@ class WorkflowRunner:
 
 
 def _resolve_inputs(workflow: Workflow, supplied: dict[str, Any]) -> dict[str, Any]:
-    """Merge ``supplied`` with defaults; raise on missing required fields."""
+    """Merge ``supplied`` with defaults; raise on missing required fields.
+
+    Every declared input is guaranteed to exist in the returned dict —
+    ``${inputs.<name>}`` in template expressions will never fail with
+    "no such variable" for a declared input. Optional inputs missing from
+    ``supplied`` and without an explicit ``default`` are filled with ``""``.
+    """
     out: dict[str, Any] = {}
     for spec in workflow.inputs:
         if spec.name in supplied:
@@ -260,6 +329,10 @@ def _resolve_inputs(workflow: Workflow, supplied: dict[str, Any]) -> dict[str, A
             raise RunnerError(
                 f"workflow.validation.input_missing: '{spec.name}' is required"
             )
+        else:
+            # Optional input without a value — still include it so
+            # template placeholders never break on "no such variable".
+            out[spec.name] = ""
     # Preserve any extra keys the caller passed in; the runner doesn't
     # police unknown keys so a tool step can reference ``${inputs.x}``
     # even when ``x`` isn't declared (handy during authoring).

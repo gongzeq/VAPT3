@@ -220,13 +220,15 @@
       "statusAll": "全部",
       "statusRunning": "运行中",
       "statusScheduled": "已调度",
-      "statusDraft": "草稿",
-      "statusFailed": "失败",
+      "statusDraft": "未调度",
+      "statusManual": "未调度",
+      "statusFailed": "失败历史",
       "tagsTitle": "标签"
     },
     "badge": {
       "scheduled": "SCHEDULED",
-      "draft": "DRAFT",
+      "draft": "已保存",
+      "manual": "已保存",
       "running": "RUNNING"
     },
     "placeholders": {
@@ -422,7 +424,7 @@
       "empty": "暂无模板"
     },
     "detail": {
-      "clone": "克隆",
+      "clone": "创建副本",
       "cancel": "终止",
       "currentStep": "当前 Step",
       "elapsed": "已用时",

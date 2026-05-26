@@ -183,13 +183,11 @@ function useRiskPieOption(items: PhishingHistoryItem[]) {
     let low = 0;
     let normal = 0;
     items.forEach((it) => {
-      if (!it.is_phishing) {
-        normal += 1;
-        return;
-      }
-      if (it.confidence > 0.7) high += 1;
-      else if (it.confidence > 0.4) mid += 1;
-      else low += 1;
+      const s = Number.isFinite(it.suspicion_level) ? it.suspicion_level : 0;
+      if (s >= 0.7) high += 1;
+      else if (s >= 0.4) mid += 1;
+      else if (s >= 0.2) low += 1;
+      else normal += 1;
     });
     return {
       backgroundColor: "transparent",
@@ -358,7 +356,6 @@ export function PhishingDetailPage() {
   const todayTotal = stats?.today_total ?? 0;
   const todayPhishing = stats?.today_phishing ?? 0;
   const phishingRate = stats?.today_phishing_rate ?? 0;
-  const cacheRate = stats?.cache_hit_rate ?? 0;
   const avgMs = stats?.avg_duration_ms ?? 0;
   const delta = stats?.delta;
 
@@ -411,7 +408,7 @@ export function PhishingDetailPage() {
         </div>
 
         {/* KPI×4 */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <KpiCard
             icon="📧"
             value={todayTotal.toLocaleString()}
@@ -427,13 +424,6 @@ export function PhishingDetailPage() {
             delta={delta ? formatDelta(delta.today_phishing, "raw") : "—"}
             deltaClass={delta ? deltaClass(delta.today_phishing, true) : ""}
             glow
-          />
-          <KpiCard
-            icon="⚡"
-            value={formatPct(cacheRate)}
-            label="Redis 缓存命中率"
-            delta={delta ? formatDelta(delta.cache_hit_pct, "pct") : "—"}
-            deltaClass={delta ? deltaClass(delta.cache_hit_pct) : ""}
           />
           <KpiCard
             icon="⏱"
@@ -512,7 +502,7 @@ export function PhishingDetailPage() {
             />
           </div>
 
-          <div className="lg:col-span-3 rounded-xl border border-border/40 bg-card p-4">
+          <div className="lg:col-span-3 rounded-xl border border-border/40 bg-card p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold">检测明细</h3>
@@ -549,7 +539,7 @@ export function PhishingDetailPage() {
                 </select>
               </div>
             </div>
-            <div>
+            <div className="overflow-x-auto">
               <table className="w-full table-fixed">
                 <colgroup>
                   <col className="w-[170px]" />
@@ -564,9 +554,9 @@ export function PhishingDetailPage() {
                     <th className="text-center py-2 font-medium">时间</th>
                     <th className="text-left py-2 font-medium">发件人</th>
                     <th className="text-left py-2 font-medium">主题</th>
-                    <th className="text-center py-2 font-medium">置信度</th>
+                    <th className="text-center py-2 font-medium">可疑度</th>
                     <th className="text-center py-2 font-medium">耗时</th>
-                    <th className="text-center py-2 font-medium">动作</th>
+                    <th className="text-center py-2 font-medium">AI建议处理</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -618,10 +608,10 @@ export function PhishingDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">链路健康</h3>
             <span className="text-xs text-muted-foreground">
-              聚合 postfix / rspamd / workflow / provider / redis / sqlite
+              聚合 postfix / rspamd / workflow / provider / sqlite
             </span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             {(health?.components ?? []).map((c) => (
               <div
                 key={c.name}
@@ -639,7 +629,7 @@ export function PhishingDetailPage() {
               </div>
             ))}
             {!health && (
-              <div className="col-span-6 text-xs text-muted-foreground py-4 text-center">
+              <div className="col-span-5 text-xs text-muted-foreground py-4 text-center">
                 健康数据加载中…
               </div>
             )}
@@ -693,8 +683,20 @@ function KpiCard({
   );
 }
 
+function RspamdActionBadge({ action }: { action: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    reject: { label: "拒绝投递", cls: "text-rose-400" },
+    add_header: { label: "标记为 spam", cls: "text-amber-400" },
+    greylist: { label: "临时拒绝", cls: "text-orange-400" },
+    accept: { label: "正常投递", cls: "text-emerald-400" },
+  };
+  const info = map[action] || { label: action, cls: "" };
+  return <span className={info.cls}>{info.label}</span>;
+}
+
 function DetailRow({ row }: { row: PhishingHistoryItem }) {
-  const conf = row.confidence;
+  const [expanded, setExpanded] = useState(false);
+  const conf = Number.isFinite(row.suspicion_level) ? row.suspicion_level : 0;
   const confClass =
     conf > 0.7
       ? "text-rose-400"
@@ -711,35 +713,81 @@ function DetailRow({ row }: { row: PhishingHistoryItem }) {
       ? `${(row.processed_time_ms / 1000).toFixed(2)}s`
       : "—";
   return (
-    <tr className="hover:bg-white/5 transition-colors">
-      <td className="py-2.5 text-center font-mono text-muted-foreground">{ts}</td>
-      <td className="py-2.5">
-        <div className="truncate font-mono text-violet-400" title={row.sender}>
-          {row.sender}
-        </div>
-      </td>
-      <td className="py-2.5">
-        <div className="truncate" title={row.subject}>
-          {row.subject}
-        </div>
-      </td>
-      <td className={cn("py-2.5 text-center font-mono", confClass)}>
-        {(conf * 100).toFixed(0)}%
-      </td>
-      <td className="py-2.5 text-center font-mono text-muted-foreground">
-        {durSec}
-      </td>
-      <td className="py-2.5 text-center">
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] border",
-            action.cls,
-          )}
-        >
-          {action.label}
-        </span>
-      </td>
-    </tr>
+    <>
+      <tr
+        className="hover:bg-white/5 transition-colors cursor-pointer text-xs"
+        onClick={() => setExpanded((e) => !e)}
+        title="点击查看详情"
+      >
+        <td className="py-2 text-center font-mono text-muted-foreground">{ts}</td>
+        <td className="py-2">
+          <div className="truncate font-mono text-violet-400" title={row.sender}>
+            {row.sender}
+          </div>
+        </td>
+        <td className="py-2">
+          <div className="truncate" title={row.subject}>
+            {row.subject}
+          </div>
+        </td>
+        <td className={cn("py-2 text-center font-mono", confClass)}>
+          {(conf * 100).toFixed(0)}%
+        </td>
+        <td className="py-2 text-center font-mono text-muted-foreground">
+          {durSec}
+        </td>
+        <td className="py-2 text-center">
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[10px] border",
+              action.cls,
+            )}
+          >
+            {action.label}
+          </span>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={6} className="py-3 px-4 bg-white/[3%]">
+            <div className="text-xs text-muted-foreground leading-relaxed space-y-1.5">
+              <div>
+                <span className="text-foreground font-medium">AI 分析理由：</span>
+                {row.reason || "无"}
+              </div>
+              {row.risk_factors && row.risk_factors.length > 0 && (
+                <div>
+                  <span className="text-foreground font-medium">可疑特征：</span>
+                  {row.risk_factors.join("、")}
+                </div>
+              )}
+              <div className="flex items-center gap-4">
+                {row.rspamd_score != null && (
+                  <span>
+                    <span className="text-foreground font-medium">Rspamd 评分：</span>
+                    {row.rspamd_score.toFixed(2)}
+                  </span>
+                )}
+                {row.final_score != null && (
+                  <span>
+                    <span className="text-foreground font-medium">最终评分：</span>
+                    <span className={row.final_score >= 6 ? "text-rose-400" : row.final_score >= 4 ? "text-amber-400" : ""}>
+                      {row.final_score.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+                {row.rspamd_action && (
+                  <span>
+                    <span className="text-foreground font-medium">最终处理：</span>
+                    <RspamdActionBadge action={row.rspamd_action} />
+                  </span>
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

@@ -21,7 +21,7 @@ StepKind = Literal["tool", "script", "agent", "llm"]
 OnError = Literal["stop", "continue", "retry"]
 RunStatus = Literal["running", "ok", "error", "cancelled"]
 StepStatus = Literal["ok", "error", "skipped", "retried"]
-InputType = Literal["string", "cidr", "int", "bool", "enum"]
+InputType = Literal["string", "cidr", "int", "bool", "enum", "file"]
 TriggerKind = Literal["manual", "cron", "api"]
 
 

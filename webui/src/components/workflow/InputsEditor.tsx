@@ -13,6 +13,7 @@ const INPUT_TYPES: WorkflowInputType[] = [
   "int",
   "bool",
   "enum",
+  "file",
 ];
 
 /** Shared classes for the compact form fields used throughout the

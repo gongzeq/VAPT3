@@ -22,11 +22,13 @@ Design constraints (PRD §R6 + spec/backend/database-guidelines.md):
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 
@@ -52,6 +54,7 @@ def _connect() -> Iterator[sqlite3.Connection | None]:
     try:
         conn = sqlite3.connect(db_path(), timeout=_CONNECT_TIMEOUT_S)
         conn.row_factory = sqlite3.Row
+        _migrate_schema(conn)
         yield conn
     except sqlite3.Error:
         yield None
@@ -61,6 +64,90 @@ def _connect() -> Iterator[sqlite3.Connection | None]:
                 conn.close()
             except sqlite3.Error:
                 pass
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Ensure the DB schema matches current expectations.
+
+    Idempotent: safe to call on every connection open.
+    - Drops UNIQUE constraint on content_hash (allows repeated detections)
+    - Renames ai_suspicion_level -> ai_confidence (if still old name)
+    - Adds risk_factors / rspamd_score / final_score columns (if missing)
+    """
+    # 1. Drop UNIQUE on content_hash so same email can produce multiple rows
+    try:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='table' AND name='detection_results'"
+        ).fetchone()
+        if row is not None and "content_hash TEXT UNIQUE" in (row[0] or ""):
+            cols = [
+                r[1]
+                for r in conn.execute(
+                    "PRAGMA table_info(detection_results)"
+                ).fetchall()
+            ]
+            cols_csv = ", ".join(cols)
+            new_sql = (
+                row[0]
+                .replace("detection_results", "detection_results_new", 1)
+                .replace("content_hash TEXT UNIQUE", "content_hash TEXT")
+            )
+            conn.execute(new_sql)
+            conn.execute(
+                f"INSERT INTO detection_results_new ({cols_csv})"
+                f" SELECT {cols_csv} FROM detection_results"
+            )
+            conn.execute("DROP TABLE detection_results")
+            conn.execute(
+                "ALTER TABLE detection_results_new RENAME TO detection_results"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_detection_created_at"
+                " ON detection_results(created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_detection_content_hash"
+                " ON detection_results(content_hash)"
+            )
+            conn.commit()
+    except Exception:
+        pass
+    # 2. Rename ai_suspicion_level -> ai_confidence (legacy migration)
+    try:
+        conn.execute(
+            "ALTER TABLE detection_results RENAME COLUMN ai_suspicion_level"
+            " TO ai_confidence"
+        )
+    except Exception:
+        pass
+    # 3. Add new columns
+    for col, typ in [
+        ("risk_factors", "TEXT"),
+        ("rspamd_score", "REAL"),
+        ("final_score", "REAL"),
+        ("rspamd_action", "TEXT"),
+    ]:
+        try:
+            conn.execute(
+                f"ALTER TABLE detection_results ADD COLUMN {col} {typ}"
+            )
+        except Exception:
+            pass
+
+
+def _derive_rspamd_action(final_score: Any) -> str:
+    """Fallback: compute rspamd_action from final_score when DB column is NULL."""
+    if final_score is None:
+        return ""
+    score = float(final_score)
+    if score >= 15:
+        return "reject"
+    if score >= 6:
+        return "add_header"
+    if score >= 4:
+        return "greylist"
+    return "accept"
 
 
 def _today_bounds() -> tuple[str, str]:
@@ -93,7 +180,6 @@ def summary() -> dict[str, Any]:
     payload: dict[str, Any] = {
         "today_phishing": 0,
         "today_total": 0,
-        "cache_hit_rate": 0.0,
         "avg_duration_ms": 0,
         "spark_7d": _empty_spark(),
         "generated_at": _now_iso(),
@@ -103,12 +189,11 @@ def summary() -> dict[str, Any]:
             return payload
         start, end = _today_bounds()
         try:
-            today_total, today_phishing, today_cache, avg_ms = conn.execute(
+            today_total, today_phishing, avg_ms = conn.execute(
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN processed_time_ms = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -120,18 +205,16 @@ def summary() -> dict[str, Any]:
 
         payload["today_total"] = int(today_total or 0)
         payload["today_phishing"] = int(today_phishing or 0)
-        if payload["today_total"] > 0:
-            payload["cache_hit_rate"] = round(
-                int(today_cache or 0) / payload["today_total"], 4
-            )
-        payload["avg_duration_ms"] = int(round(float(avg_ms or 0)))
+        # Prefer workflow run duration over step3-only processed_time_ms
+        wf_avg = _avg_workflow_duration_ms(start, end)
+        payload["avg_duration_ms"] = wf_avg if wf_avg > 0 else int(round(float(avg_ms or 0)))
 
         # 7-day sparkline (oldest → newest), using local-day buckets.
         try:
             spark_rows = conn.execute(
                 """
                 SELECT substr(created_at, 1, 10) AS day,
-                       COALESCE(SUM(ai_is_phishing), 0) AS phishing
+                       COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0) AS phishing
                 FROM detection_results
                 WHERE created_at >= datetime('now', '-7 days', 'localtime')
                 GROUP BY day
@@ -170,6 +253,61 @@ def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def _workflow_runs_path() -> Path:
+    """Locate the workflow runs.jsonl from standard workspace paths."""
+    # Try env-based workspace, then fallback to default
+    workspace = os.environ.get("SECBOT_WORKSPACE")
+    if workspace:
+        p = Path(workspace) / "workflows" / "runs.jsonl"
+        if p.exists():
+            return p
+    # Default workspace path
+    default = Path.home() / ".secbot" / "workspace" / "workflows" / "runs.jsonl"
+    return default
+
+
+def _avg_workflow_duration_ms(day_start: str, day_end: str) -> int:
+    """Read average workflow run duration from runs.jsonl for given day.
+
+    Falls back to 0 if the file doesn't exist or has no matching runs.
+    Only considers completed (status != 'running') runs.
+    """
+    runs_path = _workflow_runs_path()
+    if not runs_path.exists():
+        return 0
+    durations: list[int] = []
+    day_start_ms = int(datetime.strptime(day_start, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+    day_end_ms = int(datetime.strptime(day_end, "%Y-%m-%d %H:%M:%S").timestamp() * 1000)
+    try:
+        with open(runs_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    run = json.loads(line)
+                except Exception:
+                    continue
+                # Check time range
+                started = run.get("startedAtMs") or run.get("started_at_ms") or 0
+                finished = run.get("finishedAtMs") or run.get("finished_at_ms")
+                status = run.get("status", "")
+                if not started or not finished:
+                    continue
+                if status == "running":
+                    continue
+                if started < day_start_ms or started >= day_end_ms:
+                    continue
+                duration = int(finished) - int(started)
+                if duration > 0:
+                    durations.append(duration)
+    except OSError:
+        return 0
+    if not durations:
+        return 0
+    return int(sum(durations) / len(durations))
+
+
 # ---------------------------------------------------------------------------
 # L2 KPIs — replaces /:5001/stats
 # ---------------------------------------------------------------------------
@@ -181,12 +319,10 @@ def stats() -> dict[str, Any]:
         "today_total": 0,
         "today_phishing": 0,
         "today_phishing_rate": 0.0,
-        "cache_hit_rate": 0.0,
         "avg_duration_ms": 0,
         "delta": {
             "today_total_pct": 0.0,
             "today_phishing": 0,
-            "cache_hit_pct": 0.0,
             "avg_duration_ms": 0,
         },
         "generated_at": _now_iso(),
@@ -203,8 +339,7 @@ def stats() -> dict[str, Any]:
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN processed_time_ms = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -215,8 +350,7 @@ def stats() -> dict[str, Any]:
                 """
                 SELECT
                     COUNT(*),
-                    COALESCE(SUM(ai_is_phishing), 0),
-                    COALESCE(SUM(CASE WHEN processed_time_ms = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN ai_confidence >= 0.7 THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(NULLIF(processed_time_ms, 0)), 0)
                 FROM detection_results
                 WHERE created_at >= ? AND created_at < ?
@@ -228,25 +362,27 @@ def stats() -> dict[str, Any]:
 
     today_total = int(today[0] or 0)
     today_phish = int(today[1] or 0)
-    today_cache = int(today[2] or 0)
-    today_avg = float(today[3] or 0)
+    today_avg = float(today[2] or 0)
     yest_total = int(yest[0] or 0)
     yest_phish = int(yest[1] or 0)
-    yest_cache = int(yest[2] or 0)
-    yest_avg = float(yest[3] or 0)
+    yest_avg = float(yest[2] or 0)
+
+    # Prefer workflow run duration (includes LLM time) over step3-only timing
+    wf_avg_today = _avg_workflow_duration_ms(today_start, today_end)
+    wf_avg_yest = _avg_workflow_duration_ms(yesterday_start, today_start)
+    final_avg_today = wf_avg_today if wf_avg_today > 0 else int(round(today_avg))
+    final_avg_yest = wf_avg_yest if wf_avg_yest > 0 else int(round(yest_avg))
 
     payload.update(
         today_total=today_total,
         today_phishing=today_phish,
         today_phishing_rate=round(today_phish / today_total, 4) if today_total else 0.0,
-        cache_hit_rate=round(today_cache / today_total, 4) if today_total else 0.0,
-        avg_duration_ms=int(round(today_avg)),
+        avg_duration_ms=final_avg_today,
     )
     payload["delta"] = {
         "today_total_pct": _pct_delta(today_total, yest_total),
         "today_phishing": today_phish - yest_phish,
-        "cache_hit_pct": _pct_delta(today_cache, yest_cache),
-        "avg_duration_ms": int(round(today_avg - yest_avg)),
+        "avg_duration_ms": final_avg_today - final_avg_yest,
     }
     return payload
 
@@ -263,9 +399,9 @@ def _pct_delta(now: int | float, prev: int | float) -> float:
 
 
 _FILTER_MAP = {
-    "phishing": "ai_is_phishing = 1 AND ai_confidence >= 0.7",
-    "suspicious": "ai_is_phishing = 1 AND ai_confidence < 0.7",
-    "normal": "ai_is_phishing = 0",
+    "phishing": "ai_confidence >= 0.7",
+    "suspicious": "ai_confidence >= 0.4 AND ai_confidence < 0.7",
+    "normal": "ai_confidence < 0.4",
     "all": "1=1",
 }
 
@@ -320,9 +456,10 @@ def history(
             )
             rows = conn.execute(
                 f"""
-                SELECT id, content_hash, sender, subject, ai_is_phishing,
+                SELECT id, content_hash, sender, subject,
                        ai_confidence, ai_reason, action, created_at,
-                       processed_time_ms
+                       processed_time_ms, risk_factors, rspamd_score,
+                       final_score, rspamd_action
                 FROM detection_results
                 WHERE {where}
                 ORDER BY id DESC
@@ -339,18 +476,25 @@ def history(
             }
 
     for row in rows:
+        try:
+            rf = json.loads(row["risk_factors"]) if row["risk_factors"] else []
+        except Exception:
+            rf = []
         items.append(
             {
                 "id": int(row["id"]),
                 "content_hash": row["content_hash"],
                 "sender": row["sender"] or "",
                 "subject": row["subject"] or "",
-                "is_phishing": bool(row["ai_is_phishing"]),
-                "confidence": float(row["ai_confidence"] or 0.0),
+                "suspicion_level": float(row["ai_confidence"] or 0.0),
                 "reason": row["ai_reason"] or "",
                 "action": row["action"] or "",
                 "created_at": row["created_at"],
                 "processed_time_ms": int(row["processed_time_ms"] or 0),
+                "risk_factors": rf,
+                "rspamd_score": float(row["rspamd_score"] or 0.0) if row["rspamd_score"] is not None else None,
+                "final_score": float(row["final_score"] or 0.0) if row["final_score"] is not None else None,
+                "rspamd_action": row["rspamd_action"] or _derive_rspamd_action(row["final_score"]),
             }
         )
     return {
@@ -389,11 +533,11 @@ def trend(*, days: int = 7) -> dict[str, Any]:
                 """
                 SELECT substr(created_at, 1, 10) AS day,
                        COUNT(*) AS total,
-                       SUM(CASE WHEN ai_is_phishing = 1 AND ai_confidence >= 0.7
+                       SUM(CASE WHEN ai_confidence >= 0.7
                                 THEN 1 ELSE 0 END) AS phishing,
-                       SUM(CASE WHEN ai_is_phishing = 1 AND ai_confidence < 0.7
+                       SUM(CASE WHEN ai_confidence >= 0.4 AND ai_confidence < 0.7
                                 THEN 1 ELSE 0 END) AS suspicious,
-                       SUM(CASE WHEN ai_is_phishing = 0 THEN 1 ELSE 0 END) AS normal
+                       SUM(CASE WHEN ai_confidence < 0.4 THEN 1 ELSE 0 END) AS normal
                 FROM detection_results
                 WHERE created_at >= ?
                 GROUP BY day
@@ -439,7 +583,7 @@ def top_senders(*, limit: int = 8, days: int = 7) -> dict[str, Any]:
                        MAX(ai_confidence) AS max_confidence,
                        MAX(created_at) AS last_seen
                 FROM detection_results
-                WHERE ai_is_phishing = 1
+                WHERE ai_confidence >= 0.7
                   AND created_at >= ?
                   AND sender IS NOT NULL
                   AND sender <> ''
@@ -470,14 +614,13 @@ def top_senders(*, limit: int = 8, days: int = 7) -> dict[str, Any]:
 
 
 def health() -> dict[str, Any]:
-    """Aggregate link-health payload covering 6 components."""
+    """Aggregate link-health payload covering 5 components."""
     return {
         "components": [
             {"name": "postfix", "status": _systemd_status("postfix.service")},
             {"name": "rspamd", "status": _systemd_status("rspamd.service")},
             {"name": "workflow", "status": "ok"},
             {"name": "provider", "status": _provider_status()},
-            {"name": "redis", "status": _redis_status()},
             {"name": "sqlite", "status": _sqlite_status()},
         ],
         "generated_at": _now_iso(),
@@ -505,25 +648,6 @@ def _provider_status() -> str:
     if os.environ.get("OPENAI_API_KEY") or os.environ.get("OLLAMA_BASE_URL"):
         return "ok"
     return "unknown"
-
-
-def _redis_status() -> str:
-    try:
-        import redis  # type: ignore[import-not-found]
-    except Exception:
-        return "unknown"
-    try:
-        client = redis.Redis(
-            host=os.environ.get("REDIS_HOST", "127.0.0.1"),
-            port=int(os.environ.get("REDIS_PORT", "6379")),
-            db=int(os.environ.get("REDIS_DB", "0")),
-            socket_timeout=0.8,
-            socket_connect_timeout=0.8,
-        )
-        client.ping()
-        return "ok"
-    except Exception:
-        return "down"
 
 
 def _sqlite_status() -> str:

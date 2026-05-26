@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json as _json
 import logging
+import time as _time
 from typing import Any
 
 from aiohttp import web
@@ -198,11 +199,30 @@ async def handle_list(request: web.Request) -> web.Response:
             continue
         filtered.append(wf)
     scheduled = sum(1 for wf in items if wf.schedule_ref)
+    # Compute real running count from active runners
+    running_wf_ids = sorted(svc.active_workflow_ids)
+    running_count = len(running_wf_ids)
+    # Compute real failed24h from runs
+    now_ms = int(_time.time() * 1000)
+    day_ago_ms = now_ms - 24 * 3600 * 1000
+    try:
+        all_runs = await svc.list_runs(workflow_id=None, limit=None)
+        failed24h = sum(
+            1 for r in all_runs
+            if r.status in ("error", "cancelled") and r.started_at_ms >= day_ago_ms
+        )
+    except Exception:
+        failed24h = 0
     return web.json_response(
         {
             "items": [wf.to_dict() for wf in filtered],
             "total": len(filtered),
-            "stats": {"running": 0, "scheduled": scheduled, "failed24h": 0},
+            "stats": {
+                "running": running_count,
+                "runningIds": running_wf_ids,
+                "scheduled": scheduled,
+                "failed24h": failed24h,
+            },
         }
     )
 
@@ -303,8 +323,16 @@ async def handle_run(request: web.Request) -> web.Response:
     inputs = body.get("inputs") or {}
     if not isinstance(inputs, dict):
         return _error(400, "workflow.validation.inputs", "inputs must be an object")
+
+    # ?async=true  → return immediately with status="running" (WebUI)
+    # default      → wait for completion, return full results   (Rspamd Lua)
+    want_async = request.query.get("async", "").lower() in ("1", "true", "yes")
+
     try:
-        run = await svc.run(wf_id, inputs, trigger="api")
+        if want_async:
+            run = await svc.run_async(wf_id, inputs, trigger="api")
+        else:
+            run = await svc.run(wf_id, inputs, trigger="api")
     except WorkflowServiceError as exc:
         return _error_from_service(exc)
     payload = run.to_dict()
@@ -313,6 +341,22 @@ async def handle_run(request: web.Request) -> web.Response:
     # follow-up fetch.
     payload["runId"] = run.id
     return web.json_response(payload)
+
+
+async def handle_cancel(request: web.Request) -> web.Response:
+    """POST /api/workflows/{id}/cancel — cancel the active run."""
+    try:
+        svc = _require_service(request)
+    except _HTTPServiceUnavailable:
+        return _service_unavailable()
+    wf_id = request.match_info["id"]
+    try:
+        run = await svc.cancel(wf_id)
+    except WorkflowServiceError as exc:
+        return _error_from_service(exc)
+    if run is None:
+        return _error(404, "workflow.run.not_running", "no active run to cancel")
+    return web.json_response({"runId": run.id, "status": "cancelled"})
 
 
 async def handle_list_runs(request: web.Request) -> web.Response:
@@ -489,6 +533,32 @@ async def handle_templates(request: web.Request) -> web.Response:
     return web.json_response({"items": items})
 
 
+async def handle_failed_runs(request: web.Request) -> web.Response:
+    """Return all failed/cancelled runs across every workflow."""
+    try:
+        svc = _require_service(request)
+    except _HTTPServiceUnavailable:
+        return _service_unavailable()
+    raw_limit = request.rel_url.query.get("limit")
+    limit = 50
+    if raw_limit:
+        try:
+            limit = max(1, min(500, int(raw_limit)))
+        except (TypeError, ValueError):
+            pass
+    all_runs = await svc.list_runs(workflow_id=None, limit=None)
+    failed = [r for r in all_runs if r.status in ("error", "cancelled")][:limit]
+    # Resolve workflow names for display
+    workflows = await svc.list_workflows()
+    wf_names = {w.id: w.name for w in workflows}
+    items = []
+    for r in failed:
+        d = r.to_dict()
+        d["workflowName"] = wf_names.get(r.workflow_id, r.workflow_id)
+        items.append(d)
+    return web.json_response({"items": items, "total": len(failed)})
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -508,6 +578,7 @@ def register_routes(app: web.Application) -> None:
     router.add_get("/api/workflows/_tools", handle_tools)
     router.add_get("/api/workflows/_agents", handle_agents)
     router.add_get("/api/workflows/_templates", handle_templates)
+    router.add_get("/api/workflows/_failed-runs", handle_failed_runs)
 
     router.add_get("/api/workflows", handle_list)
     router.add_post("/api/workflows", handle_create)
@@ -517,6 +588,7 @@ def register_routes(app: web.Application) -> None:
     router.add_delete("/api/workflows/{id}", handle_delete)
 
     router.add_post("/api/workflows/{id}/run", handle_run)
+    router.add_post("/api/workflows/{id}/cancel", handle_cancel)
     router.add_get("/api/workflows/{id}/runs", handle_list_runs)
     router.add_get("/api/workflows/{id}/runs/{runId}", handle_get_run)
 

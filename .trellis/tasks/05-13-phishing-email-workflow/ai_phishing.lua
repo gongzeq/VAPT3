@@ -15,10 +15,10 @@ local ucl = require "ucl"
 local ai_config = {
     enabled = true,
     -- secbot workflow run 端点。``<wf_id>`` 必须替换为实际工作流 ID。
-    workflow_run_url = "http://127.0.0.1:18791/api/workflows/wf_6ce140c2/run",
+    workflow_run_url = "http://127.0.0.1:18791/api/workflows/wf_20ced59c/run",
     request_timeout = 120,
-    min_score = -10,
-    max_score = 10.0,
+    min_score = -1,
+    max_score = 15.0,
     internal_domains = { "gdmsa.cn" },
 }
 
