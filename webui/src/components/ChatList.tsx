@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { displaySessionTitle, sessionSubtitle } from "@/lib/session-title";
 import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
@@ -18,16 +19,6 @@ interface ChatListProps {
   onRequestDelete: (key: string, label: string) => void;
   loading?: boolean;
   emptyLabel?: string;
-}
-
-function titleFor(s: ChatSummary, fallbackTitle: string): string {
-  const p = (s.title || s.preview)?.trim();
-  if (p) {
-    // Collapse newlines so the sidebar line never wraps.
-    const oneLine = p.replace(/\s+/g, " ");
-    return oneLine.length > 24 ? `${oneLine.slice(0, 21)}…` : oneLine;
-  }
-  return fallbackTitle;
 }
 
 function formatTimeLabel(iso: string | null): string {
@@ -87,10 +78,11 @@ export function ChatList({
             <ul className="mt-1 space-y-1">
               {group.sessions.map((s) => {
                 const active = s.key === activeKey;
-                const title = titleFor(
+                const title = displaySessionTitle(
                   s,
                   t("chat.newChat", { defaultValue: "新对话" }),
                 );
+                const subtitle = sessionSubtitle(s);
                 const timeLabel = formatTimeLabel(s.updatedAt ?? s.createdAt);
                 return (
                   <li key={s.key}>
@@ -124,9 +116,9 @@ export function ChatList({
                           {timeLabel}
                         </span>
                       </div>
-                      {s.preview && (
+                      {subtitle && (
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {s.preview}
+                          {subtitle}
                         </p>
                       )}
                       <DropdownMenu modal={false}>

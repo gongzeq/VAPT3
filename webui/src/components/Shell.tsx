@@ -8,6 +8,7 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useSessions } from "@/hooks/useSessions";
+import { displaySessionTitle } from "@/lib/session-title";
 import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
@@ -204,9 +205,10 @@ export function Shell({
   }, [pendingDelete, deleteChat, activeKey, sessions]);
 
   const headerTitle = activeSession
-    ? activeSession.title ||
-      activeSession.preview ||
-      t("chat.fallbackTitle", { id: activeSession.chatId.slice(0, 6) })
+    ? displaySessionTitle(
+        activeSession,
+        t("chat.fallbackTitle", { id: activeSession.chatId.slice(0, 6) }),
+      )
     : t("app.brand");
 
   useEffect(() => {

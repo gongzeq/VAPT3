@@ -8,8 +8,8 @@ import {
   fetchSessionMessages,
   listSessions,
 } from "@/lib/api";
-import { deriveTitle } from "@/lib/format";
 import { toMediaAttachment } from "@/lib/media";
+import { displaySessionTitle } from "@/lib/session-title";
 import type { AgentEventPayload, ChatSummary, ToolCallStatus, UIMessage } from "@/lib/types";
 
 const EMPTY_MESSAGES: UIMessage[] = [];
@@ -453,8 +453,5 @@ export function sessionTitle(
   session: ChatSummary,
   firstUserMessage?: string,
 ): string {
-  return deriveTitle(
-    session.title || firstUserMessage || session.preview,
-    i18n.t("chat.newChat"),
-  );
+  return displaySessionTitle(session, i18n.t("chat.newChat"), firstUserMessage);
 }

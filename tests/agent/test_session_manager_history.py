@@ -43,6 +43,28 @@ def test_list_sessions_includes_metadata_title(tmp_path):
     assert rows[0]["title"] == "自动生成标题"
 
 
+def test_list_sessions_preview_skips_legacy_subagent_user_rows(tmp_path):
+    manager = SessionManager(tmp_path)
+    session = manager.get_or_create("websocket:chat-subagent-title")
+    session.messages.extend(
+        [
+            {
+                "role": "user",
+                "content": "[Subagent 'port_scan' completed successfully]\n\nResult:\nopen ports",
+                "injected_event": "subagent_result",
+            },
+            {"role": "user", "content": "请扫描 192.0.2.10"},
+            {"role": "assistant", "content": "好的，开始扫描。"},
+        ]
+    )
+    manager.save(session)
+
+    rows = manager.list_sessions()
+
+    assert rows[0]["key"] == "websocket:chat-subagent-title"
+    assert rows[0]["preview"] == "请扫描 192.0.2.10"
+
+
 # --- Original regression test (from PR 2075) ---
 
 def test_get_history_drops_orphan_tool_results_when_window_cuts_tool_calls():

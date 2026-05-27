@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { ChatList } from "@/components/ChatList";
 import { useAgents } from "@/hooks/useAgents";
+import { displaySessionTitle } from "@/lib/session-title";
 import { cn } from "@/lib/utils";
 
 import type { AgentRegistryRow, AgentRuntimeStatus, ChatSummary } from "@/lib/types";
@@ -178,7 +179,7 @@ export function Sidebar(props: SidebarProps) {
               if (!props.activeKey) return;
               const s = props.sessions.find((sess) => sess.key === props.activeKey);
               if (!s) return;
-              const label = s.title || s.preview || s.chatId.slice(0, 6);
+              const label = displaySessionTitle(s, s.chatId.slice(0, 6));
               props.onRequestDelete(props.activeKey, label);
             }}
             className="inline-flex items-center gap-1 hover:text-primary disabled:opacity-40"

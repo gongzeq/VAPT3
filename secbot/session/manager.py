@@ -611,6 +611,16 @@ class SessionManager:
         return sorted(sessions, key=lambda x: x.get("updated_at", ""), reverse=True)
 
     @staticmethod
+    def _is_subagent_result_row(row: dict[str, Any]) -> bool:
+        if row.get("injected_event") == "subagent_result":
+            return True
+        content = row.get("content")
+        if isinstance(content, str):
+            stripped = content.lstrip()
+            return stripped.startswith("[Subagent '") or stripped.startswith('[Subagent "')
+        return False
+
+    @staticmethod
     def _first_user_preview(file_obj: Any) -> str:
         """Scan an already-opened JSONL file for the first user message.
 
@@ -630,6 +640,8 @@ class SessionManager:
                 continue
             if row.get("role") != "user":
                 continue
+            if SessionManager._is_subagent_result_row(row):
+                continue
             content = row.get("content")
             if isinstance(content, str) and content.strip():
                 return content.strip()
@@ -648,6 +660,8 @@ class SessionManager:
         """Equivalent of ``_first_user_preview`` for in-memory message lists."""
         for row in messages:
             if not isinstance(row, dict) or row.get("role") != "user":
+                continue
+            if SessionManager._is_subagent_result_row(row):
                 continue
             content = row.get("content")
             if isinstance(content, str) and content.strip():
