@@ -129,6 +129,45 @@ def test_save_turn_keeps_image_placeholder_without_meta() -> None:
     assert session.messages[0]["content"] == [{"type": "text", "text": "[image]"}]
 
 
+def test_save_turn_persists_subagent_injection_as_assistant() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:subagent-injection")
+    runtime = (
+        ContextBuilder._RUNTIME_CONTEXT_TAG
+        + "\nCurrent Time: now (UTC)\n"
+        + ContextBuilder._RUNTIME_CONTEXT_END
+    )
+    content = (
+        f"{runtime}\n\n"
+        "[Subagent 'port_scan' completed successfully]\n\n"
+        "Task: scan ports\n\n"
+        "Result:\nopen ports found"
+    )
+
+    loop._save_turn(
+        session,
+        [
+            {
+                "role": "user",
+                "content": content,
+                "injected_event": "subagent_result",
+                "subagent_task_id": "sub-1",
+                "sender_id": "port_scan",
+            }
+        ],
+        skip=0,
+    )
+
+    assert len(session.messages) == 1
+    saved = session.messages[0]
+    assert saved["role"] == "assistant"
+    assert saved["sender_id"] == "port_scan"
+    assert saved["injected_event"] == "subagent_result"
+    assert saved["subagent_task_id"] == "sub-1"
+    assert saved["content"].startswith("[Subagent 'port_scan'")
+    assert ContextBuilder._RUNTIME_CONTEXT_TAG not in saved["content"]
+
+
 def test_save_turn_keeps_tool_results_under_16k() -> None:
     loop = _mk_loop()
     session = Session(key="test:tool-result")

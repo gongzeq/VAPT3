@@ -209,6 +209,49 @@ describe("useSessions", () => {
     expect(msgs[2].agentName).toBe("port_scan");
   });
 
+  it("replays subagent result rows as assistant messages even when persisted with user role", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-subagent-history",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "scan it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "user",
+          content: "[Subagent 'port_scan' completed successfully]\n\nResult:\nopen ports found",
+          timestamp: "2026-04-20T10:00:01Z",
+          injected_event: "subagent_result",
+          subagent_task_id: "sub-1",
+          sender_id: "port_scan",
+        },
+        {
+          role: "user",
+          content: "[Subagent \"vuln_check\" completed successfully]\n\nResult:\nno vulns",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(
+      () => useSessionHistory("websocket:chat-subagent-history"),
+      { wrapper: wrap(fakeClient()) },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const msgs = result.current.messages;
+    expect(msgs).toHaveLength(3);
+    expect(msgs[0].role).toBe("user");
+    expect(msgs[1].role).toBe("assistant");
+    expect(msgs[1].agentName).toBe("port_scan");
+    expect(msgs[2].role).toBe("assistant");
+    expect(msgs[2].agentName).toBe("vuln_check");
+  });
+
   it("reconstructs tool_calls as embedded toolCalls instead of trace rows", async () => {
     vi.mocked(api.fetchSessionMessages).mockResolvedValue({
       key: "websocket:chat-tools",
@@ -393,7 +436,7 @@ describe("useSessions", () => {
 
     expect(msgs[2].role).toBe("assistant");
     expect(msgs[2].kind).toBe("agent_event");
-    expect(msgs[2].content).toBe("🚀 子智能体「Port Scan」已启动");
+    expect(msgs[2].content).toBe("🚀 子智能体「port_scan」已启动");
     expect(msgs[2].agentName).toBe("port_scan");
     expect(msgs[2].agentEvent?.type).toBe("subagent_spawned");
 

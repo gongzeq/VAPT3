@@ -104,6 +104,35 @@ describe("MessageBubble", () => {
     expect(screen.getByText("Report")).toBeInTheDocument();
   });
 
+  it("uses the agent name as the subagent lifecycle title", () => {
+    const message: UIMessage = {
+      id: "subagent-done",
+      role: "assistant",
+      kind: "agent_event",
+      content: "✅ 子智能体「port_scan」已完成",
+      agentName: "port_scan",
+      createdAt: Date.now(),
+      agentEvent: {
+        type: "subagent_done",
+        agent_name: "port_scan",
+        task_id: "t1",
+        label: "The subagent response was accidentally placed here.",
+        status: "ok",
+        result: "Actual result body",
+      },
+    };
+
+    render(<MessageBubble message={message} />);
+
+    const title = screen
+      .getAllByText("Port Scan")
+      .find((el) => el.classList.contains("font-medium"));
+    if (!title) throw new Error("Missing subagent lifecycle title");
+    expect(title).toHaveClass("text-foreground");
+    expect(screen.queryByText("The subagent response was accidentally placed here.")).not.toBeInTheDocument();
+    expect(screen.getByText("Actual result body")).not.toHaveClass("text-foreground");
+  });
+
   it("renders video media as an inline player", () => {
     const message: UIMessage = {
       id: "a1",

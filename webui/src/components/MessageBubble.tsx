@@ -59,7 +59,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <AgentAvatar agentName={message.agentName} size="md" />
         <div className="max-w-[80%] min-w-0 space-y-1.5">
           <AgentMeta agentName={message.agentName} />
-          <AgentEventCard payload={message.agentEvent} />
+          <AgentEventCard payload={message.agentEvent} agentName={message.agentName} />
         </div>
       </div>
     );
@@ -480,6 +480,7 @@ function TraceGroup({ message, animClass }: TraceGroupProps) {
 
 interface AgentEventCardProps {
   payload: AgentEventPayload;
+  agentName?: string;
   animClass?: string;
 }
 
@@ -619,8 +620,19 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
   );
 }
 
-function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
+function agentEventDisplayName(payload: AgentEventPayload, fallbackAgentName?: string): string {
+  return resolveAgent(
+    payload.agent_name
+    ?? payload.agent
+    ?? fallbackAgentName
+    ?? payload.task_id
+    ?? "subagent",
+  ).label;
+}
+
+function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) {
   const [open, setOpen] = useState(false);
+  const lifecycleAgentName = agentEventDisplayName(payload, agentName);
 
   switch (payload.type) {
     case "thought": {
@@ -671,7 +683,7 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
         <div className={cn("flex gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2", animClass)}>
           <Bot className="h-4 w-4 shrink-0 text-primary" aria-hidden />
           <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{payload.label}</span>
+            <span className="font-medium text-foreground">{lifecycleAgentName}</span>
             <span className="ml-1">已启动</span>
             {payload.task_description ? (
               <p className="mt-0.5 line-clamp-2 text-[11px]">{payload.task_description}</p>
@@ -711,7 +723,7 @@ function AgentEventCard({ payload, animClass }: AgentEventCardProps) {
         )}>
           <Bot className={cn("h-4 w-4 shrink-0", payload.status === "ok" ? "text-green-500" : "text-red-500")} aria-hidden />
           <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{payload.label ?? payload.task_id}</span>
+            <span className="font-medium text-foreground">{lifecycleAgentName}</span>
             <span className={cn("ml-1", payload.status === "ok" ? "text-green-600" : "text-red-600")}>
               {payload.status === "ok" ? "已完成" : "失败"}
             </span>

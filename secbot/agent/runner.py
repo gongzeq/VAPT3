@@ -132,6 +132,8 @@ class AgentRunner:
                 messages
                 and injection.get("role") == "user"
                 and messages[-1].get("role") == "user"
+                and not injection.get("injected_event")
+                and not messages[-1].get("injected_event")
             ):
                 merged = dict(messages[-1])
                 merged["content"] = cls._merge_message_content(
@@ -221,7 +223,19 @@ class AgentRunner:
                 continue
             text = getattr(item, "content", str(item))
             if text.strip():
-                injected_messages.append({"role": "user", "content": text})
+                message: dict[str, Any] = {"role": "user", "content": text}
+                metadata = getattr(item, "metadata", None)
+                if isinstance(metadata, dict):
+                    injected_event = metadata.get("injected_event")
+                    if isinstance(injected_event, str) and injected_event:
+                        message["injected_event"] = injected_event
+                        task_id = metadata.get("subagent_task_id")
+                        if task_id is not None:
+                            message["subagent_task_id"] = str(task_id)
+                        sender_id = getattr(item, "sender_id", None)
+                        if isinstance(sender_id, str) and sender_id:
+                            message["sender_id"] = sender_id
+                injected_messages.append(message)
         if len(injected_messages) > _MAX_INJECTIONS_PER_TURN:
             dropped = len(injected_messages) - _MAX_INJECTIONS_PER_TURN
             logger.warning(

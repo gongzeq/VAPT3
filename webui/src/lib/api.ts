@@ -129,6 +129,8 @@ export async function fetchSessionMessages(
     tool_call_id?: string;
     name?: string;
     sender_id?: string;
+    injected_event?: string;
+    subagent_task_id?: string;
     /** Present on ``user`` turns that attached images. Paths have already
      * been stripped server-side; only the signed fetch URLs survive. */
     media_urls?: SessionMediaUrl[];

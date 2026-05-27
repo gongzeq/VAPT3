@@ -2194,6 +2194,48 @@ async def test_drain_injections_extracts_content_from_inbound_messages():
 
 
 @pytest.mark.asyncio
+async def test_drain_injections_preserves_subagent_result_metadata():
+    """Subagent completions stay distinguishable from real user turns."""
+    from secbot.agent.runner import AgentRunSpec, AgentRunner
+    from secbot.bus.events import InboundMessage
+
+    provider = MagicMock()
+    runner = AgentRunner(provider)
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+
+    async def cb():
+        return [
+            InboundMessage(
+                channel="system",
+                sender_id="port_scan",
+                chat_id="websocket:chat-1",
+                content="subagent result",
+                metadata={
+                    "injected_event": "subagent_result",
+                    "subagent_task_id": "sub-1",
+                },
+            )
+        ]
+
+    spec = AgentRunSpec(
+        initial_messages=[], tools=tools, model="m",
+        max_iterations=1, max_tool_result_chars=1000,
+        injection_callback=cb,
+    )
+    result = await runner._drain_injections(spec)
+    assert result == [
+        {
+            "role": "user",
+            "content": "subagent result",
+            "injected_event": "subagent_result",
+            "subagent_task_id": "sub-1",
+            "sender_id": "port_scan",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_drain_injections_passes_limit_to_callback_when_supported():
     """Limit-aware callbacks can preserve overflow in their own queue."""
     from secbot.agent.runner import AgentRunSpec, AgentRunner, _MAX_INJECTIONS_PER_TURN
@@ -2504,6 +2546,68 @@ async def test_loop_injected_followup_preserves_image_media(tmp_path):
         for block in injected_user_messages[-1]["content"]
         if isinstance(block, dict)
     )
+
+
+@pytest.mark.asyncio
+async def test_loop_pending_subagent_result_persists_as_assistant(tmp_path):
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.events import InboundMessage
+    from secbot.bus.queue import MessageBus
+    from secbot.session.manager import Session
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    call_count = {"n": 0}
+
+    async def chat_with_retry(*, messages, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return LLMResponse(content="first answer", tool_calls=[], usage={})
+        return LLMResponse(content="second answer", tool_calls=[], usage={})
+
+    provider.chat_with_retry = chat_with_retry
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
+    loop.tools.get_definitions = MagicMock(return_value=[])
+
+    pending_queue = asyncio.Queue()
+    await pending_queue.put(InboundMessage(
+        channel="system",
+        sender_id="port_scan",
+        chat_id="websocket:chat-1",
+        content="[Subagent 'port_scan' completed successfully]\n\nResult:\nopen ports found",
+        metadata={
+            "injected_event": "subagent_result",
+            "subagent_task_id": "sub-1",
+        },
+    ))
+
+    _, _, all_msgs, _, had_injections = await loop._run_agent_loop(
+        [{"role": "user", "content": "scan it"}],
+        channel="websocket",
+        chat_id="chat-1",
+        pending_queue=pending_queue,
+    )
+
+    assert had_injections is True
+    injected = [
+        message for message in all_msgs
+        if message.get("injected_event") == "subagent_result"
+    ]
+    assert len(injected) == 1
+    assert injected[0]["role"] == "user"
+    assert injected[0]["sender_id"] == "port_scan"
+
+    session = Session(key="websocket:chat-1")
+    loop._save_turn(session, all_msgs, skip=1)
+    saved_subagent = [
+        message for message in session.messages
+        if message.get("injected_event") == "subagent_result"
+    ]
+    assert len(saved_subagent) == 1
+    assert saved_subagent[0]["role"] == "assistant"
+    assert saved_subagent[0]["sender_id"] == "port_scan"
+    assert saved_subagent[0]["subagent_task_id"] == "sub-1"
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,8 @@ type RawHistoryMessage = {
   tool_call_id?: string;
   name?: string;
   sender_id?: string;
+  injected_event?: string;
+  subagent_task_id?: string;
   media_urls?: Array<{ url: string; name?: string }>;
   _kind?: string;
   agent_event?: Record<string, unknown>;
@@ -45,6 +47,18 @@ function inferAgentName(m: RawHistoryMessage): string | undefined {
     return m.name;
   }
   return undefined;
+}
+
+function inferLegacySubagentName(content: string): string | undefined {
+  const match = content.match(/^\[Subagent ['"]([^'"]+)['"]/);
+  return match?.[1];
+}
+
+function isSubagentResultMessage(m: RawHistoryMessage): boolean {
+  if (m.injected_event === "subagent_result") {
+    return true;
+  }
+  return typeof m.content === "string" && inferLegacySubagentName(m.content) !== undefined;
 }
 
 /** Convert an OpenAI-compatible ``tool_call`` entry into an
@@ -100,20 +114,25 @@ function convertOpenAIToolCall(
   };
 }
 
+function agentEventName(payload: AgentEventPayload, fallback: string): string {
+  return payload.agent_name ?? payload.agent ?? fallback;
+}
+
 /** Build a display string for a persisted ``agent_event`` so historical
  * replay matches the live-stream rendering in ``useNanobotStream``. */
-function buildAgentEventContent(payload: AgentEventPayload): string {
+function buildAgentEventContent(payload: AgentEventPayload, fallbackAgentName = "subagent"): string {
+  const eventAgentName = agentEventName(payload, fallbackAgentName);
   switch (payload.type) {
     case "thought":
       return payload.content ?? "";
     case "orchestrator_plan":
       return `编排计划：${payload.steps?.length ?? 0} 步`;
     case "subagent_spawned":
-      return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
+      return `🚀 子智能体「${eventAgentName}」已启动`;
     case "subagent_done":
       return payload.status === "ok"
-        ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`
-        : `❌ 子智能体「${payload.label ?? payload.task_id}」失败`;
+        ? `✅ 子智能体「${eventAgentName}」已完成`
+        : `❌ 子智能体「${eventAgentName}」失败`;
     case "blackboard_entry":
       return `📝 黑板条目 [${payload.agent_name}]: ${payload.text ?? ""}`;
     default:
@@ -169,7 +188,7 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
           id: `hist-${idx}`,
           role: "assistant",
           kind: "agent_event",
-          content: buildAgentEventContent(payload),
+          content: buildAgentEventContent(payload, agentName),
           agentEvent: payload,
           agentName,
           createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
@@ -216,6 +235,16 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
     if (m.role === "user") {
       if (typeof m.content !== "string") return;
       flushPending(idx);
+      if (isSubagentResultMessage(m)) {
+        out.push({
+          id: `hist-${idx}`,
+          role: "assistant",
+          content: m.content,
+          agentName: inferAgentName(m) || inferLegacySubagentName(m.content) || "subagent",
+          createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+        });
+        return;
+      }
       const media =
         Array.isArray(m.media_urls) && m.media_urls.length > 0
           ? m.media_urls.map((mu) => toMediaAttachment(mu))

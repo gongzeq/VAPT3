@@ -925,7 +925,17 @@ class AgentLoop:
                     merged: str | list[dict[str, Any]] = f"{runtime_ctx}\n\n{user_content}"
                 else:
                     merged = [{"type": "text", "text": runtime_ctx}] + user_content
-                return {"role": "user", "content": merged}
+                message: dict[str, Any] = {"role": "user", "content": merged}
+                if isinstance(pending_msg.metadata, dict):
+                    injected_event = pending_msg.metadata.get("injected_event")
+                    if isinstance(injected_event, str) and injected_event:
+                        message["injected_event"] = injected_event
+                        task_id = pending_msg.metadata.get("subagent_task_id")
+                        if task_id is not None:
+                            message["subagent_task_id"] = str(task_id)
+                        if pending_msg.sender_id:
+                            message["sender_id"] = str(pending_msg.sender_id)
+                return message
 
             items: list[dict[str, Any]] = []
             while len(items) < limit:
@@ -1640,6 +1650,20 @@ class AgentLoop:
 
         return filtered
 
+    @staticmethod
+    def _strip_runtime_context_from_content(content: str) -> str | None:
+        if not content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
+            return content
+        # Strip the entire runtime-context block (including any session summary).
+        # The block is bounded by _RUNTIME_CONTEXT_TAG and _RUNTIME_CONTEXT_END.
+        end_marker = ContextBuilder._RUNTIME_CONTEXT_END
+        end_pos = content.find(end_marker)
+        if end_pos >= 0:
+            stripped = content[end_pos + len(end_marker):].lstrip("\n")
+        else:
+            stripped = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG):].lstrip("\n")
+        return stripped if stripped.strip() else None
+
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
         from datetime import datetime
@@ -1647,6 +1671,21 @@ class AgentLoop:
         for m in messages[skip:]:
             entry = dict(m)
             role, content = entry.get("role"), entry.get("content")
+            if role == "user" and entry.get("injected_event") == "subagent_result":
+                if isinstance(content, str):
+                    stripped = self._strip_runtime_context_from_content(content)
+                    if stripped is None:
+                        continue
+                    entry["content"] = stripped
+                elif isinstance(content, list):
+                    filtered = self._sanitize_persisted_blocks(content, drop_runtime=True)
+                    if not filtered:
+                        continue
+                    entry["content"] = filtered
+                entry["role"] = "assistant"
+                entry.setdefault("sender_id", "subagent")
+                role = "assistant"
+                content = entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
             if role == "tool":
@@ -1658,24 +1697,11 @@ class AgentLoop:
                         continue
                     entry["content"] = filtered
             elif role == "user":
-                if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
-                    # Strip the entire runtime-context block (including any session summary).
-                    # The block is bounded by _RUNTIME_CONTEXT_TAG and _RUNTIME_CONTEXT_END.
-                    end_marker = ContextBuilder._RUNTIME_CONTEXT_END
-                    end_pos = content.find(end_marker)
-                    if end_pos >= 0:
-                        after = content[end_pos + len(end_marker):].lstrip("\n")
-                        if after:
-                            entry["content"] = after
-                        else:
-                            continue
-                    else:
-                        # Fallback: no end marker found, strip the tag prefix
-                        after_tag = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG):].lstrip("\n")
-                        if after_tag.strip():
-                            entry["content"] = after_tag
-                        else:
-                            continue
+                if isinstance(content, str):
+                    stripped = self._strip_runtime_context_from_content(content)
+                    if stripped is None:
+                        continue
+                    entry["content"] = stripped
                 if isinstance(content, list):
                     filtered = self._sanitize_persisted_blocks(content, drop_runtime=True)
                     if not filtered:
