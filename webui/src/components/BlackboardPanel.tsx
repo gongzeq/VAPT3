@@ -70,6 +70,10 @@ function formatTime(ts: number | undefined): string {
   return new Date(ts * 1000).toLocaleTimeString();
 }
 
+function entryKey(entry: BlackboardEntry): string {
+  return entry.id ?? `${entry.timestamp ?? ""}|${entry.text ?? ""}`;
+}
+
 export interface BlackboardPanelProps {
   /** Active chat id; when ``null`` the panel renders an empty state. */
   chatId: string | null;
@@ -121,12 +125,24 @@ export function BlackboardPanel({
     fetchBlackboard(token, chatId)
       .then((rows) => {
         if (cancelled) return;
-        const seen = new Set<string>();
-        for (const row of rows) {
-          if (row.id) seen.add(row.id);
-        }
-        seenIds.current = seen;
-        setEntries(rows);
+        setEntries((prev) => {
+          const seen = new Set<string>();
+          const merged: BlackboardEntry[] = [];
+          for (const row of rows) {
+            const id = entryKey(row);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            merged.push(row);
+          }
+          for (const row of prev) {
+            const id = entryKey(row);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            merged.push(row);
+          }
+          seenIds.current = seen;
+          return merged;
+        });
       })
       .catch((err) => {
         // Network / 4xx — degrade-don't-crash: leave entries empty so the
@@ -148,7 +164,7 @@ export function BlackboardPanel({
       if (ev.event !== "agent_event") return;
       if (ev.type !== "blackboard_entry") return;
       const p = ev.payload;
-      const id = p.id ?? `${p.timestamp ?? Date.now()}|${p.text ?? ""}`;
+      const id = entryKey(p);
       if (seenIds.current.has(id)) return;
       seenIds.current.add(id);
       const next: BlackboardEntry = {

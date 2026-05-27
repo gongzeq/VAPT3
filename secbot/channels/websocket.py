@@ -43,6 +43,8 @@ from secbot.utils.media_decode import (
 )
 
 if TYPE_CHECKING:
+    from secbot.agent.asset_feed import AssetFeedRegistry
+    from secbot.agent.blackboard import BlackboardRegistry
     from secbot.agent.subagent import SubagentManager
     from secbot.agents.registry import AgentRegistry
     from secbot.session.manager import SessionManager
@@ -129,7 +131,7 @@ class WebSocketConfig(Base):
       secbot and shares the asyncio loop, use a thread or async HTTP client for GET—do not call
       blocking ``urllib`` or synchronous ``httpx`` from inside a coroutine.
     - ``token_issue_secret``: If non-empty, token requests must send ``Authorization: Bearer <secret>`` or
-      ``X-Secbot-Auth: <secret>``.
+      ``X-Secbot-Auth: <secret>`` / ``X-Nanobot-Auth: <secret>``.
     - ``websocket_requires_token``: If True, the handshake must include a valid token (static or issued and not expired).
     - Each connection has its own session: a unique ``chat_id`` maps to the agent session internally.
     - ``media`` field in outbound messages contains local filesystem paths; remote clients need a
@@ -218,6 +220,13 @@ def _read_webui_model_name() -> str | None:
     except Exception as e:
         logger.debug("webui bootstrap could not load model name: {}", e)
         return None
+
+
+def _format_heartbeat(ts: float | None) -> str | None:
+    """Format an epoch-second heartbeat as ISO-8601 UTC."""
+    if not ts:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat(timespec="seconds")
 
 
 def _mask_api_key(key: str | None) -> str:
@@ -465,7 +474,12 @@ def _issue_route_secret_matches(headers: Any, configured_secret: str) -> bool:
     if authorization and authorization.lower().startswith("bearer "):
         supplied = authorization[7:].strip()
         return hmac.compare_digest(supplied, configured_secret)
-    header_token = headers.get("X-Secbot-Auth") or headers.get("x-secbot-auth")
+    header_token = (
+        headers.get("X-Secbot-Auth")
+        or headers.get("x-secbot-auth")
+        or headers.get("X-Nanobot-Auth")
+        or headers.get("x-nanobot-auth")
+    )
     if not header_token:
         return False
     return hmac.compare_digest(header_token.strip(), configured_secret)
@@ -497,6 +511,8 @@ class WebSocketChannel(BaseChannel):
         static_dist_path: Path | None = None,
         subagent_manager: "SubagentManager | None" = None,
         agent_registry: "AgentRegistry | None" = None,
+        blackboard_registry: "BlackboardRegistry | None" = None,
+        asset_feed_registry: "AssetFeedRegistry | None" = None,
         workflow_api_port: int | None = None,
     ):
         if isinstance(config, dict):
@@ -526,6 +542,8 @@ class WebSocketChannel(BaseChannel):
         self._session_manager = session_manager
         self._subagent_manager = subagent_manager
         self._agent_registry = agent_registry
+        self._blackboard_registry = blackboard_registry
+        self._asset_feed_registry = asset_feed_registry
         # Port of the standalone aiohttp workflow sub-service started by
         # ``secbot gateway`` — the WebUI reads this from the bootstrap
         # payload so it knows where to send mutating workflow requests
@@ -677,6 +695,15 @@ class WebSocketChannel(BaseChannel):
         # 3. REST surface for the embedded UI.
         if got == "/api/sessions":
             return self._handle_sessions_list(request)
+
+        # Per-chat collaboration surfaces used by the Right Rail. These must
+        # be handled before static SPA fallback; otherwise the browser receives
+        # index.html and frontend JSON parsing fails with ``Unexpected token '<'``.
+        if got == "/api/blackboard":
+            return await self._handle_blackboard(request)
+
+        if got == "/api/assets":
+            return await self._handle_assets(request)
 
         if got == "/api/settings":
             return self._handle_settings(request)
@@ -953,6 +980,74 @@ class WebSocketChannel(BaseChannel):
                 "offset": offset,
             }
         )
+
+    async def _handle_blackboard(self, request: WsRequest) -> Response:
+        """Return the chat-scoped blackboard snapshot for the embedded WebUI."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        query = _parse_query(request.path)
+        chat_id = (_query_first(query, "chat_id") or "").strip()
+        if not chat_id:
+            return _http_json_response({"error": "missing chat_id"}, status=400)
+
+        registry = self._blackboard_registry
+        if registry is None:
+            return _http_json_response({"chat_id": chat_id, "entries": []})
+
+        try:
+            board = await registry.get(chat_id)
+            entries = [] if board is None else await board.to_dict_list()
+        except Exception:
+            self.logger.exception("blackboard snapshot failed for chat_id={}", chat_id)
+            entries = []
+        return _http_json_response({"chat_id": chat_id, "entries": entries})
+
+    async def _handle_assets(self, request: WsRequest) -> Response:
+        """Return the chat-scoped asset feed snapshot for the embedded WebUI."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        query = _parse_query(request.path)
+        chat_id = (_query_first(query, "chat_id") or "").strip()
+        if not chat_id:
+            return _http_json_response({"error": "missing chat_id"}, status=400)
+
+        kind_raw = (_query_first(query, "kind") or "").strip()
+        kind = kind_raw.lower() if kind_raw else None
+
+        since_raw = (_query_first(query, "since_id") or "").strip()
+        since_id: int | None = None
+        if since_raw:
+            try:
+                parsed_since = int(since_raw)
+                if parsed_since >= 0:
+                    since_id = parsed_since
+            except ValueError:
+                pass
+
+        empty = {"chat_id": chat_id, "entries": [], "latest_id": 0, "counts": {}}
+        registry = self._asset_feed_registry
+        if registry is None:
+            return _http_json_response(empty)
+
+        try:
+            feed = await registry.get(chat_id)
+            if feed is None:
+                return _http_json_response(empty)
+            entries = await feed.since(since_id=since_id, kind=kind, limit=500)
+            counts = await feed.counts_by_kind()
+            return _http_json_response(
+                {
+                    "chat_id": chat_id,
+                    "entries": [entry.to_dict() for entry in entries],
+                    "latest_id": feed.latest_id,
+                    "counts": counts,
+                }
+            )
+        except Exception:
+            self.logger.exception("asset feed snapshot failed for chat_id={}", chat_id)
+            return _http_json_response(empty)
 
     def _settings_payload(self, *, requires_restart: bool = False) -> dict[str, Any]:
         from secbot.config.loader import get_config_path, load_config
@@ -1629,14 +1724,29 @@ class WebSocketChannel(BaseChannel):
                         "_hb": last_hb,
                     }
             for entry in agents_payload:
-                entry.update(
-                    {
-                        "status": "offline",
-                        "current_task_id": None,
-                        "progress": None,
-                        "last_heartbeat_at": None,
-                    }
-                )
+                snap = statuses_by_agent.get(entry["name"])
+                if snap is None:
+                    entry.update(
+                        {
+                            "status": (
+                                "offline"
+                                if self._subagent_manager is None
+                                else "idle"
+                            ),
+                            "current_task_id": None,
+                            "progress": None,
+                            "last_heartbeat_at": None,
+                        }
+                    )
+                else:
+                    entry.update(
+                        {
+                            "status": snap["status"],
+                            "current_task_id": snap["current_task_id"],
+                            "progress": None,
+                            "last_heartbeat_at": snap["last_heartbeat_at"],
+                        }
+                    )
         return _http_json_response({"agents": agents_payload})
 
     def _load_agent_registry_cached(self) -> "AgentRegistry":
@@ -1918,6 +2028,57 @@ class WebSocketChannel(BaseChannel):
         }
         if duration_ms is not None:
             body["duration_ms"] = int(duration_ms)
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def broadcast_agent_event(
+        self,
+        *,
+        chat_id: str,
+        type: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Emit an ``agent_event`` frame and persist high-signal UI events.
+
+        ``agent_status`` / ``subagent_status`` / ``high_risk_confirm`` are
+        live-only state updates. Persisting them would make session replay show
+        stale lifecycle noise or expired approval prompts.
+        """
+
+        event_payload: dict[str, Any] = dict(payload)
+        event_payload["type"] = type
+        body = {
+            "event": "agent_event",
+            "chat_id": chat_id,
+            "type": type,
+            "payload": event_payload,
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+
+        if self._session_manager is not None and type not in {
+            "agent_status",
+            "subagent_status",
+            "high_risk_confirm",
+        }:
+            session_key = (
+                chat_id
+                if chat_id.startswith("websocket:")
+                else f"websocket:{chat_id}"
+            )
+            session = self._session_manager.get_or_create(session_key)
+            sender_id = (
+                event_payload.get("agent")
+                or event_payload.get("agent_name")
+                or "agent"
+            )
+            session.add_message(
+                "assistant",
+                "",
+                _kind="agent_event",
+                agent_event=event_payload,
+                sender_id=str(sender_id),
+            )
+            self._session_manager.save(session)
+
         return await self._broadcast_frame(body, chat_id=chat_id)
 
     async def _broadcast_frame(
@@ -2371,7 +2532,7 @@ class WebSocketChannel(BaseChannel):
                 try:
                     Path(p).unlink(missing_ok=True)
                 except OSError as exc:
-                    self.logger.warning(
+                    logger.warning(
                         "failed to unlink partial media {}: {}", p, exc
                     )
             return [], reason
@@ -2396,7 +2557,7 @@ class WebSocketChannel(BaseChannel):
             except FileSizeExceeded:
                 return _abort("size")
             except Exception as exc:
-                self.logger.warning("media decode failed: {}", exc)
+                logger.warning("media decode failed: {}", exc)
                 return _abort("decode")
             if saved is None:
                 return _abort("decode")
@@ -2575,6 +2736,9 @@ class WebSocketChannel(BaseChannel):
                 payload["media_urls"] = urls
         if msg.reply_to:
             payload["reply_to"] = msg.reply_to
+        tool_events = msg.metadata.get("_tool_events")
+        if isinstance(tool_events, list):
+            payload["tool_events"] = tool_events
         # Mark intermediate agent breadcrumbs (tool-call hints, generic
         # progress strings) so WS clients can render them as subordinate
         # trace rows rather than conversational replies.

@@ -218,6 +218,58 @@ describe("BlackboardPanel", () => {
     expect(node?.className).toContain("animate-breath");
   });
 
+  it("keeps live WS entries when the HTTP replay resolves later with no rows", async () => {
+    let resolveBlackboard!: (response: Response) => void;
+    const blackboardPromise = new Promise<Response>((resolve) => {
+      resolveBlackboard = resolve;
+    });
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("/api/blackboard")) {
+        return blackboardPromise;
+      }
+      return Promise.resolve(jsonResponse({ unread_count: 0 }));
+    });
+
+    const fake = makeClient();
+    const Wrapper = wrap(fake.client);
+    render(
+      <Wrapper>
+        <BlackboardPanel chatId="chat-a" />
+      </Wrapper>,
+    );
+
+    act(() => {
+      fake.emit("chat-a", {
+        event: "agent_event",
+        chat_id: "chat-a",
+        type: "blackboard_entry",
+        payload: {
+          type: "blackboard_entry",
+          id: "live-before-http",
+          agent_name: "port_scan",
+          text: "[finding] live port discovered",
+          timestamp: 1715600300,
+          kind: "finding",
+        },
+        timestamp: "2026-05-13T01:02:00Z",
+      });
+    });
+
+    expect(screen.getByText(/live port discovered/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveBlackboard(
+        jsonResponse({
+          chat_id: "chat-a",
+          entries: [],
+        }),
+      );
+      await blackboardPromise;
+    });
+
+    expect(screen.getByText(/live port discovered/)).toBeInTheDocument();
+  });
+
   it("renders empty state when chatId is null", () => {
     fetchMock.mockResolvedValue(jsonResponse({ unread_count: 0 }));
     const fake = makeClient();

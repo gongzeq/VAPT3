@@ -55,14 +55,14 @@ export function RightRail({
         </TabsTrigger>
       </TabsList>
 
-      <TabsContent value="blackboard" className="flex flex-col">
+      <TabsContent value="blackboard" forceMount className="flex flex-col">
         <BlackboardPanel
           chatId={chatId}
           onToggleRightRail={onToggleRightRail}
         />
       </TabsContent>
 
-      <TabsContent value="assets" className="flex flex-col">
+      <TabsContent value="assets" forceMount className="flex flex-col">
         <AssetsPanel
           chatId={chatId}
           onToggleRightRail={onToggleRightRail}

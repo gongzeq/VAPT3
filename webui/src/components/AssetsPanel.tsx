@@ -46,6 +46,10 @@ function formatTime(ts: number | undefined): string {
   return new Date(ts * 1000).toLocaleTimeString();
 }
 
+function entryKey(entry: AssetEntry): number {
+  return typeof entry.id === "number" ? entry.id : Number(entry.id);
+}
+
 /** Pick the most informative one-line summary of a payload. We never
  * dump the whole JSON: the panel must stay glanceable. */
 function describePayload(entry: AssetEntry): string {
@@ -152,12 +156,24 @@ export function AssetsPanel({
     fetchAssetFeed(token, chatId)
       .then((snap) => {
         if (cancelled) return;
-        const seen = new Set<number>();
-        for (const row of snap.entries) {
-          if (typeof row.id === "number") seen.add(row.id);
-        }
-        seenIds.current = seen;
-        setEntries(snap.entries);
+        setEntries((prev) => {
+          const seen = new Set<number>();
+          const merged: AssetEntry[] = [];
+          for (const row of snap.entries) {
+            const id = entryKey(row);
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            merged.push(row);
+          }
+          for (const row of prev) {
+            const id = entryKey(row);
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            merged.push(row);
+          }
+          seenIds.current = seen;
+          return merged;
+        });
       })
       .catch((err) => {
         console.warn("fetchAssetFeed failed", err);
@@ -177,7 +193,7 @@ export function AssetsPanel({
       if (ev.event !== "agent_event") return;
       if (ev.type !== "asset_pushed") return;
       const p = ev.payload as unknown as AssetEntry;
-      const id = typeof p.id === "number" ? p.id : Number(p.id);
+      const id = entryKey(p);
       if (!id || seenIds.current.has(id)) return;
       seenIds.current.add(id);
       const next: AssetEntry = {

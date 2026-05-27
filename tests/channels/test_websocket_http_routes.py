@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+from secbot.agent.asset_feed import AssetFeedRegistry
+from secbot.agent.blackboard import BlackboardRegistry
 from secbot.channels.websocket import WebSocketChannel
 from secbot.session.manager import Session, SessionManager
 
@@ -21,6 +23,8 @@ def _ch(
     *,
     session_manager: SessionManager | None = None,
     static_dist_path: Path | None = None,
+    blackboard_registry: BlackboardRegistry | None = None,
+    asset_feed_registry: AssetFeedRegistry | None = None,
     port: int = _PORT,
     **extra: Any,
 ) -> WebSocketChannel:
@@ -38,6 +42,8 @@ def _ch(
         bus,
         session_manager=session_manager,
         static_dist_path=static_dist_path,
+        blackboard_registry=blackboard_registry,
+        asset_feed_registry=asset_feed_registry,
     )
 
 
@@ -326,6 +332,67 @@ async def test_static_serves_index_when_dist_present(
 
 
 @pytest.mark.asyncio
+async def test_collaboration_api_routes_return_json_before_spa_fallback(
+    bus: MagicMock, tmp_path: Path
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>nbweb</title>")
+
+    blackboards = BlackboardRegistry()
+    board = await blackboards.get_or_create("chat-a")
+    await board.write("port_scan", "[finding] 10.0.0.5:80 open")
+
+    feeds = AssetFeedRegistry()
+    feed = await feeds.get_or_create("chat-a")
+    await feed.append(
+        kind="port",
+        agent_name="port_scan",
+        payload={"host": "10.0.0.5", "port": 80, "service": "http"},
+    )
+
+    channel = _ch(
+        bus,
+        static_dist_path=dist,
+        blackboard_registry=blackboards,
+        asset_feed_registry=feeds,
+        port=29911,
+    )
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        boot = await _http_get("http://127.0.0.1:29911/webui/bootstrap")
+        token = boot.json()["token"]
+        auth = {"Authorization": f"Bearer {token}"}
+
+        blackboard = await _http_get(
+            "http://127.0.0.1:29911/api/blackboard?chat_id=chat-a",
+            headers=auth,
+        )
+        assert blackboard.status_code == 200
+        assert blackboard.headers["content-type"].startswith("application/json")
+        assert blackboard.json()["entries"][0]["text"] == "[finding] 10.0.0.5:80 open"
+
+        assets = await _http_get(
+            "http://127.0.0.1:29911/api/assets?chat_id=chat-a",
+            headers=auth,
+        )
+        assert assets.status_code == 200
+        assert assets.headers["content-type"].startswith("application/json")
+        body = assets.json()
+        assert body["entries"][0]["payload"] == {
+            "host": "10.0.0.5",
+            "port": 80,
+            "service": "http",
+        }
+        assert body["latest_id"] == 1
+        assert body["counts"] == {"port": 1}
+    finally:
+        await channel.stop()
+        await server_task
+
+
+@pytest.mark.asyncio
 async def test_static_rejects_path_traversal(
     bus: MagicMock, tmp_path: Path
 ) -> None:
@@ -477,7 +544,7 @@ def test_bootstrap_accepts_remote_with_valid_secret(bus: MagicMock) -> None:
 def test_bootstrap_accepts_x_nanobot_auth_header(bus: MagicMock) -> None:
     channel = _ch(bus, host="0.0.0.0", tokenIssueSecret="s3cret")
     resp = channel._handle_webui_bootstrap(
-        _REMOTE, _FakeReq({"X-Secbot-Auth": "s3cret"})
+        _REMOTE, _FakeReq({"X-Nanobot-Auth": "s3cret"})
     )
     assert resp.status_code == 200
 

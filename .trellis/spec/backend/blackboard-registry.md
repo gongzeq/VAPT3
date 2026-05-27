@@ -1,7 +1,7 @@
 # Blackboard Registry
 
 > Authoritative contract for `BlackboardRegistry`, the `GET /api/blackboard` endpoint, and the `BlackboardEntry.kind` auto-extraction rule.
-> Implementation: `secbot/agent/blackboard.py`, `secbot/agent/tools/blackboard.py`, `secbot/api/blackboard.py`, wired from `secbot/api/server.py`.
+> Implementation: `secbot/agent/blackboard.py`, `secbot/agent/tools/blackboard.py`, `secbot/api/blackboard.py`, wired from `secbot/api/server.py` and mirrored by the embedded WebUI gateway in `secbot/channels/websocket.py`.
 
 ---
 
@@ -146,6 +146,25 @@ Every `Blackboard.write()` that succeeds AND whose owning `AgentLoop` has a chan
 
 Constraint: `payload.kind` MUST equal the stored `BlackboardEntry.kind` on the same entry. A consumer that replays HTTP first and then subscribes to WS MAY see both surfaces report the entry — dedupe by `payload.id`.
 
+### 3.5 Embedded WebUI HTTP mirror
+
+The bundled WebUI is served by `WebSocketChannel`, not only the aiohttp app.
+Any collaboration replay route consumed by the right rail MUST therefore be
+registered in `secbot/channels/websocket.py::_dispatch_http` before
+`_serve_static()`.
+
+Required mirrored routes:
+
+| Route | Registry | Empty response |
+|-------|----------|----------------|
+| `GET /api/blackboard?chat_id=...` | `BlackboardRegistry` | `{"chat_id": "...", "entries": []}` |
+| `GET /api/assets?chat_id=...` | `AssetFeedRegistry` | `{"chat_id": "...", "entries": [], "latest_id": 0, "counts": {}}` |
+
+`ChannelManager` / gateway startup MUST pass `AgentLoop.blackboard_registry`
+and `AgentLoop.asset_feed_registry` into `WebSocketChannel`. If a route is
+missing from the gateway, the static SPA fallback serves `index.html` for the
+`/api/*` URL; the frontend then fails JSON parsing with `Unexpected token '<'`.
+
 ---
 
 ## 4. Validation & Error Matrix
@@ -159,6 +178,7 @@ Constraint: `payload.kind` MUST equal the stored `BlackboardEntry.kind` on the s
 | AgentLoop writes before `register()` | write still succeeds on the local `Blackboard`, but HTTP lookup returns empty until `register()` runs. **Implementation MUST call `register()` in `AgentLoop.__init__`** so the window is zero-length in practice. |
 | Text has mid-string `[blocker]` | entry stored with `kind=None` | same |
 | Text `"[BLOCKER] X"` | stored with `kind="blocker"` (lowercase normalised) | same |
+| Embedded WebUI requests `/api/blackboard` or `/api/assets` while `dist/index.html` exists | 200 JSON from the mirrored route | MUST NOT fall through to SPA fallback |
 
 ---
 
@@ -210,6 +230,10 @@ entries = registry.entries_for(chat_id)[:10]  # These are OLDEST 10, not latest.
 - `AgentLoop.__init__` registers its Blackboard on the registry exposed via `app["blackboard_registry"]`.
 - Multiple chats produce isolated boards (write on A invisible from B's HTTP read).
 
+`tests/channels/test_websocket_http_routes.py` MUST cover:
+- Embedded gateway `/api/blackboard` and `/api/assets` return JSON before SPA fallback when `static_dist_path/index.html` exists.
+- The returned payloads read from the same `BlackboardRegistry` / `AssetFeedRegistry` instances used by live agent writes.
+
 ---
 
 ## 7. Wrong vs Correct
@@ -235,6 +259,17 @@ entry_out["kind"] = my_regex(e.text)   # drift risk
 
 **Correct** — `Blackboard.write()` is the single extraction point; `to_dict()` serves the canonical kind.
 
+**Wrong** — adding only the aiohttp route while the embedded WebUI still falls through to static:
+```python
+register_blackboard_routes(app)  # OK for aiohttp tests, but not enough for the bundled WebUI.
+```
+
+**Correct** — mirror the route in `WebSocketChannel` before `_serve_static()`:
+```python
+if got == "/api/blackboard":
+    return await self._handle_blackboard(request)
+```
+
 ---
 
 ## Origin
@@ -242,4 +277,5 @@ entry_out["kind"] = my_regex(e.text)   # drift risk
 - `.trellis/tasks/05-12-multi-agent-obs-blackboard/prd.md` (D1 / D2 / D3 / D6 / D7)
 - `secbot/agent/blackboard.py` — registry + entry + `_extract_kind`
 - `secbot/api/blackboard.py` — HTTP handler
+- `secbot/channels/websocket.py` — embedded WebUI mirror for `/api/blackboard` and `/api/assets`
 - `webui/src/components/BlackboardPanel.tsx` — frontend consumer (F8)
