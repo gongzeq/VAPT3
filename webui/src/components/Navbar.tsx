@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import {
   Bell,
   LayoutDashboard,
-  ListChecks,
   Menu,
   MessageSquare,
   Settings,
@@ -27,7 +26,6 @@ const NAV_ITEMS: Array<{
 }> = [
   { to: "/", labelKey: "nav.home", fallback: "智能助手", icon: MessageSquare },
   { to: "/dashboard", labelKey: "nav.dashboard", fallback: "大屏分析", icon: LayoutDashboard },
-  { to: "/tasks", labelKey: "nav.tasks", fallback: "任务详情", icon: ListChecks },
   {
     to: "/workflows",
     labelKey: "nav.workflows",
