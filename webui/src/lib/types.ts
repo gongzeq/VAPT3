@@ -54,7 +54,7 @@ export interface AgentEventPayload {
   phase?: string;
   iteration?: number;
   tool_events?: unknown[];
-  status?: "ok" | "error";
+  status?: ToolCallStatus;
   result?: string;
   id?: string;
   agent_name?: string;
@@ -351,6 +351,9 @@ export type InboundEvent =
       /** Present when the frame is an agent breadcrumb (e.g. tool hint,
        * generic progress line) rather than a conversational reply. */
       kind?: "tool_hint" | "progress";
+      /** Structured tool lifecycle payloads mirrored from agent progress
+       * metadata. Present on tool_hint/progress frames when available. */
+      tool_events?: unknown[];
     }
   | {
       event: "delta";

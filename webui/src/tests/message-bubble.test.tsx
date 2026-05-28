@@ -17,8 +17,8 @@ describe("MessageBubble", () => {
     const row = container.firstElementChild;
     const pill = screen.getByText("hello");
 
-    expect(row).toHaveClass("ml-auto", "flex");
-    expect(pill).toHaveClass("ml-auto", "w-fit", "rounded-[18px]");
+    expect(row).toHaveClass("justify-end", "flex");
+    expect(pill).toHaveClass("rounded-2xl", "rounded-tr-sm");
     expect(screen.queryByRole("button", { name: "Copy reply" })).not.toBeInTheDocument();
   });
 
@@ -59,6 +59,32 @@ describe("MessageBubble", () => {
     expect(screen.queryByRole("button", { name: "Copy reply" })).not.toBeInTheDocument();
   });
 
+  it("renders tool calls on an otherwise empty streaming assistant row", () => {
+    const message: UIMessage = {
+      id: "a-tool-streaming",
+      role: "assistant",
+      content: "",
+      isStreaming: true,
+      agentName: "port_scan",
+      createdAt: Date.now(),
+      toolCalls: [
+        {
+          type: "tool_call",
+          tool_call_id: "call_scan",
+          tool_name: "scan_port",
+          tool_args: { target: "1.2.3.4" },
+          status: "running",
+        },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+
+    expect(screen.getByText("scan_port")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/assistant is typing/i)).not.toBeInTheDocument();
+  });
+
   it("renders trace messages as collapsible tool groups", () => {
     const message: UIMessage = {
       id: "t1",
@@ -72,6 +98,10 @@ describe("MessageBubble", () => {
     render(<MessageBubble message={message} />);
     const toggle = screen.getByRole("button", { name: /used 2 tools/i });
 
+    expect(screen.queryByText('weather("get")')).not.toBeInTheDocument();
+    expect(screen.queryByText('search "hk weather"')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
     expect(screen.getByText('weather("get")')).toBeInTheDocument();
     expect(screen.getByText('search "hk weather"')).toBeInTheDocument();
 
@@ -102,6 +132,29 @@ describe("MessageBubble", () => {
     expect(screen.getByText("Asset discovery")).toBeInTheDocument();
     expect(screen.getByText("Find live hosts.")).toBeInTheDocument();
     expect(screen.getByText("Report")).toBeInTheDocument();
+  });
+
+  it("hides the whole agent event row for asset_push tool calls", () => {
+    const message: UIMessage = {
+      id: "asset-push-tool",
+      role: "assistant",
+      kind: "agent_event",
+      content: "⚙️ asset_push 执行中…",
+      agentName: "crawl_web",
+      createdAt: Date.now(),
+      agentEvent: {
+        type: "tool_call",
+        tool_name: "asset_push",
+        tool_call_id: "call_asset_push",
+        tool_status: "running",
+        tool_args: { kind: "url" },
+      },
+    };
+
+    const { container } = render(<MessageBubble message={message} />);
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText(/asset_push/)).not.toBeInTheDocument();
   });
 
   it("uses the agent name as the subagent lifecycle title", () => {

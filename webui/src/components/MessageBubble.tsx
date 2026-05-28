@@ -5,11 +5,31 @@ import { useTranslation } from "react-i18next";
 import { AgentAvatar, AgentMeta, resolveAgent } from "@/components/AgentAvatar";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
+import { isHiddenFrontendToolName } from "@/lib/tool-visibility";
 import { cn } from "@/lib/utils";
 import type { AgentEventPayload, ToolCallStatus, UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: UIMessage;
+}
+
+function isVisibleAgentEvent(payload: AgentEventPayload): boolean {
+  switch (payload.type) {
+    case "thought":
+    case "orchestrator_plan":
+    case "subagent_spawned":
+    case "subagent_done":
+    case "blackboard_entry":
+      return true;
+    case "tool_call":
+      return !isHiddenFrontendToolName(payload.tool_name);
+    case "agent_status":
+    case "asset_pushed":
+    case "high_risk_confirm":
+    case "subagent_status":
+    default:
+      return false;
+  }
 }
 
 /**
@@ -54,6 +74,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   }
 
   if (message.kind === "agent_event" && message.agentEvent) {
+    if (!isVisibleAgentEvent(message.agentEvent)) {
+      return null;
+    }
     return (
       <div className={cn("flex gap-3", baseAnim)}>
         <AgentAvatar agentName={message.agentName} size="md" />
@@ -103,7 +126,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   const empty = message.content.trim().length === 0;
   const media = message.media ?? [];
-  const hasToolCalls = (message.toolCalls?.length ?? 0) > 0;
+  const visibleToolCalls =
+    message.toolCalls?.filter((tc) => !isHiddenFrontendToolName(tc.tool_name)) ?? [];
+  const hasToolCalls = visibleToolCalls.length > 0;
+  const showTypingPlaceholder = empty && message.isStreaming && !hasToolCalls && media.length === 0;
   // 隐藏空内容的助手消息（无内容、无媒体、无工具调用、非流式）
   if (empty && !message.isStreaming && media.length === 0 && !hasToolCalls) {
     return null;
@@ -115,7 +141,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <AgentAvatar agentName={message.agentName} size="md" />
       <div className="max-w-[80%] min-w-0 space-y-1.5">
         <AgentMeta agentName={message.agentName} />
-        {empty && message.isStreaming ? (
+        {showTypingPlaceholder ? (
           <TypingDots />
         ) : (
           <>
@@ -130,12 +156,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                   : undefined
               }
             >
-              <MarkdownText>{message.content}</MarkdownText>
-              {message.isStreaming && <StreamCursor />}
+              {!empty ? <MarkdownText>{message.content}</MarkdownText> : null}
+              {message.isStreaming && !empty ? <StreamCursor /> : null}
               {/* Render nested tool calls inside the bubble */}
-              {message.toolCalls && message.toolCalls.length > 0 ? (
+              {visibleToolCalls.length > 0 ? (
                 <div className="mt-2 space-y-1.5">
-                  {message.toolCalls.map((tc, i) => (
+                  {visibleToolCalls.map((tc, i) => (
                     <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
                   ))}
                 </div>
@@ -539,7 +565,7 @@ function toolStatusLabel(variant: ToolCardVariant, durationMs?: number): string 
  * Mirrors the prototype ``.tool-call`` visual with a foldable head and
  * a monospace body. */
 function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
-  const status: ToolCallStatus = payload.tool_status ?? "running";
+  const status: ToolCallStatus = payload.tool_status ?? payload.status ?? "running";
   const variant: ToolCardVariant =
     status === "error" && payload.reason && DENIED_REASONS.has(payload.reason)
       ? "denied"
@@ -734,6 +760,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
         </div>
       );
     case "tool_call":
+      if (isHiddenFrontendToolName(payload.tool_name)) return null;
       return <ToolCallCard payload={payload} animClass={animClass} />;
     case "blackboard_entry":
       return (

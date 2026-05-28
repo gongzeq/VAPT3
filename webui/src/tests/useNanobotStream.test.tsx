@@ -236,6 +236,183 @@ describe("useNanobotStream", () => {
     ]);
   });
 
+  it("converts write_plan tool_events to a plan message", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-plan-tool", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    const steps = [
+      { title: "Scope target", detail: "Confirm allowed ranges." },
+      { title: "Run discovery" },
+    ];
+
+    act(() => {
+      fake.emit("chat-plan-tool", {
+        event: "message",
+        chat_id: "chat-plan-tool",
+        text: "write_plan",
+        kind: "tool_hint",
+        tool_events: [
+          {
+            version: 1,
+            phase: "start",
+            call_id: "call-plan",
+            name: "write_plan",
+            arguments: { steps },
+            result: null,
+            error: null,
+            files: [],
+            embeds: [],
+          },
+        ],
+      });
+      fake.emit("chat-plan-tool", {
+        event: "agent_event",
+        chat_id: "chat-plan-tool",
+        type: "orchestrator_plan",
+        payload: {
+          type: "orchestrator_plan",
+          agent: "orchestrator",
+          steps,
+        },
+        timestamp: "2026-05-12T00:00:00.000Z",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      kind: "agent_event",
+      content: "编排计划：2 步",
+    });
+    expect(result.current.messages[0].agentEvent?.steps).toEqual(steps);
+    expect(result.current.messages[0].toolCalls).toBeUndefined();
+  });
+
+  it("routes asset_pushed frames away from the chat message list", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-assets", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-assets", {
+        event: "agent_event",
+        chat_id: "chat-assets",
+        type: "asset_pushed",
+        payload: {
+          type: "asset_pushed",
+          id: 1,
+          kind: "url",
+          agent_name: "crawl_web",
+          payload: { url: "http://127.0.0.1/login" },
+          created_at: 1715600300,
+        },
+        timestamp: "2026-05-13T01:02:00Z",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("hides asset_push tool call frames and hints from the chat message list", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-asset-tool", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-asset-tool", {
+        event: "agent_event",
+        chat_id: "chat-asset-tool",
+        type: "tool_call",
+        payload: {
+          type: "tool_call",
+          tool_call_id: "call_asset_push",
+          tool_name: "asset_push",
+          tool_status: "running",
+          tool_args: { kind: "url", payload: { url: "http://127.0.0.1/login" } },
+        },
+        timestamp: "2026-05-13T01:02:00Z",
+      });
+      fake.emit("chat-asset-tool", {
+        event: "message",
+        chat_id: "chat-asset-tool",
+        text: "asset_push x 3",
+        kind: "tool_hint",
+        tool_events: [
+          {
+            version: 1,
+            phase: "start",
+            call_id: "call_asset_push",
+            name: "asset_push",
+            arguments: { kind: "url" },
+            result: null,
+            error: null,
+            files: [],
+            embeds: [],
+          },
+        ],
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("does not keep an empty streaming placeholder for subagent tool calls", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-subagent-tool", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-subagent-tool", {
+        event: "delta",
+        chat_id: "chat-subagent-tool",
+        text: "",
+      });
+      fake.emit("chat-subagent-tool", {
+        event: "delta",
+        chat_id: "chat-subagent-tool",
+        text: " ",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isStreaming).toBe(true);
+
+    act(() => {
+      fake.emit("chat-subagent-tool", {
+        event: "agent_event",
+        chat_id: "chat-subagent-tool",
+        type: "tool_call",
+        payload: {
+          type: "tool_call",
+          task_id: "task-1",
+          agent_name: "port_scan",
+          tool_call_id: "call_scan",
+          tool_name: "scan_port",
+          tool_args: { target: "1.2.3.4" },
+          status: "running",
+        },
+        timestamp: "2026-05-13T01:02:00Z",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      role: "assistant",
+      agentName: "port_scan",
+      content: "⚙️ scan_port 执行中…",
+    });
+    expect(result.current.messages[0].toolCalls?.[0]).toMatchObject({
+      tool_name: "scan_port",
+      tool_status: "running",
+    });
+  });
+
   it("keeps streaming alive across stream_end and completes on turn_end", () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useClient } from "@/providers/ClientProvider";
 import { toMediaAttachment } from "@/lib/media";
+import { planFromToolEvents, planFromWritePlanToolCall } from "@/lib/plan-events";
 import type { StreamError } from "@/lib/secbot-client";
+import {
+  hasOnlyHiddenToolEvents,
+  isHiddenFrontendToolName,
+  isHiddenToolHintText,
+} from "@/lib/tool-visibility";
 import { randomId } from "@/lib/utils";
 import type {
   AgentEventPayload,
@@ -29,6 +35,18 @@ function toolCallContent(toolName: string, status: ToolCallStatus, reason?: stri
   }
 }
 
+function isTransientStreamingPlaceholder(message: UIMessage, agent: string): boolean {
+  return (
+    message.role === "assistant"
+    && message.kind !== "trace"
+    && message.agentName === agent
+    && message.isStreaming === true
+    && message.content.trim().length === 0
+    && (message.media?.length ?? 0) === 0
+    && (message.toolCalls?.length ?? 0) === 0
+  );
+}
+
 /** Merge a ``tool_call`` payload into the most recent assistant message from
  * the same agent so it renders inside the bubble. Falls back to appending a
  * new assistant row when no suitable host exists. */
@@ -40,15 +58,16 @@ function mergeToolCall(
   const tcId = payload.tool_call_id;
   const status = (payload.status ?? payload.tool_status ?? "running") as ToolCallStatus;
   payload.tool_status = status;
+  const messages = prev.filter((m) => !isTransientStreamingPlaceholder(m, agent));
 
   // Terminal statuses — try to find the matching running/critical tool call
   // inside an existing message and update it in-place.
   if ((status === "ok" || status === "error") && tcId) {
-    const msgIdx = prev.findIndex((m) =>
+    const msgIdx = messages.findIndex((m) =>
       m.toolCalls?.some((tc) => tc.tool_call_id === tcId),
     );
     if (msgIdx !== -1) {
-      const msg = prev[msgIdx];
+      const msg = messages[msgIdx];
       const tcIdx = msg.toolCalls!.findIndex((tc) => tc.tool_call_id === tcId);
       if (tcIdx !== -1) {
         const updatedToolCalls = [...msg.toolCalls!];
@@ -58,26 +77,26 @@ function mergeToolCall(
           toolCalls: updatedToolCalls,
           content: toolCallContent(payload.tool_name ?? "", status, payload.reason),
         };
-        return [...prev.slice(0, msgIdx), updated, ...prev.slice(msgIdx + 1)];
+        return [...messages.slice(0, msgIdx), updated, ...messages.slice(msgIdx + 1)];
       }
     }
   }
 
   // Find the most recent assistant message from the same agent.
-  for (let i = prev.length - 1; i >= 0; i--) {
-    const m = prev[i];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
     if (m.role === "assistant" && m.kind !== "trace" && m.agentName === agent) {
       const updated: UIMessage = {
         ...m,
         toolCalls: [...(m.toolCalls || []), payload],
       };
-      return [...prev.slice(0, i), updated, ...prev.slice(i + 1)];
+      return [...messages.slice(0, i), updated, ...messages.slice(i + 1)];
     }
   }
 
   // Fallback — no host message; append a slim assistant row.
   return [
-    ...prev,
+    ...messages,
     {
       id: randomId(),
       role: "assistant",
@@ -87,6 +106,67 @@ function mergeToolCall(
       createdAt: Date.now(),
     },
   ];
+}
+
+function planSignature(payload: AgentEventPayload): string {
+  return JSON.stringify(payload.steps ?? []);
+}
+
+function appendPlanMessage(
+  prev: UIMessage[],
+  planPayload: AgentEventPayload,
+  agent: string,
+): UIMessage[] {
+  const signature = planSignature(planPayload);
+  const last = prev[prev.length - 1];
+  if (
+    last?.kind === "agent_event" &&
+    last.agentEvent?.type === "orchestrator_plan" &&
+    planSignature(last.agentEvent) === signature
+  ) {
+    return prev;
+  }
+  return [
+    ...prev,
+    {
+      id: randomId(),
+      role: "assistant",
+      kind: "agent_event",
+      content: `编排计划：${planPayload.steps?.length ?? 0} 步`,
+      agentEvent: planPayload,
+      agentName: agent,
+      createdAt: Date.now(),
+    },
+  ];
+}
+
+function agentEventName(payload: AgentEventPayload, fallback: string): string {
+  return payload.agent_name ?? payload.agent ?? fallback;
+}
+
+function isNonStreamingEvent(ev: InboundEvent): boolean {
+  return (
+    ev.event === "turn_end"
+    || ev.event === "session_updated"
+    || ev.event === "error"
+    || (
+      ev.event === "agent_event"
+      && (ev.type === "asset_pushed" || ev.type === "agent_status")
+    )
+    || (
+      ev.event === "agent_event"
+      && ev.type === "tool_call"
+      && isHiddenFrontendToolName(ev.payload.tool_name)
+    )
+    || (
+      ev.event === "message"
+      && (ev.kind === "tool_hint" || ev.kind === "progress")
+      && (
+        hasOnlyHiddenToolEvents(ev.tool_events)
+        || isHiddenToolHintText(ev.text)
+      )
+    )
+  );
 }
 
 interface StreamBuffer {
@@ -226,15 +306,13 @@ export function useNanobotStream(
       // otherwise pure ``tool_hint`` / ``progress`` events (no deltas) would
       // leave ``isStreaming`` stuck at ``false`` while the agent is busy
       // calling tools.
-      if (
-        ev.event !== "turn_end"
-        && ev.event !== "session_updated"
-        && ev.event !== "error"
-      ) {
+      if (!isNonStreamingEvent(ev)) {
         setIsStreaming(true);
       }
 
       if (ev.event === "delta") {
+        if (ev.text.length === 0) return;
+        if (!buffer.current && ev.text.trim().length === 0) return;
         const id = buffer.current?.messageId ?? randomId();
         if (!buffer.current) {
           buffer.current = { messageId: id, parts: [] };
@@ -294,7 +372,21 @@ export function useNanobotStream(
         // Attach them to the last trace row if it was the last emitted item
         // so a sequence of calls collapses into one compact trace group.
         if (ev.kind === "tool_hint" || ev.kind === "progress") {
+          if (
+            hasOnlyHiddenToolEvents(ev.tool_events)
+            || isHiddenToolHintText(ev.text)
+          ) {
+            return;
+          }
+          const planPayload = planFromToolEvents(ev.tool_events);
+          if (planPayload) {
+            setMessages((prev) =>
+              appendPlanMessage(prev, planPayload, currentAgentRef.current),
+            );
+            return;
+          }
           const line = ev.text;
+          if (!line.trim()) return;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last && last.kind === "trace" && !last.isStreaming) {
@@ -367,6 +459,14 @@ export function useNanobotStream(
         // Merge into the most recent assistant message from the same agent
         // so the UI can render tool cards *inside* the bubble.
         if (payload.type === "tool_call") {
+          if (isHiddenFrontendToolName(payload.tool_name)) {
+            return;
+          }
+          const planPayload = planFromWritePlanToolCall(payload);
+          if (planPayload) {
+            setMessages((prev) => appendPlanMessage(prev, planPayload, inferredAgent));
+            return;
+          }
           setMessages((prev) => mergeToolCall(prev, payload, inferredAgent));
           return;
         }
@@ -406,23 +506,28 @@ export function useNanobotStream(
           return;
         }
 
-        // agent_status 是纯 sidebar 状态心跳，不应出现在消息流中
-        if (payload.type === "agent_status") {
+        // agent_status 是纯 sidebar 状态心跳；asset_pushed 由资产面板消费。
+        // 这类数据馈送不应在聊天流中生成空 agent_event 外壳。
+        if (payload.type === "agent_status" || payload.type === "asset_pushed") {
+          return;
+        }
+
+        if (payload.type === "orchestrator_plan") {
+          setMessages((prev) => appendPlanMessage(prev, payload, inferredAgent));
           return;
         }
 
         const content = (() => {
+          const eventAgentName = agentEventName(payload, inferredAgent);
           switch (payload.type) {
             case "thought":
               return payload.content ?? "";
-            case "orchestrator_plan":
-              return `编排计划：${payload.steps?.length ?? 0} 步`;
             case "subagent_spawned":
-              return `🚀 子智能体「${payload.label ?? payload.task_id}」已启动`;
+              return `🚀 子智能体「${eventAgentName}」已启动`;
             case "subagent_done":
               return payload.status === "ok"
-                ? `✅ 子智能体「${payload.label ?? payload.task_id}」已完成`
-                : `❌ 子智能体「${payload.label ?? payload.task_id}」失败`;
+                ? `✅ 子智能体「${eventAgentName}」已完成`
+                : `❌ 子智能体「${eventAgentName}」失败`;
             case "blackboard_entry":
               return `📝 黑板条目 [${payload.agent_name}]: ${payload.text ?? ""}`;
             default:
