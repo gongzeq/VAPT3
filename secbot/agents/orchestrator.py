@@ -84,6 +84,10 @@ _HARD_RULES = (
     "you MUST call the `report` expert (via `create_agent(name=\"report\", ...)`) "
     "to materialise an HTML deliverable via the `report-html` skill. Do NOT end "
     "the task without a report unless the user explicitly says they do not want one.",
+    "- When the user asks for phishing-email detection summaries, log-analysis results, "
+    "or any report based on detection data (detection_results.db), delegate to the "
+    "`report` agent with `mode=detection`. The report agent has `detection-db-query` "
+    "skill to query the database. Do NOT try to run shell commands or read the DB yourself.",
     "- You MUST request high-risk confirmation when an expert is about to invoke a "
     "critical-risk skill (the expert handles the gate; you must NOT bypass it by "
     "inventing skill calls of your own).",

@@ -1,32 +1,38 @@
 name: report
 display_name: 报告生成
 description: |
-  Render the single canonical HTML deliverable for a completed scan.
-  Reads from the local CMDB and materialises `<scan_dir>/report/report.html`;
-  no other formats are supported.
+  Generate reports — two modes: (1) VAPT scan → HTML deliverable via report-html;
+  (2) Detection data → query detection_results.db via detection-db-query
+  for phishing / log-analysis summaries. Pass task describing which mode + params.
 
 system_prompt_file: ./prompts/report.md
 
 scoped_skills:
   - report-html
+  - detection-db-query
 
 max_iterations: 2
 emit_plan_steps: false
 
 legacy_input_schema:
   type: object
-  required: [scan_id]
+  required: []
   properties:
     scan_id:
       type: string
-      description: ULID of the scan to report on
+      description: ULID of the scan to report on (VAPT mode only)
     title:
       type: string
-      description: Optional report title (defaults to "Scan <id> report")
+      description: Optional report title
     type:
       type: string
-      enum: [custom, asset, port, vuln, weak_password, pentest]
+      enum: [custom, asset, port, vuln, weak_password, pentest, detection_phishing, detection_log]
       default: custom
+    mode:
+      type: string
+      enum: [vapt, detection]
+      default: vapt
+      description: vapt=scan HTML report; detection=query detection_results.db
 
 output_schema:
   type: object
