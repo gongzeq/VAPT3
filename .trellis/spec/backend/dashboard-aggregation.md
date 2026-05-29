@@ -298,7 +298,35 @@ Rules:
 
 Emitted by `secbot/agent/blackboard.py::Blackboard.write()` whenever an entry is committed. The payload carries an optional `kind` auto-extracted from the leading `[tag]` prefix; see [blackboard-registry.md](./blackboard-registry.md) for the contract.
 
-### 3.5 `agent_event.thought`
+### 3.5 `agent_event.asset_pushed`
+
+Emitted by `secbot/agent/tools/asset_feed.py::AssetPushTool` via the active WebSocket channel whenever a discrete asset discovery is appended to the chat-scoped asset feed.
+
+```json
+{
+  "event": "agent_event",
+  "chat_id": "0e1b…c8",
+  "type": "asset_pushed",
+  "payload": {
+    "type": "asset_pushed",
+    "id": 42,
+    "kind": "url|port|service|credential|vuln|tech|<unknown>",
+    "agent_name": "crawl_web",
+    "payload": { "url": "https://example.test/login" },
+    "created_at": 1715600300.0
+  },
+  "timestamp": "2026-05-13T04:38:00+00:00"
+}
+```
+
+Rules:
+- This is an asset-feed update, not a conversational chat event. Chat message renderers MUST ignore it; `webui/src/components/AssetsPanel.tsx` consumes it through its own `client.onChat` subscription.
+- `asset_pushed` MUST NOT be persisted into session JSONL by `WebSocketChannel.broadcast_agent_event`. Historical asset replay comes from `GET /api/assets`, not `/api/sessions/{key}/messages`.
+- The underlying `asset_push` tool lifecycle (`tool_call`, `tool_hint`, `activity_event` start/result rows, and historical OpenAI tool calls) is UI-hidden. Frontends show only the resulting asset feed row, not the bookkeeping tool execution.
+- The payload is byte-compatible with the corresponding asset feed row for `id / kind / agent_name / payload / created_at`. Frontends MUST dedupe by `id`.
+- Unknown `kind` values degrade to a generic chip/card; they must not crash the asset panel.
+
+### 3.6 `agent_event.thought`
 
 > Added 2026-05-13. Origin: PRD `05-11-frontend-agent-display-gap` §G1–G3. Emitter: `secbot/agent/loop.py` `before_iteration`.
 
@@ -323,7 +351,7 @@ Rules:
 - `content` MAY be empty string for a pure "starting iteration N" marker; UI MUST collapse consecutive same-agent empty thoughts.
 - Emitted regardless of `context.streamed_content` (unlike legacy `_on_progress`). Replaces the `tool_hint / progress` path for reasoning.
 
-### 3.6 `agent_event.subagent_spawned` / `.subagent_status` / `.subagent_done`
+### 3.7 `agent_event.subagent_spawned` / `.subagent_status` / `.subagent_done`
 
 > Added 2026-05-13. Origin: PRD `05-11-frontend-agent-display-gap` §G4–G7. Emitters: `secbot/agent/subagent.py::SubagentManager.spawn`, `SubagentManager._on_checkpoint`, `SubagentManager._announce_result`.
 

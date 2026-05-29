@@ -129,6 +129,8 @@ async def test_render_html_inlines_severity_badges(cmdb_engine):
     assert "<!DOCTYPE html>" in html
     assert "sev-critical" in html
     assert "Log4Shell" in html
+    assert "开放服务" in html
+    assert "<td>22</td><td>tcp</td><td>ssh</td><td>OpenSSH</td><td>8.4</td>" in html
 
 
 # ---------------------------------------------------------------------------

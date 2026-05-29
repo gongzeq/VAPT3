@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import os
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -856,6 +857,26 @@ class AgentRunner:
                 return result + hint, event, RuntimeError(result)
             return result + hint, event, None
 
+        structured_failure = self._structured_tool_failure_detail(result)
+        if structured_failure:
+            event = {
+                "name": tool_call.name,
+                "status": "error",
+                "detail": structured_failure[:120],
+            }
+            handled = self._classify_violation(
+                raw_text=structured_failure,
+                soft_payload=result if isinstance(result, str) else str(result),
+                event=event,
+                tool_call=tool_call,
+                workspace_violation_counts=workspace_violation_counts,
+            )
+            if handled is not None:
+                return handled
+            if spec.fail_on_tool_error:
+                return result, event, RuntimeError(structured_failure)
+            return result, event, None
+
         detail = "" if result is None else str(result)
         detail = detail.replace("\n", " ").strip()
         if not detail:
@@ -1220,3 +1241,47 @@ class AgentRunner:
         if current:
             batches.append(current)
         return batches
+
+    @staticmethod
+    def _structured_tool_failure_detail(result: Any) -> str | None:
+        """Return a displayable error detail for JSON tool payload failures.
+
+        Skill handlers intentionally return structured JSON for subprocess
+        failures so the LLM can inspect ``summary`` and ``raw_log_path``. The
+        UI still needs those payloads to render as failed tool calls instead
+        of successful calls with an embedded error field.
+        """
+        if not isinstance(result, str):
+            return None
+        try:
+            payload = json.loads(result)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        top_error = payload.get("error")
+        if isinstance(top_error, dict):
+            error_type = str(top_error.get("type") or "error")
+            message = str(top_error.get("message") or "").strip()
+            return f"{error_type}: {message}" if message else error_type
+        if top_error:
+            return f"error: {top_error}"
+
+        summary = payload.get("summary")
+        if not isinstance(summary, dict):
+            return None
+
+        if summary.get("error"):
+            return f"error: {summary['error']}"
+        if summary.get("cancelled") is True:
+            return "cancelled"
+        if summary.get("user_denied") is True:
+            reason = str(summary.get("reason") or "").strip()
+            return f"user_denied: {reason}" if reason else "user_denied"
+        if summary.get("status") == "error":
+            message = str(summary.get("message") or summary.get("reason") or "").strip()
+            return f"error: {message}" if message else "error"
+        if summary.get("parse_error"):
+            return f"parse_error: {summary['parse_error']}"
+        return None

@@ -307,6 +307,40 @@ async def test_send_delivers_json_message_with_media_and_reply() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_includes_structured_tool_events() -> None:
+    bus = MagicMock()
+    channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus)
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+
+    tool_events = [
+        {
+            "version": 1,
+            "phase": "start",
+            "call_id": "call-plan",
+            "name": "write_plan",
+            "arguments": {"steps": [{"title": "Discover assets"}]},
+        }
+    ]
+    await channel.send(
+        OutboundMessage(
+            channel="websocket",
+            chat_id="chat-1",
+            content="write_plan",
+            metadata={
+                "_progress": True,
+                "_tool_hint": True,
+                "_tool_events": tool_events,
+            },
+        )
+    )
+
+    payload = json.loads(mock_ws.send.call_args[0][0])
+    assert payload["kind"] == "tool_hint"
+    assert payload["tool_events"] == tool_events
+
+
+@pytest.mark.asyncio
 async def test_send_stages_external_media_as_signed_url(monkeypatch, tmp_path) -> None:
     bus = MagicMock()
     media_root = tmp_path / "media"
@@ -1272,7 +1306,7 @@ async def test_broadcast_agent_event_persists_to_session() -> None:
 
 @pytest.mark.asyncio
 async def test_broadcast_agent_event_skips_ephemeral_types() -> None:
-    """agent_status, subagent_status, high_risk_confirm are NOT persisted."""
+    """Live-only agent events are NOT persisted into chat history."""
     bus = MagicMock()
     bus.publish_inbound = AsyncMock()
 
@@ -1290,7 +1324,7 @@ async def test_broadcast_agent_event_skips_ephemeral_types() -> None:
     }
     channel = WebSocketChannel(cfg, bus, session_manager=mock_session_manager)
 
-    for evt_type in ("agent_status", "subagent_status", "high_risk_confirm"):
+    for evt_type in ("agent_status", "subagent_status", "asset_pushed", "high_risk_confirm"):
         await channel.broadcast_agent_event(
             chat_id="chat-1",
             type=evt_type,

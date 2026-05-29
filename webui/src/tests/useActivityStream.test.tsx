@@ -149,6 +149,51 @@ describe("useActivityStream", () => {
     expect(ev.duration_ms).toBe(12);
   });
 
+  it("filters asset_push activity rows from REST and WS", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          makeSeedRow({
+            id: "asset-push-rest",
+            agent: "asset_push",
+            message: "调用 asset_push",
+          }),
+          makeSeedRow({ id: "port-scan-rest", agent: "port_scan" }),
+        ],
+      }),
+    );
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        items: [],
+        total: 0,
+        limit: 1,
+        offset: 0,
+        unread_count: 0,
+      }),
+    );
+
+    const { client, push } = makeClient();
+    const { result } = renderHook(() => useActivityStream(), {
+      wrapper: wrap(client),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+    expect(result.current.events.map((ev) => ev.id)).toEqual(["port-scan-rest"]);
+
+    act(() => {
+      push({
+        event: "activity_event",
+        chat_id: "chat-a",
+        category: "tool_call",
+        agent: "asset_push",
+        step: "→ 调用 tool: asset_push()",
+        timestamp: "2026-05-10T12:05:00Z",
+      });
+    });
+
+    expect(result.current.events.map((ev) => ev.id)).toEqual(["port-scan-rest"]);
+  });
+
   it("surfaces an error state on a failing REST fetch and recovers on refresh", async () => {
     fetchMock.mockResolvedValueOnce(new Response("{}", { status: 500 }));
     fetchMock.mockResolvedValue(

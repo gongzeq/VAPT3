@@ -74,9 +74,12 @@ async def test_katana_crawl_web_happy_classifies_and_filters(
 
     assert isinstance(res, SkillResult)
     summary = res.summary
+    assert summary["scan_id"] == ctx.scan_id
+    assert summary["scan_dir"] == str(ctx.scan_dir)
     assert summary["total_urls"] == len(urls)
     assert summary["deduped_urls"] == len(urls) - 2
     assert summary["candidate_count"] == 8
+    assert Path(summary["raw_urls_path"]).parent == ctx.scan_dir / "katana"
     assert Path(summary["raw_urls_path"]).exists()
     assert Path(res.raw_log_path or "").exists()
 
@@ -220,7 +223,9 @@ async def test_katana_crawl_web_timeout_returns_structured_error(
 
     res = await mod.run({"target": "https://example.com"}, make_ctx())
 
-    assert res.summary == {"error": "timeout"}
+    assert res.summary["error"] == "timeout"
+    assert res.summary["scan_id"] == "scan-test"
+    assert Path(res.summary["raw_urls_path"]).name == "katana_urls.txt"
     assert Path(res.raw_log_path or "").name == "katana-crawl-web.log"
 
 

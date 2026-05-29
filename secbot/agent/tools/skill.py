@@ -381,10 +381,16 @@ def _result_payload(meta: SkillMetadata, result: SkillResult) -> str:
     """
     findings = list(result.findings)[:50]
     cmdb_writes = list(result.cmdb_writes)[:50]
+    # Keep disk artifact paths before the potentially-large summary. The
+    # runner previews/truncates oversized tool results from the start of the
+    # JSON payload, so late path fields can disappear and tempt agents to
+    # reconstruct stale scan paths from history.
+    artifacts = _artifact_paths(result.summary, result.raw_log_path)
     payload = {
         "skill": meta.name,
-        "summary": result.summary,
         "raw_log_path": result.raw_log_path,
+        "artifacts": artifacts,
+        "summary": result.summary,
         "findings": findings,
         "cmdb_writes": cmdb_writes,
     }
@@ -399,6 +405,22 @@ def _error_payload(skill_name: str, error_type: str, message: str) -> str:
         },
         ensure_ascii=False,
     )
+
+
+def _artifact_paths(
+    summary: Mapping[str, Any],
+    raw_log_path: str | None,
+) -> dict[str, str]:
+    """Extract common on-disk artifact paths for early tool-result visibility."""
+    artifacts: dict[str, str] = {}
+    if raw_log_path:
+        artifacts["raw_log_path"] = raw_log_path
+    if isinstance(summary, Mapping):
+        for key in ("raw_urls_path", "scan_dir", "output_path", "report_path"):
+            value = summary.get(key)
+            if isinstance(value, str) and value:
+                artifacts[key] = value
+    return artifacts
 
 
 def skill_required_binaries(skills_root: Path, skill_names: list[str]) -> list[str]:

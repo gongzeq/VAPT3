@@ -539,6 +539,19 @@ const TOOL_STATUS_STYLE: Record<ToolCardVariant, { border: string; bg: string; i
  * auto-deny path (see subagent._classify_terminal). */
 const DENIED_REASONS = new Set(["user_denied", "timeout"]);
 
+function recordArgs(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function toolCallArgs(payload: AgentEventPayload): Record<string, unknown> | undefined {
+  const toolArgs = recordArgs(payload.tool_args);
+  if (toolArgs && Object.keys(toolArgs).length > 0) return toolArgs;
+  const args = recordArgs(payload.args);
+  if (args && Object.keys(args).length > 0) return args;
+  return toolArgs ?? args;
+}
+
 /** Compact status badge label for a tool call. */
 function toolStatusLabel(variant: ToolCardVariant, durationMs?: number): string {
   const dur =
@@ -572,9 +585,10 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
       : status;
   const style = TOOL_STATUS_STYLE[variant];
   const [open, setOpen] = useState(variant !== "running");
-  const hasArgs = payload.tool_args && Object.keys(payload.tool_args).length > 0;
+  const args = toolCallArgs(payload);
+  const hasArgs = args && Object.keys(args).length > 0;
   const argsSummary = hasArgs
-    ? JSON.stringify(payload.tool_args).slice(0, 90)
+    ? JSON.stringify(args).slice(0, 90)
     : "";
 
   return (
@@ -635,7 +649,7 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
           ) : null}
           {hasArgs ? (
             <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words text-muted-foreground/90">
-              {JSON.stringify(payload.tool_args, null, 2)}
+              {JSON.stringify(args, null, 2)}
             </pre>
           ) : (
             <span className="text-muted-foreground/60">无参数</span>

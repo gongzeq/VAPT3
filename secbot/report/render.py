@@ -237,6 +237,17 @@ def render_html(model: ReportModel) -> str:
         if a.os_guess:
             lines.append(f"<li>操作系统推测: {a.os_guess}</li>")
         lines.append("</ul>")
+        if a.services:
+            lines.append("<h4>开放服务</h4>")
+            lines.append("<table><thead><tr><th>端口</th><th>协议</th>"
+                         "<th>服务</th><th>产品</th><th>版本</th></tr></thead><tbody>")
+            for s in a.services:
+                lines.append(
+                    f"<tr><td>{s.port}</td><td>{s.protocol}</td>"
+                    f"<td>{s.service or '—'}</td><td>{s.product or '—'}</td>"
+                    f"<td>{s.version or '—'}</td></tr>"
+                )
+            lines.append("</tbody></table>")
         if a.findings:
             lines.append("<table><thead><tr><th>严重级别</th><th>标题</th>"
                          "<th>CVE</th><th>发现工具</th></tr></thead><tbody>")

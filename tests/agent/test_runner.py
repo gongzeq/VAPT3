@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -310,6 +311,65 @@ async def test_runner_returns_structured_tool_error():
     assert result.tool_events == [
         {"name": "list_dir", "status": "error", "detail": "boom"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_runner_marks_skill_summary_error_as_tool_error():
+    from secbot.agent.runner import AgentRunSpec, AgentRunner
+
+    skill_payload = json.dumps(
+        {
+            "skill": "httpx-probe",
+            "summary": {"services": [], "elapsed_sec": 0.27, "error": "exit=2"},
+            "raw_log_path": "/tmp/httpx-probe.jsonl",
+            "findings": [],
+            "cmdb_writes": [],
+        }
+    )
+    captured_second_call: list[dict] = []
+    call_count = {"n": 0}
+
+    async def chat_with_retry(*, messages, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return LLMResponse(
+                content="probing",
+                tool_calls=[
+                    ToolCallRequest(
+                        id="call_1",
+                        name="httpx-probe",
+                        arguments={"targets": ["http://example.com"]},
+                    )
+                ],
+            )
+        captured_second_call[:] = messages
+        return LLMResponse(content="handled", tool_calls=[])
+
+    provider = MagicMock()
+    provider.chat_with_retry = chat_with_retry
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.execute = AsyncMock(return_value=skill_payload)
+
+    runner = AgentRunner(provider)
+    result = await runner.run(
+        AgentRunSpec(
+            initial_messages=[],
+            tools=tools,
+            model="test-model",
+            max_iterations=3,
+            max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        )
+    )
+
+    assert result.final_content == "handled"
+    assert result.tool_events == [
+        {"name": "httpx-probe", "status": "error", "detail": "error: exit=2"}
+    ]
+    assert any(
+        msg.get("role") == "tool" and msg.get("content") == skill_payload
+        for msg in captured_second_call
+    )
 
 
 @pytest.mark.asyncio

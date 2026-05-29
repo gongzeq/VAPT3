@@ -13,6 +13,43 @@ _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
 
 @pytest.mark.asyncio
+async def test_subagent_result_event_uses_agent_name_not_response(tmp_path):
+    """Lifecycle event titles key off the expert agent name, not label/result text."""
+    from secbot.agent.subagent import SubagentManager
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    mgr._broadcast_agent_event = AsyncMock()
+
+    await mgr._announce_result(
+        "sub-1",
+        "The subagent response was accidentally placed here.",
+        "scan target",
+        "Actual response body",
+        {"channel": "websocket", "chat_id": "c1", "session_key": "websocket:c1"},
+        "ok",
+        agent_name="port_scan",
+    )
+
+    msg = await bus.consume_inbound()
+    assert msg.sender_id == "port_scan"
+
+    kwargs = mgr._broadcast_agent_event.await_args.kwargs
+    assert kwargs["type"] == "subagent_done"
+    assert kwargs["payload"]["agent_name"] == "port_scan"
+    assert kwargs["payload"]["label"] == "The subagent response was accidentally placed here."
+    assert kwargs["payload"]["result"] == "Actual response body"
+
+
+@pytest.mark.asyncio
 async def test_subagent_never_registers_exec_tool(tmp_path):
     """Ad-hoc subagents (no expert spec) must NEVER receive ExecTool.
 
@@ -837,5 +874,7 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
     spec_first_line = spec.system_prompt.strip().split("\n", 1)[0]
     if spec_first_line and len(spec_first_line) > 8:
         assert spec_first_line in sys_prompt
+    assert "Do not reconstruct Katana output paths" in sys_prompt
+    assert "raw_urls_path" in sys_prompt
     # And the user message MUST carry the orchestrator-supplied task verbatim.
     assert captured["user_message"] == "scan targets"

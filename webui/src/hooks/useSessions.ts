@@ -9,7 +9,9 @@ import {
   listSessions,
 } from "@/lib/api";
 import { toMediaAttachment } from "@/lib/media";
+import { planFromWritePlanToolCall } from "@/lib/plan-events";
 import { displaySessionTitle } from "@/lib/session-title";
+import { isHiddenFrontendToolName } from "@/lib/tool-visibility";
 import type { AgentEventPayload, ChatSummary, ToolCallStatus, UIMessage } from "@/lib/types";
 
 const EMPTY_MESSAGES: UIMessage[] = [];
@@ -61,6 +63,32 @@ function isSubagentResultMessage(m: RawHistoryMessage): boolean {
   return typeof m.content === "string" && inferLegacySubagentName(m.content) !== undefined;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return asRecord(parsed) ?? { raw: value };
+    } catch {
+      return { raw: value };
+    }
+  }
+  if (typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function withNormalisedToolArgs(payload: AgentEventPayload): AgentEventPayload {
+  const toolArgs = asRecord(payload.tool_args);
+  const args = asRecord(payload.args);
+  const preferred =
+    toolArgs && Object.keys(toolArgs).length > 0
+      ? toolArgs
+      : args && Object.keys(args).length > 0
+        ? args
+        : toolArgs ?? args;
+  return preferred ? { ...payload, tool_args: preferred } : payload;
+}
+
 /** Convert an OpenAI-compatible ``tool_call`` entry into an
  * ``AgentEventPayload`` so the UI can render it as a ``ToolCallCard``. */
 function convertOpenAIToolCall(
@@ -75,6 +103,7 @@ function convertOpenAIToolCall(
     (fn && typeof fn.name === "string" && fn.name) ||
     (typeof obj.name === "string" && obj.name) ||
     "tool";
+  if (isHiddenFrontendToolName(toolName)) return null;
 
   let toolArgs: Record<string, unknown> | undefined;
   if (fn && typeof fn.arguments === "string") {
@@ -104,14 +133,14 @@ function convertOpenAIToolCall(
     }
   }
 
-  return {
+  return withNormalisedToolArgs({
     type: "tool_call",
     tool_call_id: toolCallId,
     tool_name: toolName,
     tool_args: toolArgs,
     tool_status: toolStatus,
     reason,
-  };
+  });
 }
 
 function agentEventName(payload: AgentEventPayload, fallback: string): string {
@@ -169,6 +198,66 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
     });
     pending = [];
   };
+  const upsertToolCall = (
+    rawPayload: AgentEventPayload,
+    agentName: string,
+    createdAt: number,
+  ) => {
+    if (isHiddenFrontendToolName(rawPayload.tool_name)) return;
+    const payload = withNormalisedToolArgs(rawPayload);
+    const planPayload = planFromWritePlanToolCall(payload);
+    if (planPayload) {
+      out.push({
+        id: `hist-plan-${out.length}`,
+        role: "assistant",
+        kind: "agent_event",
+        content: buildAgentEventContent(planPayload),
+        agentEvent: planPayload,
+        agentName: agentName || planPayload.agent_name || planPayload.agent || "orchestrator",
+        createdAt,
+      });
+      return;
+    }
+    if (payload.tool_name === "write_plan") return;
+
+    const status = (payload.tool_status ?? payload.status ?? "running") as ToolCallStatus;
+    const nextPayload: AgentEventPayload = { ...payload, tool_status: status };
+    const toolCallId = nextPayload.tool_call_id;
+
+    if (toolCallId) {
+      for (let i = out.length - 1; i >= 0; i--) {
+        const msg = out[i];
+        const tcIdx = msg.toolCalls?.findIndex((tc) => tc.tool_call_id === toolCallId) ?? -1;
+        if (tcIdx === -1) continue;
+        const toolCalls = [...(msg.toolCalls ?? [])];
+        toolCalls[tcIdx] = {
+          ...toolCalls[tcIdx],
+          ...nextPayload,
+          tool_args: nextPayload.tool_args ?? toolCalls[tcIdx].tool_args,
+          tool_status: status,
+        };
+        out[i] = { ...msg, toolCalls };
+        return;
+      }
+    }
+
+    for (let i = out.length - 1; i >= 0; i--) {
+      const msg = out[i];
+      if (msg.role === "assistant" && msg.kind !== "agent_event" && msg.agentName === agentName) {
+        out[i] = { ...msg, toolCalls: [...(msg.toolCalls ?? []), nextPayload] };
+        return;
+      }
+    }
+
+    out.push({
+      id: `hist-tool-${out.length}`,
+      role: "assistant",
+      content: "",
+      agentName,
+      toolCalls: [nextPayload],
+      createdAt,
+    });
+  };
 
   raw.forEach((m, idx) => {
     if (m.role === "assistant") {
@@ -177,12 +266,22 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
       // inline cards on historical replay.
       if (m._kind === "agent_event" && m.agent_event) {
         const payload = m.agent_event as unknown as AgentEventPayload;
-        // 过滤纯 sidebar 状态心跳和交互式确认，它们不应出现在消息流中
-        if (payload.type === "agent_status" || payload.type === "subagent_status") {
+        // 过滤侧栏状态、资产面板数据馈送和交互式确认，它们不应出现在消息流中。
+        if (
+          payload.type === "agent_status"
+          || payload.type === "subagent_status"
+          || payload.type === "asset_pushed"
+          || payload.type === "high_risk_confirm"
+        ) {
           return;
         }
         const agentName =
           inferAgentName(m) || payload.agent_name || payload.agent || "assistant";
+        if (payload.type === "tool_call") {
+          flushPending(idx);
+          upsertToolCall(payload, agentName, m.timestamp ? Date.parse(m.timestamp) : Date.now());
+          return;
+        }
         flushPending(idx);
         out.push({
           id: `hist-${idx}`,
@@ -198,15 +297,40 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
 
       const hasContent = typeof m.content === "string" && m.content.length > 0;
       const rawToolCalls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
-      const toolCalls = rawToolCalls
+      const convertedToolCalls = rawToolCalls
         .map((call) => convertOpenAIToolCall(call, toolResults))
         .filter(Boolean) as AgentEventPayload[];
+      const planEvents: AgentEventPayload[] = [];
+      const toolCalls: AgentEventPayload[] = [];
+      for (const call of convertedToolCalls) {
+        const planPayload = planFromWritePlanToolCall(call);
+        if (planPayload) {
+          planEvents.push(planPayload);
+        } else {
+          toolCalls.push(call);
+        }
+      }
 
-      if (!hasContent && toolCalls.length === 0) {
+      if (!hasContent && toolCalls.length === 0 && planEvents.length === 0) {
         return;
       }
 
       flushPending(idx);
+      const agentName = inferAgentName(m);
+      for (const planPayload of planEvents) {
+        out.push({
+          id: `hist-${idx}-plan-${out.length}`,
+          role: "assistant",
+          kind: "agent_event",
+          content: buildAgentEventContent(planPayload),
+          agentEvent: planPayload,
+          agentName: agentName || planPayload.agent_name || planPayload.agent || "orchestrator",
+          createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+        });
+      }
+      if (!hasContent && toolCalls.length === 0) {
+        return;
+      }
       const media =
         Array.isArray(m.media_urls) && m.media_urls.length > 0
           ? m.media_urls.map((mu) => toMediaAttachment(mu))
@@ -216,7 +340,7 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
         id: `hist-${idx}`,
         role: "assistant",
         content: m.content || "",
-        agentName: inferAgentName(m),
+        agentName,
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
         createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
         ...(media ? { media } : {}),
@@ -234,6 +358,9 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
 
     if (m.role === "user") {
       if (typeof m.content !== "string") return;
+      if (m.injected_event === "asset_discovered") {
+        return;
+      }
       flushPending(idx);
       if (isSubagentResultMessage(m)) {
         out.push({

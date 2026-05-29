@@ -20,12 +20,10 @@ from pathlib import Path
 import pytest
 
 from secbot.agent.tools.skill import (
-    SkillTool,
     bind_skill_context,
     discover_skill_tools,
 )
 from secbot.agents.high_risk import HighRiskGate
-from secbot.skills.types import SkillContext, SkillResult
 
 
 def _write_skill(
@@ -140,8 +138,52 @@ def test_execute_runs_handler_and_returns_json(tmp_path: Path, skills_root: Path
     raw = asyncio.run(tools["echo-skill"].execute(target="example.com"))
     payload = json.loads(raw)
     assert payload["skill"] == "echo-skill"
+    assert payload["raw_log_path"] is None
+    assert payload["artifacts"] == {}
     assert payload["summary"] == {"target": "example.com", "scan_id": "unit-1"}
     assert payload["findings"] == []
+
+
+def test_execute_surfaces_artifact_paths_before_large_summary(tmp_path: Path) -> None:
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "artifact-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                raw_urls = ctx.scan_dir / "katana" / "katana_urls.txt"
+                raw_log = ctx.raw_log_dir / "katana-crawl-web.log"
+                return SkillResult(
+                    summary={
+                        "raw_urls_path": str(raw_urls),
+                        "scan_dir": str(ctx.scan_dir),
+                        "candidates": [{"url": f"https://example.com/{i}", "blob": "x" * 200} for i in range(100)],
+                    },
+                    raw_log_path=str(raw_log),
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    scan_dir = tmp_path / "scan-artifacts"
+    bind_skill_context(scan_id="unit-artifacts", scan_dir=scan_dir)
+
+    raw = asyncio.run(tools["artifact-skill"].execute(target="example.com"))
+
+    assert raw.index('"raw_log_path"') < raw.index('"summary"')
+    assert raw.index('"artifacts"') < raw.index('"summary"')
+    assert str(scan_dir / "katana" / "katana_urls.txt") in raw[:1200]
+    payload = json.loads(raw)
+    assert payload["artifacts"]["raw_urls_path"] == str(
+        scan_dir / "katana" / "katana_urls.txt"
+    )
+    assert payload["artifacts"]["raw_log_path"] == str(
+        scan_dir / "raw" / "katana-crawl-web.log"
+    )
 
 
 def test_execute_invalid_handler_surface_error(tmp_path: Path) -> None:

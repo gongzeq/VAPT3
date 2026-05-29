@@ -431,7 +431,14 @@ def _recommended_action(priority: str, vulnerabilities: list[str]) -> str:
     return "manual_review_if_time_allows"
 
 
-def _parse_urls(urls_file: Path, max_candidates: int, target: str) -> dict[str, Any]:
+def _parse_urls(
+    urls_file: Path,
+    max_candidates: int,
+    target: str,
+    *,
+    scan_id: str,
+    scan_dir: Path,
+) -> dict[str, Any]:
     total_urls, deduped = _read_deduped_urls(urls_file)
     candidates: list[dict[str, Any]] = []
     filtered_urls = 0
@@ -450,12 +457,14 @@ def _parse_urls(urls_file: Path, max_candidates: int, target: str) -> dict[str, 
     candidates.sort(key=lambda item: priority_order[item["priority"]])
     shown = candidates[:max_candidates]
     summary: dict[str, Any] = {
+        "scan_id": scan_id,
+        "scan_dir": str(scan_dir),
+        "raw_urls_path": str(urls_file),
         "total_urls": total_urls,
         "deduped_urls": len(deduped),
         "filtered_urls": filtered_urls,
         "candidate_count": len(candidates),
         "candidates": shown,
-        "raw_urls_path": str(urls_file),
     }
     if len(shown) < len(candidates):
         summary["_truncated"] = {
@@ -522,13 +531,35 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
             cancel_token=ctx.cancel_token,
         )
     except SkillTimeout:
-        return SkillResult(summary={"error": "timeout"}, raw_log_path=str(raw_log))
+        return SkillResult(
+            summary={
+                "scan_id": ctx.scan_id,
+                "scan_dir": str(ctx.scan_dir),
+                "raw_urls_path": str(urls_file),
+                "error": "timeout",
+            },
+            raw_log_path=str(raw_log),
+        )
     except SkillCancelled:
-        return SkillResult(summary={"cancelled": True}, raw_log_path=str(raw_log))
+        return SkillResult(
+            summary={
+                "scan_id": ctx.scan_id,
+                "scan_dir": str(ctx.scan_dir),
+                "raw_urls_path": str(urls_file),
+                "cancelled": True,
+            },
+            raw_log_path=str(raw_log),
+        )
     except SkillBinaryMissing:
         raise
 
-    summary = _parse_urls(urls_file, max_candidates, target)
+    summary = _parse_urls(
+        urls_file,
+        max_candidates,
+        target,
+        scan_id=ctx.scan_id,
+        scan_dir=ctx.scan_dir,
+    )
     summary["elapsed_sec"] = round(time.monotonic() - started, 2)
     if result.exit_code != 0:
         summary.setdefault("error", f"exit={result.exit_code}")

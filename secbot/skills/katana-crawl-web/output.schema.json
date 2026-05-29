@@ -8,6 +8,8 @@
     "filtered_urls": {"type": "integer", "minimum": 0},
     "candidate_count": {"type": "integer", "minimum": 0},
     "elapsed_sec": {"type": "number"},
+    "scan_id": {"type": "string"},
+    "scan_dir": {"type": "string"},
     "raw_urls_path": {"type": "string"},
     "error": {"type": "string"},
     "cancelled": {"type": "boolean"},

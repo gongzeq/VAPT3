@@ -18,12 +18,12 @@ from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.agent.tools.ask import AskUserTool
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
-from secbot.agent.tools.curl import CurlTool
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
@@ -153,6 +153,7 @@ class _SubagentHook(AgentHook):
                 "agent_name": self._agent_name,
                 "tool_call_id": tool_call.id,
                 "tool_name": tool_call.name,
+                "tool_args": tool_call.arguments,
                 "status": status,
                 "is_critical": is_critical,
             }
@@ -442,6 +443,7 @@ class SubagentManager:
             type="subagent_spawned",
             payload={
                 "task_id": task_id,
+                "agent_name": agent or display_label,
                 "label": display_label,
                 "task_description": task,
             },
@@ -528,7 +530,7 @@ class SubagentManager:
             tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
             tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
             tools.register(AskUserTool())
-            tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=label))
+            tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=resolved_agent_name))
             tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
             if resolved_asset_feed is not None:
                 tools.register(
@@ -536,7 +538,7 @@ class SubagentManager:
                         feed=resolved_asset_feed,
                         bus=self.bus,
                         origin=origin,
-                        agent_name=label,
+                        agent_name=resolved_agent_name,
                     )
                 )
                 tools.register(ReadAssetsTool(feed=resolved_asset_feed))
@@ -612,7 +614,7 @@ class SubagentManager:
                     task_id,
                     status,
                     broadcast_fn=_broadcast_tool_event,
-                    agent_name=label,
+                    agent_name=resolved_agent_name,
                     critical_tool_names=critical_tool_names,
                 ),
                 max_iterations_message="Task completed but no final response was generated.",
@@ -729,6 +731,7 @@ class SubagentManager:
             type="subagent_done",
             payload={
                 "task_id": task_id,
+                "agent_name": agent_name or label,
                 "label": label,
                 "status": status,
                 "result": result,

@@ -93,6 +93,7 @@ async def test_non_critical_tool_running_then_ok():
     assert running["tool_args"] == {"path": "x"}
     assert running["is_critical"] is False
     assert ok["tool_call_id"] == "c1"
+    assert ok["tool_args"] == {"path": "x"}
     assert ok["is_critical"] is False
     assert "duration_ms" in ok
     assert "reason" not in ok
@@ -122,6 +123,7 @@ async def test_failed_tool_broadcasts_error():
     assert statuses == ["running", "error"]
     err = captured[1][1]
     assert err["detail"] == "RuntimeError: boom"
+    assert err["tool_args"] == {"cmd": "oops"}
     assert "reason" not in err  # non-user-denied errors carry no reason
 
 

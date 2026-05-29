@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, fetchActivityEvents } from "@/lib/api";
+import { isHiddenFrontendToolName } from "@/lib/tool-visibility";
 import { useClient } from "@/providers/ClientProvider";
 import type {
   ActivityCategory,
@@ -119,6 +120,14 @@ function frameToEvent(frame: ActivityEventFrame): ActivityEvent {
   };
 }
 
+function isHiddenActivityEvent(ev: Pick<ActivityEvent, "agent" | "source">): boolean {
+  return isHiddenFrontendToolName(ev.agent) || isHiddenFrontendToolName(ev.source);
+}
+
+function isHiddenActivityFrame(frame: ActivityEventFrame): boolean {
+  return isHiddenFrontendToolName(frame.agent);
+}
+
 function dedupeAndSort(events: ActivityEvent[]): ActivityEvent[] {
   // Dedup by id with "last write wins" so REST rows (arriving later with
   // a stable level/source) overwrite a WS-inferred placeholder.
@@ -198,7 +207,9 @@ export function useActivityStream(
       });
       if (myId < lastCommittedRef.current) return;
       lastCommittedRef.current = myId;
-      const seed = Array.isArray(body.items) ? body.items : [];
+      const seed = Array.isArray(body.items)
+        ? body.items.filter((item) => !isHiddenActivityEvent(item))
+        : [];
       setEvents((prev) => dedupeAndSort([...seed, ...prev]));
       setState("ready");
     } catch (err) {
@@ -226,6 +237,7 @@ export function useActivityStream(
     const unsubscribe = client.onActivityEvent((frame) => {
       if (chatId && frame.chat_id !== chatId) return;
       if (categorySet && !categorySet.has(String(frame.category))) return;
+      if (isHiddenActivityFrame(frame)) return;
       setEvents((prev) => dedupeAndSort([frameToEvent(frame), ...prev]));
     });
     return unsubscribe;

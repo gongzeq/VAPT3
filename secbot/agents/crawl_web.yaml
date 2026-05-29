@@ -41,6 +41,8 @@ output_schema:
   type: object
   required: [candidates]
   properties:
+    scan_id: {type: string}
+    scan_dir: {type: string}
     total_urls: {type: integer}
     deduped_urls: {type: integer}
     filtered_urls: {type: integer}

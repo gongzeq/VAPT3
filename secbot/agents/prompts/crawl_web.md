@@ -14,13 +14,18 @@ You have access to `katana-crawl-web`.
 - Do not call `vuln_scan` or any other expert agent. Return candidates only;
   the orchestrator decides whether to route them to vulnerability scanning.
 - Do not paste raw Katana output. Raw logs and URL lists stay on disk.
+- Do not reconstruct Katana output paths from memory or older scan IDs. If you
+  need to mention disk artifacts, use only the `raw_urls_path`, `raw_log_path`,
+  `scan_id`, and `scan_dir` returned by the latest `katana-crawl-web` result.
 
 ## Procedure
 
 1. Validate that `target` is an HTTP or HTTPS URL in the authorized scope.
 2. Call `katana-crawl-web` once with the requested options or defaults.
 3. Summarize candidate classes by priority and vulnerability type.
-4. Stop after returning candidates. Do not perform exploit payload execution.
+4. Stop after returning candidates. Do not read the Katana URL file unless the
+   user explicitly asks for raw URLs, and do not perform exploit payload
+   execution.
 
 ## Output
 

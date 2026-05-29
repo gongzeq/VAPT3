@@ -307,6 +307,121 @@ describe("useSessions", () => {
     expect(msgs[2].role).toBe("assistant");
   });
 
+  it("reconstructs historical write_plan tool_calls as plan messages", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-plan",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:01Z",
+          tool_calls: [
+            {
+              id: "call_plan",
+              type: "function",
+              function: {
+                name: "write_plan",
+                arguments: JSON.stringify({
+                  steps: [
+                    { title: "Scope target", detail: "Confirm allowed ranges." },
+                    { title: "Run discovery" },
+                  ],
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "Plan recorded: 2 steps",
+          tool_call_id: "call_plan",
+          name: "write_plan",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-plan"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const msgs = result.current.messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({
+      role: "assistant",
+      kind: "agent_event",
+      content: "编排计划：2 步",
+    });
+    expect(msgs[0].agentEvent?.type).toBe("orchestrator_plan");
+    expect(msgs[0].agentEvent?.steps).toEqual([
+      { title: "Scope target", detail: "Confirm allowed ranges." },
+      { title: "Run discovery" },
+    ]);
+    expect(msgs[0].toolCalls).toBeUndefined();
+  });
+
+  it("skips historical asset_push tool calls", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-asset-tool",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "crawl it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:01Z",
+          tool_calls: [
+            {
+              id: "call_asset_push",
+              type: "function",
+              function: {
+                name: "asset_push",
+                arguments: JSON.stringify({
+                  kind: "url",
+                  payload: { url: "http://127.0.0.1/login" },
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "asset pushed (id=1, kind=url)",
+          tool_call_id: "call_asset_push",
+          name: "asset_push",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+        {
+          role: "assistant",
+          content: "Crawl complete.",
+          timestamp: "2026-04-20T10:00:03Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-asset-tool"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages.map((msg) => msg.content)).toEqual([
+      "crawl it",
+      "Crawl complete.",
+    ]);
+    expect(result.current.messages.some((msg) => msg.toolCalls?.length)).toBe(false);
+  });
+
   it("marks historical tool_call as error when the tool result looks like a failure", async () => {
     vi.mocked(api.fetchSessionMessages).mockResolvedValue({
       key: "websocket:chat-tool-err",
@@ -344,6 +459,69 @@ describe("useSessions", () => {
     const tc = result.current.messages[0].toolCalls?.[0];
     expect(tc?.tool_status).toBe("error");
     expect(tc?.reason).toContain("Traceback");
+  });
+
+  it("merges historical agent_event tool_call statuses and preserves arguments", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-agent-tool-events",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:01Z",
+          _kind: "agent_event",
+          sender_id: "vuln_scan",
+          agent_event: {
+            type: "tool_call",
+            task_id: "task-1",
+            agent_name: "vuln_scan",
+            tool_call_id: "call_sqlmap",
+            tool_name: "sqlmap-detect",
+            tool_args: {
+              url: "http://target.test/sqli_id.php",
+              method: "POST",
+              data: "id=1&submit=查询",
+            },
+            status: "running",
+          },
+        },
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:03Z",
+          _kind: "agent_event",
+          sender_id: "vuln_scan",
+          agent_event: {
+            type: "tool_call",
+            task_id: "task-1",
+            agent_name: "vuln_scan",
+            tool_call_id: "call_sqlmap",
+            tool_name: "sqlmap-detect",
+            status: "error",
+            duration_ms: 7138,
+            detail: "skill_error: argv contains forbidden character",
+          },
+        },
+      ],
+    });
+
+    const { result } = renderHook(
+      () => useSessionHistory("websocket:chat-agent-tool-events"),
+      { wrapper: wrap(fakeClient()) },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(1);
+    const toolCall = result.current.messages[0].toolCalls?.[0];
+    expect(toolCall?.tool_status).toBe("error");
+    expect(toolCall?.duration_ms).toBe(7138);
+    expect(toolCall?.tool_args).toMatchObject({
+      url: "http://target.test/sqli_id.php",
+      data: "id=1&submit=查询",
+    });
   });
 
   it("keeps the session in the list when delete fails", async () => {
@@ -442,5 +620,92 @@ describe("useSessions", () => {
 
     expect(msgs[3].role).toBe("assistant");
     expect(msgs[3].kind).toBeUndefined();
+  });
+
+  it("skips persisted asset_pushed agent events on replay", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-assets",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "crawl it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "",
+          timestamp: "2026-04-20T10:00:01Z",
+          _kind: "agent_event",
+          agent_event: {
+            type: "asset_pushed",
+            id: 1,
+            kind: "url",
+            agent_name: "crawl_web",
+            payload: { url: "http://127.0.0.1/login" },
+            created_at: 1715600300,
+          },
+          sender_id: "crawl_web",
+        },
+        {
+          role: "assistant",
+          content: "Crawl complete.",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-assets"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages.map((msg) => msg.content)).toEqual([
+      "crawl it",
+      "Crawl complete.",
+    ]);
+  });
+
+  it("skips internal asset discovery wake-up messages on replay", async () => {
+    vi.mocked(api.fetchSessionMessages).mockResolvedValue({
+      key: "websocket:chat-asset-wakeup",
+      created_at: "2026-04-20T10:00:00Z",
+      updated_at: "2026-04-20T10:05:00Z",
+      messages: [
+        {
+          role: "user",
+          content: "crawl it",
+          timestamp: "2026-04-20T10:00:00Z",
+        },
+        {
+          role: "user",
+          content:
+            "New asset discovered (kind=url, id=1). Call read_assets to consume and decide if a downstream agent should be dispatched.",
+          timestamp: "2026-04-20T10:00:01Z",
+          injected_event: "asset_discovered",
+          sender_id: "crawl_web",
+        },
+        {
+          role: "assistant",
+          content: "Crawl complete.",
+          timestamp: "2026-04-20T10:00:02Z",
+        },
+      ],
+    });
+
+    const { result } = renderHook(() => useSessionHistory("websocket:chat-asset-wakeup"), {
+      wrapper: wrap(fakeClient()),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages.map((msg) => msg.content)).toEqual([
+      "crawl it",
+      "Crawl complete.",
+    ]);
   });
 });

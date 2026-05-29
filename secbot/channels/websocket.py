@@ -2039,9 +2039,10 @@ class WebSocketChannel(BaseChannel):
     ) -> bool:
         """Emit an ``agent_event`` frame and persist high-signal UI events.
 
-        ``agent_status`` / ``subagent_status`` / ``high_risk_confirm`` are
-        live-only state updates. Persisting them would make session replay show
-        stale lifecycle noise or expired approval prompts.
+        ``agent_status`` / ``subagent_status`` / ``asset_pushed`` /
+        ``high_risk_confirm`` are live-only state updates. Persisting them
+        would make session replay show stale lifecycle noise, duplicated asset
+        feed rows, or expired approval prompts.
         """
 
         event_payload: dict[str, Any] = dict(payload)
@@ -2057,6 +2058,7 @@ class WebSocketChannel(BaseChannel):
         if self._session_manager is not None and type not in {
             "agent_status",
             "subagent_status",
+            "asset_pushed",
             "high_risk_confirm",
         }:
             session_key = (

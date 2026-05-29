@@ -85,6 +85,31 @@ describe("MessageBubble", () => {
     expect(screen.queryByLabelText(/assistant is typing/i)).not.toBeInTheDocument();
   });
 
+  it("renders tool call arguments from backend args fallback", () => {
+    const message: UIMessage = {
+      id: "a-tool-args-fallback",
+      role: "assistant",
+      content: "",
+      agentName: "vuln_scan",
+      createdAt: Date.now(),
+      toolCalls: [
+        {
+          type: "tool_call",
+          tool_call_id: "call_scan",
+          tool_name: "sqlmap-detect",
+          args: { url: "http://target.test/sqli.php?id=1" },
+          status: "ok",
+        },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /sqlmap-detect/i }));
+    expect(screen.getByText(/target\.test\/sqli\.php/)).toBeInTheDocument();
+    expect(screen.queryByText("无参数")).not.toBeInTheDocument();
+  });
+
   it("renders trace messages as collapsible tool groups", () => {
     const message: UIMessage = {
       id: "t1",
