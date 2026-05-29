@@ -7,13 +7,20 @@ Output directory (``--output-dir``) is confined to ``<scan_dir>/sqlmap``.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 from secbot.skills._shared.runner import execute
-from secbot.skills.types import SkillBinaryMissing, SkillContext, SkillResult
+from secbot.skills.types import (
+    InvalidSkillArg,
+    SkillBinaryMissing,
+    SkillContext,
+    SkillResult,
+)
 
 
 def _resolve_sqlmap_binary(cli: list[str]) -> tuple[str, list[str]]:
@@ -47,6 +54,112 @@ _TYPE_RE = re.compile(r"^\s*Type:\s*(.+)$", re.MULTILINE)
 _TITLE_RE = re.compile(r"^\s*Title:\s*(.+)$", re.MULTILINE)
 _PAYLOAD_RE = re.compile(r"^\s*Payload:\s*(.+)$", re.MULTILINE)
 _DBMS_RE = re.compile(r"back-end DBMS:\s*(.+?)$", re.MULTILINE)
+_SQLMAP_PARAM_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+_NON_INJECTABLE_PARAM_NAMES = {
+    "__eventvalidation",
+    "__viewstate",
+    "__viewstategenerator",
+    "_csrf",
+    "button",
+    "btn",
+    "csrf",
+    "csrf_token",
+    "csrfmiddlewaretoken",
+    "submit",
+    "token",
+}
+
+
+def _invocation_id(
+    *,
+    url: str,
+    method: str,
+    data: str | None,
+    cookie: str | None,
+) -> str:
+    h = hashlib.sha256()
+    for value in (method, url, data or "", cookie or ""):
+        h.update(value.encode("utf-8"))
+        h.update(b"\0")
+    return h.hexdigest()[:12]
+
+
+def _reject_header_breaks(field: str, value: str | None) -> None:
+    if value is not None and ("\r" in value or "\n" in value):
+        raise InvalidSkillArg(f"{field} must not contain CR/LF")
+
+
+def _parameter_names_from_pairs(pairs: list[tuple[str, str]]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for name, _value in pairs:
+        if not name or not _SQLMAP_PARAM_RE.match(name):
+            continue
+        if name.lower() in _NON_INJECTABLE_PARAM_NAMES:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def _detectable_parameters(*, url: str, method: str, data: str | None) -> list[str]:
+    """Return parameter names that sqlmap should explicitly test with ``-p``."""
+
+    parts = urlsplit(url)
+    if method == "POST" and data:
+        return _parameter_names_from_pairs(parse_qsl(data, keep_blank_values=True))
+    return _parameter_names_from_pairs(parse_qsl(parts.query, keep_blank_values=True))
+
+
+def _write_request_file(
+    *,
+    sqlmap_dir: Path,
+    url: str,
+    method: str,
+    data: str | None,
+    cookie: str | None,
+) -> tuple[Path, bool]:
+    """Write a sqlmap ``-r`` request file and return (path, force_ssl).
+
+    User-controlled URL/body/cookie values stay inside the request file rather
+    than argv, preserving the sandbox's forbidden-character protection while
+    still allowing normal form bodies such as ``a=1&b=2``.
+    """
+
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise InvalidSkillArg(f"invalid url: {url!r}")
+    _reject_header_breaks("data", data)
+    _reject_header_breaks("cookie", cookie)
+
+    target = parts.path or "/"
+    if parts.query:
+        target = f"{target}?{parts.query}"
+
+    body = data if method == "POST" and data else ""
+    body_bytes = body.encode("utf-8")
+    headers = [
+        f"{method} {target} HTTP/1.1",
+        f"Host: {parts.netloc}",
+        "User-Agent: secbot-sqlmap-detect/1.0",
+        "Accept: */*",
+        "Connection: close",
+    ]
+    if cookie:
+        headers.append(f"Cookie: {cookie}")
+    if method == "POST":
+        headers.extend(
+            [
+                "Content-Type: application/x-www-form-urlencoded",
+                f"Content-Length: {len(body_bytes)}",
+            ]
+        )
+
+    request_file = sqlmap_dir / "request.txt"
+    request_file.write_text("\r\n".join([*headers, "", body]), encoding="utf-8")
+    return request_file, parts.scheme == "https"
 
 
 def _parse(raw_log: Path, _exit_code: int) -> dict[str, Any]:
@@ -92,12 +205,22 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     cookie: str | None = args.get("cookie")
     level: int = int(args.get("level", 1))
     risk: int = int(args.get("risk", 1))
+    parameters = _detectable_parameters(url=url, method=method, data=data)
 
-    sqlmap_dir = ctx.scan_dir / "sqlmap"
+    invocation_id = _invocation_id(url=url, method=method, data=data, cookie=cookie)
+    sqlmap_dir = ctx.scan_dir / "sqlmap" / invocation_id
     sqlmap_dir.mkdir(parents=True, exist_ok=True)
 
+    request_file, force_ssl = _write_request_file(
+        sqlmap_dir=sqlmap_dir,
+        url=url,
+        method=method,
+        data=data,
+        cookie=cookie,
+    )
+
     cli: list[str] = [
-        "-u", url,
+        "-r", str(request_file),
         "--batch",
         "--disable-coloring",
         "--level", str(level),
@@ -105,17 +228,17 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         "--output-dir", str(sqlmap_dir),
         "--flush-session",
     ]
-    if method == "POST" and data:
-        cli += ["--data", data]
-    if cookie:
-        cli += ["--cookie", cookie]
+    if parameters:
+        cli += ["-p", ",".join(parameters)]
+    if force_ssl:
+        cli.append("--force-ssl")
 
     binary, args = _resolve_sqlmap_binary(cli)
     return await execute(
         binary=binary,
         args=args,
         timeout_sec=900,
-        raw_log_name="sqlmap-detect.log",
+        raw_log_name=f"sqlmap-detect-{invocation_id}.log",
         ctx=ctx,
         parser=_parse,
     )

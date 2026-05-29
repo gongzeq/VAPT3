@@ -13,6 +13,7 @@ from types import ModuleType
 
 import pytest
 
+from secbot.skills._shared.sandbox import SandboxResult
 from secbot.skills.types import (
     InvalidSkillArg,
     SkillResult,
@@ -211,6 +212,33 @@ async def test_nuclei_template_scan_happy(make_ctx, fake_run_command):
     ids = {f["template_id"] for f in res.findings}
     assert ids == {"CVE-2021-44228", "exposed-git"}
     assert all(w["table"] == "vulnerabilities" for w in res.cmdb_writes)
+
+
+async def test_nuclei_template_scan_accepts_bundled_template(make_ctx, monkeypatch):
+    mod = load_handler("nuclei-template-scan")
+    captured: dict[str, object] = {}
+
+    async def _fake_run_command(**kwargs):
+        captured.update(kwargs)
+        return SandboxResult(exit_code=0, raw_log_path=None, captured=None)
+
+    monkeypatch.setattr(mod, "run_command", _fake_run_command, raising=True)
+    monkeypatch.setattr(mod, "_resolve_nuclei_binary", lambda cli: ("nuclei", cli))
+
+    res = await mod.run(
+        {
+            "targets": ["http://10.0.0.1"],
+            "templates": ["upload/pikachu_upload.yaml"],
+        },
+        make_ctx(),
+    )
+
+    argv = captured["args"]
+    assert isinstance(argv, list)
+    template_path = Path(argv[argv.index("-t") + 1])
+    assert template_path.name == "pikachu_upload.yaml"
+    assert "secbot/resource/poc/upload" in template_path.as_posix()
+    assert res.summary["findings_count"] == 0
 
 
 async def test_nuclei_template_scan_rejects_bad_target(make_ctx):
