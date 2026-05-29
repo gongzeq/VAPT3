@@ -272,14 +272,14 @@ function MediaCell({ media }: { media: UIMediaAttachment }) {
           download={media.name ?? undefined}
           className={cn(
             "group flex w-full max-w-[min(75%,36rem)] items-center gap-3",
-            "rounded-2xl border border-border/60 bg-gradient-to-br from-muted/60 to-muted/40",
-            "px-4 py-3.5 shadow-sm transition-all duration-200",
-            "hover:shadow-md hover:border-primary/40 hover:from-muted/70 hover:to-muted/50",
+            "rounded-2xl border-2 border-primary/20 bg-gradient-to-br from-primary/8 to-primary/4",
+            "px-4 py-3.5 shadow-md transition-all duration-200",
+            "hover:shadow-lg hover:border-primary/35 hover:from-primary/12 hover:to-primary/6",
           )}
           title={media.name ?? undefined}
           aria-label={`${label}: ${media.name ?? ""}`}
         >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary group-hover:bg-primary/20 transition-colors">
             <FileIcon className="h-5 w-5" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
