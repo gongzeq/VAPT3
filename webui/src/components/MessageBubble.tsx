@@ -253,6 +253,9 @@ function MediaCell({ media }: { media: UIMediaAttachment }) {
       : t("message.fileAttachment", { defaultValue: "File attachment" });
   const Icon = media.kind === "video" ? PlaySquare : FileIcon;
 
+  // Check if this is an HTML report file
+  const isHtmlReport = media.kind === "file" && media.name?.toLowerCase().endsWith(".html");
+
   const cellInner = (
     <>
       <Icon className="h-4 w-4 flex-none" aria-hidden />
@@ -261,6 +264,38 @@ function MediaCell({ media }: { media: UIMediaAttachment }) {
   );
 
   if (media.kind === "file" && hasUrl) {
+    // Special styling for HTML reports - wider, more prominent
+    if (isHtmlReport) {
+      return (
+        <a
+          href={media.url}
+          download={media.name ?? undefined}
+          className={cn(
+            "group flex w-full max-w-[min(75%,36rem)] items-center gap-3",
+            "rounded-2xl border border-border/60 bg-gradient-to-br from-muted/60 to-muted/40",
+            "px-4 py-3.5 shadow-sm transition-all duration-200",
+            "hover:shadow-md hover:border-primary/40 hover:from-muted/70 hover:to-muted/50",
+          )}
+          title={media.name ?? undefined}
+          aria-label={`${label}: ${media.name ?? ""}`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
+            <FileIcon className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-foreground">
+              {media.name ?? label}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              点击下载 HTML 报告
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden />
+        </a>
+      );
+    }
+
+    // Default file styling
     return (
       <a
         href={media.url}
