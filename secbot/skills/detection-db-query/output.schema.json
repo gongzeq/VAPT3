@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "description": "The action that was executed."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "true on success, false if the action was rejected or errored."
+    },
+    "data": {
+      "description": "Action-specific result payload (varies by action).",
+      "oneOf": [
+        { "type": "object", "additionalProperties": true },
+        { "type": "array" },
+        { "type": "null" }
+      ]
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error when ok=false."
+    },
+    "elapsed_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock time spent on the query in milliseconds."
+    }
+  },
+  "required": ["action", "ok", "elapsed_ms"]
+}
