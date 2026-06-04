@@ -225,7 +225,6 @@ export function Shell({
     onSelect: onSelectChat,
     onRequestDelete: (key: string, label: string) =>
       setPendingDelete({ key, label }),
-    activeChatId: activeSession?.chatId ?? null,
   };
 
   return (

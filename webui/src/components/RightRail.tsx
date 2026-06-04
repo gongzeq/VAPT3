@@ -1,9 +1,8 @@
 import { useTranslation } from "react-i18next";
 
-import { ActivityEventStream } from "@/components/ActivityEventStream";
+import { AgentStatusPanel } from "@/components/AgentStatusPanel";
 import { AssetsPanel } from "@/components/AssetsPanel";
 import { BlackboardPanel } from "@/components/BlackboardPanel";
-import { PromptSuggestions } from "@/components/PromptSuggestions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ChatSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -20,10 +19,8 @@ export interface RightRailProps {
 /**
  * F7 — Right-Rail tabbed container.
  *
- * Default tab is ``Prompts`` (工作台). Tab order: ``Blackboard | Assets |
- * Trace | Prompts`` — Assets renders the per-chat real-time asset feed;
- * Trace replays thought / tool_call / tool_result events for the active
- * chat; Prompts is the default surface on load.
+ * Default tab is ``Agents`` (智能体). Tab order: ``Blackboard | Assets |
+ * Agents``.
  */
 export function RightRail({
   session,
@@ -34,7 +31,7 @@ export function RightRail({
   const chatId = session?.chatId ?? null;
   return (
     <Tabs
-      defaultValue="prompts"
+      defaultValue="agents"
       className={cn(
         "flex h-full min-h-0 w-full flex-col gap-3 p-5",
         className,
@@ -47,11 +44,8 @@ export function RightRail({
         <TabsTrigger value="assets">
           {t("home.rightRail.tabs.assets", { defaultValue: "资产" })}
         </TabsTrigger>
-        <TabsTrigger value="trace">
-          {t("home.rightRail.tabs.trace", { defaultValue: "追踪" })}
-        </TabsTrigger>
-        <TabsTrigger value="prompts">
-          {t("home.rightRail.tabs.prompts", { defaultValue: "工作台" })}
+        <TabsTrigger value="agents">
+          {t("home.rightRail.tabs.agents", { defaultValue: "智能体" })}
         </TabsTrigger>
       </TabsList>
 
@@ -69,20 +63,8 @@ export function RightRail({
         />
       </TabsContent>
 
-      <TabsContent value="trace" className="flex flex-col">
-        {chatId ? (
-          <ActivityEventStream chatId={chatId} height="100%" />
-        ) : (
-          <div className="flex items-center justify-center py-10 text-xs text-muted-foreground">
-            {t("home.rightRail.trace.empty", {
-              defaultValue: "选择一个会话后查看其时间线",
-            })}
-          </div>
-        )}
-      </TabsContent>
-
-      <TabsContent value="prompts" className="flex flex-col">
-        <PromptSuggestions onToggleRightRail={onToggleRightRail} />
+      <TabsContent value="agents" forceMount className="flex flex-col">
+        <AgentStatusPanel chatId={chatId} />
       </TabsContent>
     </Tabs>
   );
