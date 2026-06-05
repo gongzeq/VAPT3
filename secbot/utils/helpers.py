@@ -533,8 +533,6 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
         gs = GitStore(
             workspace,
             tracked_files=[
-                "SOUL.md",
-                "USER.md",
                 "memory/MEMORY.md",
             ],
         )

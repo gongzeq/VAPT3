@@ -22,7 +22,7 @@ from secbot.utils.prompt_templates import render_template
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
-    BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md"]
+    BOOTSTRAP_FILES: list[str] = []
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
     _MAX_RECENT_HISTORY = 50
     _MAX_HISTORY_CHARS = 32_000  # hard cap on recent history section size
@@ -47,7 +47,7 @@ class ContextBuilder:
         locked orchestrator prompt (role + hard rules + expert-agent table +
         working style) is rendered in place of the generic secbot prompt.
         ``skills_summary`` is intentionally omitted for the orchestrator since
-        its tool surface is coordination plus teammate tools — listing skills
+        its tool surface is coordination only — listing skills
         there would mislead the LLM into synthesising shell commands it has no
         tool to run.
         """
@@ -77,7 +77,7 @@ class ContextBuilder:
 
             skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
             if skills_summary:
-                parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
+                parts.append(f"# Skills\n\n{skills_summary}")
 
         entries = self.memory.read_unprocessed_history(since_cursor=self.memory.get_last_dream_cursor())
         if entries:

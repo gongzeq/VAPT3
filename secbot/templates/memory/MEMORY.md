@@ -1,22 +1,18 @@
 # Long-term Memory
 
-This file stores important information that should persist across sessions.
+This file stores security-relevant context across sessions.
 
-## User Information
+## Target Environment
 
-(Important facts about the user)
+(Scanned targets, network topology, known assets)
 
-## Preferences
+## Findings
 
-(User preferences learned over time)
+(Confirmed vulnerabilities, validated results)
 
-## Project Context
+## Operational Notes
 
-(Information about ongoing projects)
-
-## Important Notes
-
-(Things to remember)
+(Working approaches, tool configurations, environment constraints)
 
 ---
 

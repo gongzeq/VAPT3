@@ -48,15 +48,17 @@ def test_system_prompt_stays_stable_when_clock_changes(tmp_path, monkeypatch) ->
     assert prompt1 == prompt2
 
 
-def test_system_prompt_reflects_current_dream_memory_contract(tmp_path) -> None:
+def test_system_prompt_reflects_security_focused_identity(tmp_path) -> None:
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
     prompt = builder.build_system_prompt()
 
-    assert "memory/history.jsonl" in prompt
-    assert "automatically managed by Dream" in prompt
-    assert "do not edit directly" in prompt
+    # Identity should contain workspace and search hints
+    assert "Workspace" in prompt
+    assert "Search & Discovery" in prompt
+    # Should NOT contain personal-assistant / Dream references
+    assert "automatically managed by Dream" not in prompt
     assert "memory/HISTORY.md" not in prompt
     assert "write important facts here" not in prompt
 
@@ -198,21 +200,6 @@ def test_partial_dream_processing_shows_only_remainder(tmp_path) -> None:
     assert "recent question about K8s" in prompt
 
 
-def test_execution_rules_in_system_prompt(tmp_path) -> None:
-    """Execution rules should appear in the system prompt via default SOUL.md."""
-    from secbot.utils.helpers import sync_workspace_templates
-
-    workspace = _make_workspace(tmp_path)
-    sync_workspace_templates(workspace, silent=True)
-    builder = ContextBuilder(workspace)
-
-    prompt = builder.build_system_prompt()
-    assert "single-step tasks" in prompt
-    assert "multi-step tasks" in prompt
-    assert "Read before you write" in prompt
-    assert "verify the result" in prompt
-
-
 def test_identity_has_no_behavioral_instructions(tmp_path) -> None:
     """Identity template should not contain behavioral rules or hardcoded name."""
     workspace = _make_workspace(tmp_path)
@@ -222,6 +209,7 @@ def test_identity_has_no_behavioral_instructions(tmp_path) -> None:
     assert "You are secbot" not in identity
     assert "Act, don't narrate" not in identity
     assert "Execution Rules" not in identity
+    assert "Format Hint" not in identity
 
 
 def test_system_prompt_does_not_warn_about_message_time_markers(tmp_path) -> None:
@@ -235,48 +223,18 @@ def test_system_prompt_does_not_warn_about_message_time_markers(tmp_path) -> Non
     assert "Message Time" not in prompt
 
 
-def test_default_soul_template_contains_execution_rules() -> None:
-    """Default SOUL.md template must contain execution rules with act/plan layering."""
-    soul = (pkg_files("secbot") / "templates" / "SOUL.md").read_text(encoding="utf-8")
-    assert "## Execution Rules" in soul
-    assert "single-step tasks" in soul
-    assert "multi-step tasks" in soul
-
-
-def test_channel_format_hint_telegram(tmp_path) -> None:
-    """Telegram channel should get messaging-app format hint."""
+def test_channel_format_hint_absent_for_all_channels(tmp_path) -> None:
+    """No channel should inject a format hint — secbot doesn't need messaging format guidance."""
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
-    prompt = builder.build_system_prompt(channel="telegram")
-    assert "Format Hint" in prompt
-    assert "messaging app" in prompt
+    for ch in (None, "telegram", "whatsapp", "discord", "cli", "email", "feishu"):
+        prompt = builder.build_system_prompt(channel=ch)
+        assert "Format Hint" not in prompt, f"Format Hint should not appear for channel={ch}"
 
 
-def test_channel_format_hint_whatsapp(tmp_path) -> None:
-    """WhatsApp should get plain-text format hint."""
-    workspace = _make_workspace(tmp_path)
-    builder = ContextBuilder(workspace)
-
-    prompt = builder.build_system_prompt(channel="whatsapp")
-    assert "Format Hint" in prompt
-    assert "plain text only" in prompt
-
-
-def test_channel_format_hint_absent_for_unknown(tmp_path) -> None:
-    """Unknown or None channel should not inject a format hint."""
-    workspace = _make_workspace(tmp_path)
-    builder = ContextBuilder(workspace)
-
-    prompt = builder.build_system_prompt(channel=None)
-    assert "Format Hint" not in prompt
-
-    prompt2 = builder.build_system_prompt(channel="feishu")
-    assert "Format Hint" not in prompt2
-
-
-def test_build_messages_passes_channel_to_system_prompt(tmp_path) -> None:
-    """build_messages should pass channel through to build_system_prompt."""
+def test_build_messages_passes_channel_to_runtime_context(tmp_path) -> None:
+    """build_messages should pass channel info through to the runtime context."""
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
@@ -284,9 +242,10 @@ def test_build_messages_passes_channel_to_system_prompt(tmp_path) -> None:
         history=[], current_message="hi",
         channel="telegram", chat_id="123",
     )
-    system = messages[0]["content"]
-    assert "Format Hint" in system
-    assert "messaging app" in system
+    # Channel and chat_id should appear in the runtime context user message
+    user_msg = messages[-1]["content"]
+    assert "Channel: telegram" in user_msg
+    assert "Chat ID: 123" in user_msg
 
 
 def test_subagent_result_does_not_create_consecutive_assistant_messages(tmp_path) -> None:

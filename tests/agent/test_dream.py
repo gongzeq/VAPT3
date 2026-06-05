@@ -1,15 +1,29 @@
-"""Tests for the Dream class — two-phase memory consolidation via AgentRunner."""
+"""Tests for the Dream class — two-phase memory consolidation via AgentRunner.
+
+NOTE: Dream is a personal-assistant memory feature that has been removed from
+secbot (security-focused agent). These tests are skipped when the Dream prompt
+templates (dream_phase1.md, dream_phase2.md, consolidator_archive.md) are not
+present in ``secbot/templates/agent/``.
+"""
 
 import json
 
 import pytest
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from secbot.agent.memory import Dream, MemoryStore
 from secbot.agent.runner import AgentRunResult
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
 from secbot.utils.gitstore import LineAge
+
+_DREAM_TEMPLATES_EXIST = all(
+    (Path(__file__).resolve().parent.parent.parent / "secbot" / "templates" / "agent" / name).is_file()
+    for name in ("dream_phase1.md", "dream_phase2.md", "consolidator_archive.md")
+)
+
+pytestmark = pytest.mark.skipif(not _DREAM_TEMPLATES_EXIST, reason="Dream templates removed from secbot")
 
 
 @pytest.fixture

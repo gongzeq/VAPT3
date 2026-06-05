@@ -2,6 +2,7 @@
 
 import pytest
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from secbot.agent.memory import (
@@ -10,6 +11,12 @@ from secbot.agent.memory import (
     _ARCHIVE_SUMMARY_MAX_CHARS,
     _RAW_ARCHIVE_MAX_CHARS,
 )
+
+_CONSOLIDATOR_TEMPLATES_EXIST = (
+    Path(__file__).resolve().parent.parent.parent / "secbot" / "templates" / "agent" / "consolidator_archive.md"
+).is_file()
+
+pytestmark = pytest.mark.skipif(not _CONSOLIDATOR_TEMPLATES_EXIST, reason="Consolidator templates removed from secbot")
 
 
 @pytest.fixture

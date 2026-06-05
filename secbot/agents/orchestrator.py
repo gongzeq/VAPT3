@@ -25,9 +25,6 @@ _HARD_RULES = (
     "`# Available expert agents`), the FULL prompt in `task`, the asset "
     "scope in `target`, and — when the agent is endpoint-bound — both "
     "`endpoint_url` and `endpoint_param`.",
-    "- Your persistent teammate tools are `spawn_teammate`, `list_teammates`, "
-    "`send_teammate_message`, `read_teammate_inbox`, and `shutdown_teammate`; use "
-    "them only for durable mailbox-based coordination across turns.",
     "- You may answer pure information questions directly in natural language; "
     "real-time, external-resource, file, or mutation work MUST use `create_agent`.",
     "- You DO NOT execute scans yourself. You route to expert agents via `create_agent` tool calls.",

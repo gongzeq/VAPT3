@@ -857,6 +857,13 @@ class Dream:
         """Process unprocessed history entries. Returns True if work was done."""
         from secbot.agent.skills import BUILTIN_SKILLS_DIR
 
+        # Skip Dream when the prompt templates are not available (e.g. secbot
+        # ships without personal-assistant memory templates).
+        _dream_tpl = Path(__file__).resolve().parent.parent / "templates" / "agent" / "dream_phase1.md"
+        if not _dream_tpl.is_file():
+            logger.debug("Dream: skipped — template agent/dream_phase1.md not found")
+            return False
+
         last_cursor = self.store.get_last_dream_cursor()
         entries = self.store.read_unprocessed_history(since_cursor=last_cursor)
         if not entries:
