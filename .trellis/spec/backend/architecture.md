@@ -89,6 +89,16 @@ These nanobot modules are kept as-is (renamed only) and form the architectural b
 
 Adding a new layer or replacing any of the above requires an ADR.
 
+> **`loop.py` is an explicit exception to "DO NOT rewrite".** The rule protects the
+> *architecture* (the ReAct loop contract and its public entry points), not the
+> file's monolithic shape. At ~1415 lines `loop.py` is past the
+> [Quality Guidelines](./quality-guidelines.md#forbidden-patterns) 800-line soft
+> threshold and near the 1500-line hard limit; refactoring / splitting it into
+> smaller modules to satisfy the God-Class rule is **allowed and encouraged**, as
+> long as the loop's external contract and behaviour stay intact (guarded by the
+> existing loop tests). This is a refactor, not an architecture change, and does
+> NOT require an ADR.
+
 ---
 
 ## 5. Cross-Layer Concerns Index

@@ -63,6 +63,15 @@ class BlackboardRegistry:
     def entries_for(self, chat_id: str) -> list[BlackboardEntry]: ...
 ```
 
+> **Persistence note (QG reconciliation).** The Blackboard is deliberately
+> in-memory only (D3): it is a *derived* scratchpad, not the source of truth.
+> This does NOT violate the Quality Guidelines "persist everything" principle,
+> because the **conversation / session itself is persisted to disk** (SessionDB) —
+> every `Blackboard.write()` originates from an agent turn that is durably
+> recorded, so the board can be reconstructed from the session if ever needed.
+> The in-memory registry is a refresh / replay convenience that trades durability
+> for zero migration cost, and is intentionally dropped on server restart.
+
 ### 2.2 HTTP
 
 ```
