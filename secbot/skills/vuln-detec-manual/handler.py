@@ -8,9 +8,11 @@ structured findings with confidence ratings.
 from __future__ import annotations
 
 import ipaddress
+import json
 import random
 import re
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -461,6 +463,43 @@ def _findings_to_cmdb_writes(findings: list[dict[str, Any]]) -> list[dict[str, A
     return writes
 
 
+def _raw_log_targets(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return target metadata suitable for the persisted raw log."""
+    rendered: list[dict[str, Any]] = []
+    for target in targets:
+        params = target.get("params") or {}
+        rendered.append(
+            {
+                "url": target.get("url"),
+                "method": target.get("method", "GET"),
+                "param_names": list(params.keys()) if isinstance(params, dict) else [],
+                "has_headers": bool(target.get("headers")),
+                "has_cookies": bool(target.get("cookies")),
+            }
+        )
+    return rendered
+
+
+def _write_raw_log(
+    raw_log: Path,
+    targets: list[dict[str, Any]],
+    summary: dict[str, Any],
+    findings: list[dict[str, Any]],
+) -> None:
+    """Persist a structured raw log for later inspection by agents and users."""
+    raw_log.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "skill": "vuln-detec-manual",
+        "summary": summary,
+        "targets": _raw_log_targets(targets),
+        "findings": findings,
+    }
+    raw_log.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n",
+        encoding="utf-8",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
@@ -470,6 +509,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     targets: list[dict[str, Any]] = args["targets"]
     timeout_sec: int = int(args.get("timeout_sec", 30))
     global_headers: dict[str, str] | None = args.get("global_headers")
+    raw_log = ctx.raw_log_dir / "vuln-detec-manual.log"
 
     all_findings: list[dict[str, Any]] = []
 
@@ -490,10 +530,11 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     }
 
     cmdb_writes = _findings_to_cmdb_writes(all_findings)
+    _write_raw_log(raw_log, targets, summary, all_findings)
 
     return SkillResult(
         summary=summary,
-        raw_log_path=str(ctx.raw_log_dir / "vuln-detec-manual.log"),
+        raw_log_path=str(raw_log),
         findings=all_findings,
         cmdb_writes=cmdb_writes,
     )

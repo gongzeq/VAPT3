@@ -67,6 +67,10 @@ class ExpertAgentSpec:
     # mutual exclusion at spawn time. Defaults to False — only explicitly
     # endpoint-bound experts (e.g. vuln_detec / weak_password) opt in.
     endpoint_bound: bool = False
+    # When True, the subagent receives ONLY its scoped SkillTools — no file
+    # tools, curl, blackboard, or ask_user.  Suitable for agents whose sole
+    # job is to invoke one skill (e.g. ``report`` → ``report-html``).
+    minimal_tools: bool = False
 
     @property
     def available(self) -> bool:
@@ -234,6 +238,7 @@ def load_agent_registry(
                 missing_binaries=tuple(missing),
                 allow_exec=spec.allow_exec,
                 endpoint_bound=spec.endpoint_bound,
+                minimal_tools=spec.minimal_tools,
             )
 
         registry.agents[spec.name] = spec
@@ -318,6 +323,10 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
     if not isinstance(endpoint_bound, bool):
         raise AgentRegistryError(f"{yaml_path}: 'endpoint_bound' must be a bool")
 
+    minimal_tools = raw.get("minimal_tools", False)
+    if not isinstance(minimal_tools, bool):
+        raise AgentRegistryError(f"{yaml_path}: 'minimal_tools' must be a bool")
+
     display_name = raw["display_name"]
     if not isinstance(display_name, str) or not display_name.strip():
         raise AgentRegistryError(f"{yaml_path}: 'display_name' must be a non-empty string")
@@ -340,6 +349,7 @@ def _load_one(yaml_path: Path, *, known_skills: Optional[set[str]]) -> ExpertAge
         source_path=yaml_path,
         allow_exec=allow_exec,
         endpoint_bound=endpoint_bound,
+        minimal_tools=minimal_tools,
     )
 
 

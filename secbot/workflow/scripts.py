@@ -47,8 +47,38 @@ from urllib.parse import urlparse
 
 _DB_PATH = os.environ.get(
     "PHISHING_DB_PATH",
-    "/home/administrator/VAPT3/detection_results.db",
+    os.path.join(os.getcwd(), "detection_results.db"),
 )
+
+_WHITELIST_PATH = os.environ.get(
+    "PHISHING_WHITELIST_PATH",
+    os.path.expanduser("~/.secbot/config/phishing-domain-whitelist.json"),
+)
+
+
+def _load_whitelist_hint() -> str:
+    """Read domain whitelist config and return a prompt hint string.
+
+    Returns an empty string when the config is missing or unreadable so
+    the LLM prompt simply omits the whitelist block.
+    """
+    try:
+        with open(_WHITELIST_PATH, "r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        domains = cfg.get("domains") or []
+        if not domains:
+            return ""
+        domain_list = ", ".join(str(d) for d in domains)
+        return (
+            "【官方域名白名单规则】\n"
+            f"白名单后缀：{domain_list}\n"
+            "当发件人域名以以上任一后缀结尾时，该邮件来自可信官方机构，"
+            "confidence 必须 ≤ 0.1，suggested_action 必须为「放行」，"
+            "除非存在极强的其他可疑特征。\n"
+            "不要因为发件人使用了紧迫语气或包含链接就对官方域名邮件给出高置信度。"
+        )
+    except Exception:
+        return ""
 
 
 def _lookup_sqlite_cache(chash: str) -> dict | None:
@@ -212,6 +242,8 @@ def main() -> int:
     except Exception:
         rspamd_score = 0.0
 
+    whitelist_hint = _load_whitelist_hint()
+
     _emit({
         "cache_hit": cache_hit,
         "cached_result": cached_result,
@@ -227,6 +259,7 @@ def main() -> int:
             "url_count": len(urls),
             "suspicious_domains": suspicious_domains[:10],
             "recipient": str(data.get("recipient") or ""),
+            "domain_whitelist_hint": whitelist_hint,
         },
     })
     return 0
@@ -262,7 +295,7 @@ import traceback
 
 _DB_PATH = os.environ.get(
     "PHISHING_DB_PATH",
-    "/home/administrator/VAPT3/detection_results.db",
+    os.path.join(os.getcwd(), "detection_results.db"),
 )
 
 
@@ -368,6 +401,27 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         pass
 
 
+def _display_action(score) -> str:
+    """Derive the dashboard action label from the final score.
+
+    Keeps the displayed verdict consistent with rspamd's real behaviour
+    (the score thresholds), instead of the LLM's subjective
+    ``suggested_action`` which may say "标记" even at a low score.
+      >= 15 → 拒绝 (reject)
+      >=  6 → 标记 (add_header / mark as spam)
+      <   6 → 放行 (normal delivery)
+    """
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "放行"
+    if s >= 15:
+        return "拒绝"
+    if s >= 6:
+        return "标记"
+    return "放行"
+
+
 def _persist_sqlite(row: dict) -> bool:
     db_dir = os.path.dirname(_DB_PATH)
     if db_dir:
@@ -396,7 +450,7 @@ def _persist_sqlite(row: dict) -> bool:
                 row.get("subject"),
                 float(row.get("confidence") or 0.0),
                 row.get("reason"),
-                row.get("suggested_action"),
+                _display_action(row.get("final_score")),
                 row.get("created_at"),
                 int(row.get("processed_time_ms") or 0),
                 json.dumps(row.get("risk_factors") or [], ensure_ascii=False),
@@ -745,7 +799,7 @@ import traceback
 
 _DB_PATH = os.environ.get(
     "LOG_ANALYSIS_DB_PATH",
-    "/home/administrator/VAPT3/detection_results.db",
+    os.path.join(os.getcwd(), "detection_results.db"),
 )
 
 

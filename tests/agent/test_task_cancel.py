@@ -320,6 +320,9 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_subagent_announces_error_when_tool_execution_fails(self, monkeypatch, tmp_path):
+        """With fail_on_tool_error=False, a tool failure is returned to the LLM
+        as an error message so it can decide how to proceed.  The subagent
+        completes normally (status='ok') with the LLM's final text."""
         from secbot.agent.subagent import SubagentManager
         from secbot.bus.queue import MessageBus
         from secbot.providers.base import LLMResponse, ToolCallRequest
@@ -327,10 +330,21 @@ class TestSubagentCancellation:
         bus = MessageBus()
         provider = MagicMock()
         provider.get_default_model.return_value = "test-model"
-        provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
-            content="thinking",
-            tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
-        ))
+
+        llm_calls = {"n": 0}
+
+        async def fake_chat(*args, **kwargs):
+            llm_calls["n"] += 1
+            if llm_calls["n"] == 1:
+                # First LLM call: request a tool
+                return LLMResponse(
+                    content="thinking",
+                    tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
+                )
+            # Subsequent calls: produce a final text answer
+            return LLMResponse(content="I saw the tool error, here is my summary.")
+
+        provider.chat_with_retry = AsyncMock(side_effect=fake_chat)
         mgr = SubagentManager(
             provider=provider,
             workspace=tmp_path,
@@ -339,11 +353,11 @@ class TestSubagentCancellation:
         )
         mgr._announce_result = AsyncMock()
 
-        calls = {"n": 0}
+        tool_calls = {"n": 0}
 
         async def fake_execute(self, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 1:
+            tool_calls["n"] += 1
+            if tool_calls["n"] == 1:
                 return "first result"
             raise RuntimeError("boom")
 
@@ -355,11 +369,9 @@ class TestSubagentCancellation:
 
         mgr._announce_result.assert_awaited_once()
         args = mgr._announce_result.await_args.args
-        assert "Completed steps:" in args[3]
-        assert "- list_dir: first result" in args[3]
-        assert "Failure:" in args[3]
-        assert "- list_dir: boom" in args[3]
-        assert args[5] == "error"
+        # The LLM recovered from the tool error and produced a final answer
+        assert "I saw the tool error" in args[3]
+        assert args[5] == "ok"
 
     @pytest.mark.asyncio
     async def test_cancel_by_session_cancels_running_subagent_tool(self, monkeypatch, tmp_path):

@@ -492,6 +492,87 @@ async def test_drain_pending_blocks_while_subagents_running(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_subagent_result_directly_wakes_active_parent_turn(tmp_path):
+    """Subagent completion should not depend on the run-loop bus relay."""
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
+    from secbot.session.manager import Session
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
+
+    pending_queue: asyncio.Queue = asyncio.Queue()
+    session = Session(key="test:parent")
+    injection_callback = None
+
+    async def fake_runner_run(spec):
+        nonlocal injection_callback
+        injection_callback = spec.injection_callback
+        return SimpleNamespace(
+            stop_reason="done",
+            final_content="done",
+            error=None,
+            tool_events=[],
+            messages=[],
+            usage={},
+            had_injections=False,
+            tools_used=[],
+        )
+
+    loop.runner.run = AsyncMock(side_effect=fake_runner_run)
+
+    await loop._run_agent_loop(
+        [{"role": "user", "content": "test"}],
+        session=session,
+        channel="test",
+        chat_id="parent",
+        pending_queue=pending_queue,
+    )
+
+    assert injection_callback is not None
+
+    async def _hang_forever():
+        await asyncio.Event().wait()
+
+    hang_task = asyncio.create_task(_hang_forever())
+    loop.subagents._session_tasks.setdefault(session.key, set()).add("sub-direct-1")
+    loop.subagents._running_tasks["sub-direct-1"] = hang_task
+    loop._pending_queues[session.key] = pending_queue
+
+    drain_task = asyncio.create_task(injection_callback())
+    await asyncio.sleep(0.05)
+    assert not drain_task.done()
+
+    await loop.subagents._announce_result(
+        "sub-direct-1",
+        "vuln_detec",
+        "scan target",
+        "scan complete",
+        {"channel": "test", "chat_id": "parent", "session_key": session.key},
+        "ok",
+        agent_name="vuln_detec",
+    )
+
+    results = await asyncio.wait_for(drain_task, timeout=2.0)
+    assert len(results) == 1
+    assert results[0]["role"] == "user"
+    assert results[0]["injected_event"] == "subagent_result"
+    assert results[0]["subagent_task_id"] == "sub-direct-1"
+    assert "scan complete" in str(results[0]["content"])
+    assert bus.inbound_size == 0
+
+    hang_task.cancel()
+    try:
+        await hang_task
+    except asyncio.CancelledError:
+        pass
+    loop._pending_queues.pop(session.key, None)
+
+
+@pytest.mark.asyncio
 async def test_drain_pending_no_block_when_no_subagents(tmp_path):
     """_drain_pending should not block when no sub-agents are running."""
     from secbot.agent.loop import AgentLoop
@@ -878,3 +959,144 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
     assert "raw_urls_path" in sys_prompt
     # And the user message MUST carry the orchestrator-supplied task verbatim.
     assert captured["user_message"] == "scan targets"
+
+
+# ---------------------------------------------------------------------------
+# minimal_tools: restrict tool surface to scoped SkillTools only
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_subagent_minimal_tools_only_scoped_skills(tmp_path):
+    """minimal_tools=True agents must receive ONLY their scoped SkillTools.
+
+    No file tools, curl, blackboard, ask_user, exec, or asset_feed may be
+    registered.  This prevents agents like ``report`` from wandering into
+    unrelated tools (e.g. curl→sqlite3).
+    """
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agents.registry import ExpertAgentSpec
+    from secbot.bus.queue import MessageBus
+    from secbot.config.schema import ExecToolConfig
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        exec_config=ExecToolConfig(enable=True),
+    )
+    mgr._announce_result = AsyncMock()
+
+    # Use report-html as the scoped skill (it has no external binary so it
+    # always loads successfully).
+    spec = ExpertAgentSpec(
+        name="report",
+        display_name="Report",
+        description="test",
+        system_prompt="test",
+        scoped_skills=("report-html",),
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        minimal_tools=True,
+    )
+
+    captured: dict = {}
+
+    async def fake_run(run_spec):
+        captured["tool_names"] = set(run_spec.tools.tool_names)
+        return SimpleNamespace(
+            stop_reason="done",
+            final_content="done",
+            error=None,
+            tool_events=[],
+        )
+
+    mgr.runner.run = AsyncMock(side_effect=fake_run)
+
+    status = SubagentStatus(
+        task_id="sub-1", label="label", task_description="do task", started_at=time.monotonic()
+    )
+    await mgr._run_subagent(
+        "sub-1", "do task", "label", {"channel": "test", "chat_id": "c1"}, status, None, spec
+    )
+
+    mgr.runner.run.assert_awaited_once()
+
+    tool_names = captured["tool_names"]
+
+    # The ONLY registered tool must be the scoped skill.
+    assert "report-html" in tool_names, "scoped skill 'report-html' must be present"
+
+    # Non-skill tools must be absent.
+    for blocked in (
+        "read_file", "write_file", "edit_file", "list_dir",
+        "glob", "grep", "ask_user",
+        "blackboard_write", "read_blackboard",
+        "curl", "exec",
+        "asset_push", "read_assets",
+    ):
+        assert blocked not in tool_names, f"'{blocked}' must NOT be registered for minimal_tools agent"
+
+
+@pytest.mark.asyncio
+async def test_subagent_non_minimal_still_gets_full_tools(tmp_path):
+    """minimal_tools=False (default) agents must receive the full tool set."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agents.registry import ExpertAgentSpec
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    mgr._announce_result = AsyncMock()
+
+    spec = ExpertAgentSpec(
+        name="crawl_web",
+        display_name="Crawl Web",
+        description="test",
+        system_prompt="test",
+        scoped_skills=("katana-crawl-web",),
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        # minimal_tools defaults to False
+    )
+
+    captured: dict = {}
+
+    async def fake_run(run_spec):
+        captured["tool_names"] = set(run_spec.tools.tool_names)
+        return SimpleNamespace(
+            stop_reason="done",
+            final_content="done",
+            error=None,
+            tool_events=[],
+        )
+
+    mgr.runner.run = AsyncMock(side_effect=fake_run)
+
+    status = SubagentStatus(
+        task_id="sub-2", label="label", task_description="do task", started_at=time.monotonic()
+    )
+    await mgr._run_subagent(
+        "sub-2", "do task", "label", {"channel": "test", "chat_id": "c1"}, status, None, spec
+    )
+
+    mgr.runner.run.assert_awaited_once()
+
+    tool_names = captured["tool_names"]
+
+    # Standard non-skill tools must be present.
+    for expected in ("read_file", "write_file", "curl", "blackboard_write", "read_blackboard"):
+        assert expected in tool_names, f"'{expected}' must be registered for non-minimal agent"
+    # Scoped skill must also be present.
+    assert "katana-crawl-web" in tool_names

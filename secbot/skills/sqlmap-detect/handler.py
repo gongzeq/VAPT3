@@ -205,6 +205,13 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     cookie: str | None = args.get("cookie")
     level: int = int(args.get("level", 1))
     risk: int = int(args.get("risk", 1))
+
+    # Auto-promote to POST when body data is provided without explicit method.
+    # LLM agents frequently pass `data` without setting `method`, causing
+    # sqlmap to receive a parameterless GET request and fail immediately.
+    if data and method == "GET":
+        method = "POST"
+
     parameters = _detectable_parameters(url=url, method=method, data=data)
 
     invocation_id = _invocation_id(url=url, method=method, data=data, cookie=cookie)

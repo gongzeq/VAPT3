@@ -250,6 +250,7 @@ class SubagentManager:
         blackboard: Blackboard | None = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
         asset_feed_registry: "AssetFeedRegistry | None" = None,
+        parent_result_callback: Callable[[InboundMessage], Awaitable[bool]] | None = None,
     ):
         defaults = AgentDefaults()
         self.provider = provider
@@ -274,6 +275,7 @@ class SubagentManager:
         # ``_run_subagent`` resolves the chat-scoped board from it instead.
         self.blackboard = blackboard or Blackboard()
         self.blackboard_registry = blackboard_registry
+        self._parent_result_callback = parent_result_callback
         # ``asset_feed_registry`` is the chat-scoped real-time discovery
         # channel (URL / port / vuln / ...). When None, sub-agents still
         # boot but ``asset_push`` / ``read_assets`` are not registered.
@@ -517,47 +519,53 @@ class SubagentManager:
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
-            allowed_dir = self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
-            extra_read = [BUILTIN_SKILLS_DIR] if BUILTIN_SKILLS_DIR.exists() else None
-            # Subagent gets its own FileStates so its read-dedup cache is
-            # isolated from the parent loop's sessions (issue #3571).
-            from secbot.agent.tools.file_state import FileStates
-            file_states = FileStates()
-            tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read, file_states=file_states))
-            tools.register(WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
-            tools.register(EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
-            tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
-            tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
-            tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
-            tools.register(AskUserTool())
-            tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=resolved_agent_name))
-            tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
-            if resolved_asset_feed is not None:
-                tools.register(
-                    AssetPushTool(
-                        feed=resolved_asset_feed,
-                        bus=self.bus,
-                        origin=origin,
-                        agent_name=resolved_agent_name,
+            # ``minimal_tools`` agents receive ONLY their scoped SkillTools —
+            # no file / curl / blackboard / ask_user / exec / asset_feed.
+            # This hard-guards the tool surface so an agent like ``report``
+            # can never wander into unrelated tools (e.g. curl→sqlite3).
+            _minimal = spec is not None and spec.minimal_tools
+            if not _minimal:
+                allowed_dir = self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
+                extra_read = [BUILTIN_SKILLS_DIR] if BUILTIN_SKILLS_DIR.exists() else None
+                # Subagent gets its own FileStates so its read-dedup cache is
+                # isolated from the parent loop's sessions (issue #3571).
+                from secbot.agent.tools.file_state import FileStates
+                file_states = FileStates()
+                tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read, file_states=file_states))
+                tools.register(WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+                tools.register(EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+                tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+                tools.register(GlobTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+                tools.register(GrepTool(workspace=self.workspace, allowed_dir=allowed_dir, file_states=file_states))
+                tools.register(AskUserTool())
+                tools.register(BlackboardWriteTool(blackboard=resolved_blackboard, agent_name=resolved_agent_name))
+                tools.register(BlackboardReadTool(blackboard=resolved_blackboard))
+                if resolved_asset_feed is not None:
+                    tools.register(
+                        AssetPushTool(
+                            feed=resolved_asset_feed,
+                            bus=self.bus,
+                            origin=origin,
+                            agent_name=resolved_agent_name,
+                        )
                     )
-                )
-                tools.register(ReadAssetsTool(feed=resolved_asset_feed))
-            # ExecTool is gated by BOTH global exec_config.enable AND per-agent
-            # allow_exec. Default-deny: subagents without an explicit opt-in
-            # ExpertAgentSpec, or with allow_exec=False, NEVER receive exec.
-            if self.exec_config.enable and spec is not None and spec.allow_exec:
-                tools.register(
-                    ExecTool(
-                        timeout=self.exec_config.timeout,
-                        deny_patterns=self.exec_config.deny_patterns,
-                        allow_patterns=self.exec_config.allow_patterns,
-                        restrict_to_workspace=self.restrict_to_workspace,
-                        sandbox=self.exec_config.sandbox,
-                        path_append=self.exec_config.path_append,
-                        allowed_env_keys=self.exec_config.allowed_env_keys,
+                    tools.register(ReadAssetsTool(feed=resolved_asset_feed))
+                # ExecTool is gated by BOTH global exec_config.enable AND per-agent
+                # allow_exec. Default-deny: subagents without an explicit opt-in
+                # ExpertAgentSpec, or with allow_exec=False, NEVER receive exec.
+                if self.exec_config.enable and spec is not None and spec.allow_exec:
+                    tools.register(
+                        ExecTool(
+                            timeout=self.exec_config.timeout,
+                            deny_patterns=self.exec_config.deny_patterns,
+                            allow_patterns=self.exec_config.allow_patterns,
+                            restrict_to_workspace=self.restrict_to_workspace,
+                            sandbox=self.exec_config.sandbox,
+                            path_append=self.exec_config.path_append,
+                            allowed_env_keys=self.exec_config.allowed_env_keys,
+                        )
                     )
-                )
-            tools.register(CurlTool())
+                tools.register(CurlTool())
             # Subagents also get SkillTool instances so they can run qscan /
             # fscan / etc. without shelling out. When an expert-agent spec is
             # provided (``spawn(agent=...)``), restrict the SkillTool set to
@@ -619,7 +627,7 @@ class SubagentManager:
                 ),
                 max_iterations_message="Task completed but no final response was generated.",
                 error_message=None,
-                fail_on_tool_error=True,
+                fail_on_tool_error=False,
                 checkpoint_callback=_on_checkpoint,
             ))
             status.phase = "done"
@@ -725,7 +733,18 @@ class SubagentManager:
             metadata=metadata,
         )
 
-        await self.bus.publish_inbound(msg)
+        delivered = False
+        if self._parent_result_callback is not None:
+            try:
+                delivered = await self._parent_result_callback(msg)
+            except Exception:
+                logger.exception(
+                    "Subagent [{}] direct result delivery failed; falling back to bus",
+                    task_id,
+                )
+                delivered = False
+        if not delivered:
+            await self.bus.publish_inbound(msg)
         await self._broadcast_agent_event(
             origin=origin,
             type="subagent_done",

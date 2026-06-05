@@ -168,6 +168,122 @@ def test_save_turn_persists_subagent_injection_as_assistant() -> None:
     assert ContextBuilder._RUNTIME_CONTEXT_TAG not in saved["content"]
 
 
+def test_save_turn_strips_reasoning_content_and_thinking_blocks() -> None:
+    """reasoning_content and thinking_blocks must not persist in session history."""
+    loop = _mk_loop()
+    session = Session(key="test:strip-reasoning")
+
+    loop._save_turn(
+        session,
+        [
+            {
+                "role": "assistant",
+                "content": "dispatching scan",
+                "reasoning_content": "I should scan ports first because...",
+                "thinking_blocks": [{"type": "thinking", "thinking": "deep thought", "signature": "sig"}],
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "create_agent", "arguments": "{}"}}
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "name": "create_agent", "content": "started"},
+        ],
+        skip=0,
+    )
+
+    saved = session.messages[0]
+    assert saved["role"] == "assistant"
+    assert saved["content"] == "dispatching scan"
+    assert "reasoning_content" not in saved
+    assert "thinking_blocks" not in saved
+    # tool_calls should still be preserved
+    assert len(saved["tool_calls"]) == 1
+
+
+def test_condense_subagent_result_drops_task_keeps_result() -> None:
+    """Orchestrator condenses subagent announces: drop task, keep result."""
+    content = (
+        "[Subagent 'port_scan' completed successfully]\n\n"
+        "Task: 对目标 81.71.119.93 执行全面端口扫描，使用 qscan-port-scan 技能..."
+        "(此处省略 800 字的任务描述)\n\n"
+        "Result:\n发现 6 个开放端口: 22/ssh, 80/http, 6789/http, 8082/http, 8083/http, 8084/http"
+    )
+    condensed = AgentLoop._condense_subagent_result(content)
+
+    assert condensed.startswith("[Subagent 'port_scan' completed successfully]")
+    assert "Task:" not in condensed
+    assert "Result:" in condensed
+    assert "发现 6 个开放端口" in condensed
+
+
+def test_condense_subagent_result_truncates_long_result() -> None:
+    """Results longer than _ORCHESTRATOR_RESULT_MAX_CHARS get truncated."""
+    long_result = "x" * 1000
+    content = f"[Subagent 'vuln_scan' completed successfully]\n\nTask: scan\n\nResult:\n{long_result}"
+    condensed = AgentLoop._condense_subagent_result(content)
+
+    assert len(condensed) < len(content)
+    assert "… [truncated]" in condensed
+
+
+def test_save_turn_orchestrator_condenses_subagent_result() -> None:
+    """Orchestrator sessions condense subagent results during _save_turn."""
+    loop = _mk_loop()
+    loop.is_orchestrator = True  # type: ignore[attr-defined]
+    session = Session(key="test:orch-condense")
+
+    long_task = "y" * 500
+    long_result = "z" * 800
+    content = (
+        f"[Subagent 'vuln_scan' completed successfully]\n\n"
+        f"Task: {long_task}\n\n"
+        f"Result:\n{long_result}"
+    )
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "user",
+            "content": content,
+            "injected_event": "subagent_result",
+            "subagent_task_id": "sub-1",
+            "sender_id": "vuln_scan",
+        }],
+        skip=0,
+    )
+
+    saved = session.messages[0]
+    assert saved["role"] == "assistant"
+    # Task description should be gone
+    assert long_task not in saved["content"]
+    # Result should be truncated
+    assert "… [truncated]" in saved["content"]
+
+
+def test_save_turn_non_orchestrator_keeps_full_subagent_result() -> None:
+    """Non-orchestrator sessions preserve full subagent result content."""
+    loop = _mk_loop()
+    loop.is_orchestrator = False  # type: ignore[attr-defined]
+    session = Session(key="test:non-orch-full")
+
+    content = "[Subagent 'report' completed successfully]\n\nTask: render report\n\nResult:\nreport_path: /tmp/r.html"
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "user",
+            "content": content,
+            "injected_event": "subagent_result",
+            "subagent_task_id": "sub-2",
+            "sender_id": "report",
+        }],
+        skip=0,
+    )
+
+    saved = session.messages[0]
+    assert "Task: render report" in saved["content"]
+    assert "report_path: /tmp/r.html" in saved["content"]
+
+
 def test_save_turn_keeps_tool_results_under_16k() -> None:
     loop = _mk_loop()
     session = Session(key="test:tool-result")

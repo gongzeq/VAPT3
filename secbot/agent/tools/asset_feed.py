@@ -143,8 +143,10 @@ class AssetPushTool(Tool):
                     chat_id=f"{channel}:{chat_id}",
                     content=(
                         f"New asset discovered (kind={kind}, id={entry_id}). "
-                        "Call read_assets to consume and decide if a "
-                        "downstream agent should be dispatched."
+                        f"Call read_assets with since_id={max(entry_id - 1, 0)} "
+                        "to consume this entry, or omit since_id for a full "
+                        "snapshot. Then decide if a downstream agent should "
+                        "be dispatched."
                     ),
                     session_key_override=session_key,
                     metadata={

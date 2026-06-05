@@ -25,7 +25,7 @@
 | # | 子功能 | 建议 skill 名 | 风险等级 |
 |---|---|---|---|
 | 1 | ICMP / ARP 主机存活探测 | `fscan-host-discovery` | low |
-| 2 | TCP 端口扫描（含常用 100 端口预设） | `fscan-port-scan` | low |
+| 2 | TCP 端口扫描（含常用 100 端口预设） | `nmap-port-scan` | low |
 | 3 | 服务/Banner 识别（MySQL / Redis / SSH / SMB） | `fscan-service-detect` | low |
 | 4 | Web 指纹与标题抓取 | `fscan-web-fingerprint` | low |
 | 5 | 内置 PoC 漏洞扫描（MS17-010 / Shiro550 / Weblogic / Struts2 / Druid 等） | `fscan-vuln-scan` | high |
@@ -37,9 +37,6 @@
 ```text
 # fscan-host-discovery（仅存活）
 fscan -h {{target}} -m icmp -no -nopoc -nobr -o {{out_file}}
-
-# fscan-port-scan
-fscan -h {{target}} -p {{port_range}} -nopoc -nobr -t {{concurrency}} -o {{out_file}}
 
 # fscan-service-detect（端口扫描 + 服务识别，关闭 PoC 与暴破）
 fscan -h {{target}} -p {{port_range}} -nopoc -nobr -o {{out_file}}

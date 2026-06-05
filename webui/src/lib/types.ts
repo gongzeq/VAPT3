@@ -14,7 +14,8 @@ export type AgentEventType =
   | "asset_pushed"
   | "agent_status"
   | "tool_call"
-  | "high_risk_confirm";
+  | "high_risk_confirm"
+  | "llm_retry";
 
 /** Recognised blackboard entry kinds. ``BlackboardEntry.kind`` is filled by
  * the backend ``Blackboard.write()`` regex on the leading ``[tag]`` prefix.
@@ -102,6 +103,12 @@ export interface AgentEventPayload {
   args?: Record<string, unknown>;
   /** Timeout in seconds before auto-deny. */
   timeout_sec?: number;
+
+  // ── llm_retry event fields ─────────────────────────────────────────
+  /** Current retry attempt number (1-based). */
+  attempt?: number | null;
+  /** Seconds before the next retry attempt. */
+  delay_sec?: number | null;
 }
 
 /** Legacy alias for blackboard entry shape (used by BlackboardCard). */

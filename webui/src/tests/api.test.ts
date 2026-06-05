@@ -5,6 +5,7 @@ import {
   fetchSessionMessages,
   listSessions,
   listSlashCommands,
+  setApiTokenRefreshListener,
   updateSettings,
 } from "@/lib/api";
 
@@ -108,6 +109,53 @@ describe("webui API helpers", () => {
       "/api/commands",
       expect.objectContaining({
         headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("notifies the app when a 401 refresh mints a replacement token", async () => {
+    const listener = vi.fn();
+    const cleanup = setApiTokenRefreshListener(listener);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({}),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          token: "fresh-token",
+          ws_path: "/",
+          expires_in: 300,
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ sessions: [] }),
+      } as Response);
+
+    try {
+      await expect(listSessions("stale-token")).resolves.toEqual([]);
+    } finally {
+      cleanup();
+    }
+
+    expect(listener).toHaveBeenCalledWith("fresh-token");
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/sessions",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer stale-token" },
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/sessions",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer fresh-token" },
       }),
     );
   });

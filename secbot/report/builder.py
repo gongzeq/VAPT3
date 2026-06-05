@@ -30,6 +30,64 @@ class ReportRenderError(Exception):
     """Raised by render helpers when a template cannot be produced."""
 
 
+# ---------------------------------------------------------------------------
+# Evidence extraction helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_evidence_detail(ev: dict) -> Optional[str]:
+    """Compose a human-readable evidence detail from request/response/curl.
+
+    Returns ``None`` when no useful evidence is present.
+    """
+    parts: list[str] = []
+    desc = ev.get("description")
+    if desc:
+        parts.append(str(desc))
+    req = ev.get("request")
+    if req:
+        parts.append(f"请求:\n{req}" if isinstance(req, str) else f"请求:\n{_trunc(req)}")
+    resp = ev.get("response")
+    if resp:
+        parts.append(f"响应:\n{resp}" if isinstance(resp, str) else f"响应:\n{_trunc(resp)}")
+    curl_cmd = ev.get("curl_command") or ev.get("curl")
+    if curl_cmd:
+        parts.append(f"复现命令:\n{curl_cmd}")
+    return "\n\n".join(parts) if parts else None
+
+
+def _extract_verification_steps(ev: dict) -> tuple[str, ...]:
+    """Pull or synthesise verification steps from the evidence dict.
+
+    Priority:
+    1. ``verification_steps`` list already present
+    2. Synthesise from ``curl_command`` / ``request`` / ``matched_at``
+    """
+    raw = ev.get("verification_steps") or ev.get("steps")
+    if isinstance(raw, list) and raw:
+        return tuple(str(s) for s in raw)
+
+    # Synthesise from available evidence
+    steps: list[str] = []
+    url = ev.get("matched_at") or ev.get("url") or ev.get("endpoint")
+    if url:
+        steps.append(f"访问目标端点: {url}")
+    curl_cmd = ev.get("curl_command") or ev.get("curl")
+    if curl_cmd:
+        steps.append(f"执行复现命令: {curl_cmd}")
+    elif ev.get("request"):
+        steps.append("发送构造的 HTTP 请求（见下方证据详情）")
+    if ev.get("response"):
+        steps.append("检查响应内容以确认漏洞存在")
+    return tuple(steps)
+
+
+def _trunc(value, max_chars: int = 512) -> str:
+    """Safely stringify and truncate a value."""
+    s = str(value)
+    return s if len(s) <= max_chars else s[:max_chars] + "…"
+
+
 @dataclass(frozen=True)
 class ReportFinding:
     severity: str
@@ -38,6 +96,12 @@ class ReportFinding:
     cve_id: Optional[str]
     evidence_summary: Optional[str]
     discovered_by: str
+    # Extended fields for professional pentest deliverables.
+    affected_url: Optional[str] = None
+    evidence_detail: Optional[str] = None
+    verification_steps: tuple[str, ...] = ()
+    remediation: Optional[str] = None
+    references: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,13 +194,32 @@ async def build_report_model(
             total_findings += 1
             if v.raw_log_path:
                 raw_logs.append(v.raw_log_path)
-            evidence_summary = None
-            if isinstance(v.evidence, dict):
-                evidence_summary = (
-                    v.evidence.get("summary")
-                    or v.evidence.get("matched_at")
-                    or str(v.evidence)[:256]
-                )
+
+            # Extract structured evidence fields.  The ``evidence`` JSON
+            # column is free-form; we pull well-known keys and gracefully
+            # degrade when they are absent.
+            ev = v.evidence if isinstance(v.evidence, dict) else {}
+
+            evidence_summary = (
+                ev.get("summary")
+                or ev.get("matched_at")
+                or (str(v.evidence)[:256] if v.evidence else None)
+            )
+            affected_url = ev.get("matched_at") or ev.get("url") or ev.get("endpoint")
+
+            # Build a detailed evidence blob from request/response/curl
+            # when available — this is the core of the "验证步骤" section.
+            evidence_detail = _build_evidence_detail(ev)
+
+            # Verification steps: accept a list[str] or synthesise from
+            # curl_command / request fields.
+            verification_steps = _extract_verification_steps(ev)
+
+            remediation = ev.get("remediation") or ev.get("fix") or ev.get("recommendation")
+
+            refs_raw = ev.get("references") or ev.get("refs") or ()
+            references = tuple(refs_raw) if isinstance(refs_raw, (list, tuple)) else ()
+
             findings.append(
                 ReportFinding(
                     severity=v.severity,
@@ -145,6 +228,11 @@ async def build_report_model(
                     cve_id=v.cve_id,
                     evidence_summary=evidence_summary,
                     discovered_by=v.discovered_by,
+                    affected_url=affected_url,
+                    evidence_detail=evidence_detail,
+                    verification_steps=verification_steps,
+                    remediation=remediation,
+                    references=references,
                 )
             )
         total_services += len(services)

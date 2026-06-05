@@ -7,7 +7,7 @@
 ## What I already know
 
 - 当前 `exec` 工具通过 `bash -l -c` 执行 LLM 生成的 shell 命令，导致 `#` 被当注释，且 LLM 需要自己拼参数，不安全也不稳定
-- `secbot/skills/` 下已存在：`nmap-host-discovery`、`nmap-port-scan`、`fscan-asset-discovery`、`fscan-port-scan`、`fscan-vuln-scan`、`nuclei-template-scan`、`report-*`
+- `secbot/skills/` 下已存在：`nmap-host-discovery`、`nmap-port-scan`、`fscan-asset-discovery`、`fscan-vuln-scan`、`nuclei-template-scan`、`report-*`
 - `_shared/sandbox.py` 的 `BINARY_WHITELIST` 已包含 `nmap/fscan/nuclei/hydra/masscan/weasyprint/python3/git`
 - `secbot/agent/tools/` 体系支持注册 Tool 子类到 ToolRegistry，`to_schema()` 暴露给 LLM
 - Skill 当前只通过 `build_skills_summary()` 文本化注入 system prompt，**未作为 tool 暴露**

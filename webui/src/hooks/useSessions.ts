@@ -169,6 +169,21 @@ function buildAgentEventContent(payload: AgentEventPayload, fallbackAgentName = 
   }
 }
 
+/** Regex to detect system-injected asset notifications that should not
+ *  appear in the conversation UI.  Matches the exact format produced by
+ *  ``secbot/agent/tools/asset_feed.py`` ``_notify_bus``. */
+const ASSET_DISCOVERED_RE = /^New asset discovered \(/;
+
+/** Detect user-role messages that are actually system injections and
+ *  should be hidden from the conversation thread. */
+function isInjectedSystemMessage(m: RawHistoryMessage): boolean {
+  if (m.injected_event === "asset_discovered") return true;
+  // Content-based fallback: even if ``injected_event`` was stripped during
+  // persistence, the message text follows a predictable pattern.
+  if (typeof m.content === "string" && ASSET_DISCOVERED_RE.test(m.content)) return true;
+  return false;
+}
+
 /** Convert the raw persisted session messages into the UI's message shape.
  *
  * Tool-call rows are reconstructed as ``toolCalls`` embedded inside the
@@ -358,7 +373,7 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
 
     if (m.role === "user") {
       if (typeof m.content !== "string") return;
-      if (m.injected_event === "asset_discovered") {
+      if (isInjectedSystemMessage(m)) {
         return;
       }
       flushPending(idx);

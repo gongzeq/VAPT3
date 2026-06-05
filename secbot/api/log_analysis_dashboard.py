@@ -21,9 +21,10 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Iterator
 
-_DEFAULT_DB_PATH = "/home/administrator/VAPT3/detection_results.db"
+_DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "detection_results.db")
 _CONNECT_TIMEOUT_S = 1.5
 
 

@@ -35,6 +35,7 @@ from secbot.agent.tools.ask import (
 from secbot.agent.tools.asset_feed import AssetPushTool, ReadAssetsTool
 from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteTool
 from secbot.agent.tools.cron import CronTool
+from secbot.agent.tools.curl import CurlTool
 from secbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.message import MessageTool
@@ -56,7 +57,6 @@ from secbot.agent.tools.teammate import (
     ShutdownTeammateTool,
     SpawnTeammateTool,
 )
-from secbot.agent.tools.curl import CurlTool
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
@@ -539,6 +539,7 @@ class AgentLoop:
             blackboard=self.blackboard,
             blackboard_registry=self.blackboard_registry,
             asset_feed_registry=self.asset_feed_registry,
+            parent_result_callback=self._route_subagent_result_to_pending,
         )
         self.teammates = TeammateManager(
             provider=provider,
@@ -602,6 +603,29 @@ class AgentLoop:
         """Keep subagent runtime limits aligned with mutable loop settings."""
         self.subagents.max_iterations = self.max_iterations
         self.teammates.max_iterations = self.max_iterations
+
+    async def _route_subagent_result_to_pending(self, msg: InboundMessage) -> bool:
+        """Deliver a subagent result directly to an active parent turn if possible."""
+        effective_key = self._effective_session_key(msg)
+        queue = self._pending_queues.get(effective_key)
+        if queue is None:
+            return False
+        pending_msg = msg
+        if effective_key != msg.session_key:
+            pending_msg = dataclasses.replace(
+                msg,
+                session_key_override=effective_key,
+            )
+        try:
+            queue.put_nowait(pending_msg)
+        except asyncio.QueueFull:
+            logger.warning(
+                "Pending queue full for session {}, falling back to queued subagent result",
+                effective_key,
+            )
+            return False
+        logger.info("Routed subagent result directly to pending queue for session {}", effective_key)
+        return True
 
     def _apply_provider_snapshot(self, snapshot: ProviderSnapshot) -> None:
         """Swap model/provider for future turns without disturbing an active one."""
@@ -937,35 +961,87 @@ class AgentLoop:
                             message["sender_id"] = str(pending_msg.sender_id)
                 return message
 
-            items: list[dict[str, Any]] = []
-            while len(items) < limit:
-                try:
-                    items.append(_to_user_message(pending_queue.get_nowait()))
-                except asyncio.QueueEmpty:
-                    break
+            def _event_name(pending_msg: InboundMessage) -> str | None:
+                metadata = pending_msg.metadata if isinstance(pending_msg.metadata, dict) else {}
+                event = metadata.get("injected_event")
+                return event if isinstance(event, str) and event else None
+
+            def _priority(pending_msg: InboundMessage) -> int:
+                event = _event_name(pending_msg)
+                if event is None and pending_msg.channel != "system":
+                    return 0
+                if event == "subagent_result":
+                    return 1
+                if event == "asset_discovered":
+                    return 3
+                return 2
+
+            def _drain_available() -> list[InboundMessage]:
+                drained: list[InboundMessage] = []
+                while True:
+                    try:
+                        drained.append(pending_queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                return drained
+
+            def _select_pending(batch: list[InboundMessage]) -> list[InboundMessage]:
+                if not batch:
+                    return []
+
+                completed_agents = {
+                    msg.sender_id
+                    for msg in batch
+                    if _event_name(msg) == "subagent_result" and msg.sender_id
+                }
+                if completed_agents:
+                    before = len(batch)
+                    batch = [
+                        msg for msg in batch
+                        if not (
+                            _event_name(msg) == "asset_discovered"
+                            and msg.sender_id in completed_agents
+                        )
+                    ]
+                    dropped = before - len(batch)
+                    if dropped:
+                        logger.debug(
+                            "Dropped {} stale asset_discovered injection(s) after subagent_result",
+                            dropped,
+                        )
+
+                ordered = [
+                    msg for _, msg in sorted(
+                        enumerate(batch),
+                        key=lambda pair: (_priority(pair[1]), pair[0]),
+                    )
+                ]
+                selected = ordered[:limit]
+                for leftover in ordered[limit:]:
+                    pending_queue.put_nowait(leftover)
+                return selected
+
+            raw_items = _drain_available()
 
             # Block if nothing drained but sub-agents spawned in this dispatch
-            # are still running.  Keeps the runner loop alive so subsequent
-            # completions are injected in-order rather than dispatched separately.
-            if (not items
+            # are still running. Keeps the runner loop alive so subsequent
+            # completions are injected promptly. Once a completion is present,
+            # it is prioritised over stale per-asset wake-ups from that same
+            # completed sub-agent.
+            if (not raw_items
                     and session is not None
                     and self.subagents.get_running_count_by_session(session.key) > 0):
                 try:
-                    msg = await asyncio.wait_for(pending_queue.get(), timeout=300)
+                    raw_items.append(await asyncio.wait_for(pending_queue.get(), timeout=300))
                 except asyncio.TimeoutError:
                     logger.warning(
                         "Timeout waiting for sub-agent completion in session {}",
                         session.key,
                     )
-                    return items
-                items.append(_to_user_message(msg))
-                while len(items) < limit:
-                    try:
-                        items.append(_to_user_message(pending_queue.get_nowait()))
-                    except asyncio.QueueEmpty:
-                        break
+                    return []
+                raw_items.extend(_drain_available())
 
-            return items
+            return [_to_user_message(item) for item in _select_pending(raw_items)]
 
         active_session_key = session.key if session else session_key
         file_state_token = bind_file_states(self._file_state_store.for_session(active_session_key))
@@ -1535,12 +1611,23 @@ class AgentLoop:
         # doesn't silently lose the prompt on recovery. ``media`` rides along
         # as raw on-disk paths — sanitized image blocks are stripped from
         # JSONL, and webui replay needs the paths to mint signed URLs.
+        # ``injected_event`` / ``sender_id`` are preserved so the frontend
+        # can filter internal notifications (e.g. asset_discovered) from
+        # the user-visible chat replay.
         user_persisted_early = False
         media_paths = [p for p in (msg.media or []) if isinstance(p, str) and p]
         has_text = isinstance(msg.content, str) and msg.content.strip()
         if not pending_ask_id and (has_text or media_paths):
             extra: dict[str, Any] = {"media": list(media_paths)} if media_paths else {}
             text = msg.content if isinstance(msg.content, str) else ""
+            # Carry injected_event + sender_id so frontend filters work.
+            if isinstance(msg.metadata, dict):
+                _ie = msg.metadata.get("injected_event")
+                if isinstance(_ie, str) and _ie:
+                    extra["injected_event"] = _ie
+                _sid = msg.metadata.get("sender_id") or msg.sender_id
+                if isinstance(_sid, str) and _sid:
+                    extra["sender_id"] = _sid
             session.add_message("user", text, **extra)
             self._mark_pending_user_turn(session)
             self.sessions.save(session)
@@ -1664,18 +1751,46 @@ class AgentLoop:
             stripped = content[len(ContextBuilder._RUNTIME_CONTEXT_TAG):].lstrip("\n")
         return stripped if stripped.strip() else None
 
+    # Hard cap on condensed subagent-result content persisted for
+    # orchestrator sessions.  The full announce template embeds the complete
+    # task prompt (often 1 000+ chars) plus the agent's full output — both
+    # redundant once the orchestrator has already dispatched the next step.
+    # Keeping a ≤ 600-char result summary dramatically shrinks replay
+    # context without losing the information the LLM needs for future
+    # orchestration decisions.
+    _ORCHESTRATOR_RESULT_MAX_CHARS = 600
+
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
-        """Save new-turn messages into session, truncating large tool results."""
+        """Save new-turn messages into session, truncating large tool results.
+
+        Context-reduction strategies applied here:
+
+        * ``reasoning_content`` / ``thinking_blocks`` are stripped from every
+          persisted assistant message — the LLM's chain-of-thought from a
+          completed turn is never needed in future replay; only the chosen
+          actions (``tool_calls``) and their outcomes matter.
+        * For **orchestrator** sessions, subagent-result content is condensed
+          to status + truncated result, dropping the full task echo.
+        """
         from datetime import datetime
+
+        _is_orch = getattr(self, "is_orchestrator", False)
 
         for m in messages[skip:]:
             entry = dict(m)
             role, content = entry.get("role"), entry.get("content")
+            # --- strip reasoning / thinking from assistant messages ----------
+            if role == "assistant":
+                entry.pop("reasoning_content", None)
+                entry.pop("thinking_blocks", None)
             if role == "user" and entry.get("injected_event") == "subagent_result":
                 if isinstance(content, str):
                     stripped = self._strip_runtime_context_from_content(content)
                     if stripped is None:
                         continue
+                    # Orchestrator: condense subagent announce to status + result
+                    if _is_orch:
+                        stripped = self._condense_subagent_result(stripped)
                     entry["content"] = stripped
                 elif isinstance(content, list):
                     filtered = self._sanitize_persisted_blocks(content, drop_runtime=True)
@@ -1710,6 +1825,31 @@ class AgentLoop:
             entry.setdefault("timestamp", datetime.now().isoformat())
             session.messages.append(entry)
         session.updated_at = datetime.now()
+
+    @classmethod
+    def _condense_subagent_result(cls, content: str) -> str:
+        """Condense a subagent announce for orchestrator replay.
+
+        The full announce template includes the complete ``task`` description
+        (often 1 000+ chars) which the orchestrator already knows from its own
+        ``create_agent`` tool call.  We keep only the status header and a
+        truncated result section.
+        """
+        # Extract result section (after "Result:\n")
+        result_idx = content.find("\nResult:\n")
+        if result_idx < 0:
+            result_idx = content.find("\nResult:")
+        if result_idx >= 0:
+            header = content[: content.find("\n") + 1] if "\n" in content else content
+            result = content[result_idx + len("\nResult:\n"):]
+        else:
+            header = content[: content.find("\n") + 1] if "\n" in content else content
+            result = content
+
+        max_chars = cls._ORCHESTRATOR_RESULT_MAX_CHARS
+        if len(result) > max_chars:
+            result = result[:max_chars] + "\n… [truncated]"
+        return f"{header}\nResult:\n{result}"
 
     def _persist_subagent_followup(self, session: Session, msg: InboundMessage) -> bool:
         """Persist subagent follow-ups before prompt assembly so history stays durable.

@@ -69,6 +69,11 @@ _MAX_FINDINGS = 1000
 _MAX_TEMPLATES = 32
 
 
+def _is_valid_target(t: str) -> bool:
+    """Return True if *t* is a valid nuclei target (HTTP/HTTPS only)."""
+    return isinstance(t, str) and bool(_TARGET_RE.match(t))
+
+
 def _validate(
     targets: list[str], severity: str, tags: str, templates: list[str]
 ) -> None:
@@ -77,7 +82,7 @@ def _validate(
     if len(targets) > 256:
         raise InvalidSkillArg("targets exceeds 256")
     for t in targets:
-        if not isinstance(t, str) or not _TARGET_RE.match(t):
+        if not _is_valid_target(t):
             raise InvalidSkillArg(f"invalid target: {t!r}")
     if severity not in _SEVERITY_ALLOWED:
         raise InvalidSkillArg(f"invalid severity: {severity!r}")
@@ -139,10 +144,17 @@ def _parse(raw_log: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
 
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
-    targets: list[str] = list(args["targets"])
+    raw_targets: list[str] = list(args["targets"])
     severity: str = args.get("severity", "medium,high,critical")
     tags: str = args.get("tags", "cve,exposure,misconfig")
     templates: list[str] = list(args.get("templates", []))
+
+    # Silently drop non-HTTP(S) targets (e.g. ssh://, ftp://).
+    # LLM agents often include them when the orchestrator asks to scan
+    # all open ports, but nuclei only supports HTTP/HTTPS.  Raising a
+    # hard error would abort the entire subagent turn unnecessarily.
+    targets = [t for t in raw_targets if _is_valid_target(t)]
+    skipped = [t for t in raw_targets if t not in targets]
 
     _validate(targets, severity, tags, templates)
 
@@ -152,10 +164,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     targets_file.write_text("\n".join(targets) + "\n", encoding="utf-8")
 
     started = time.monotonic()
-    cli_args = [
+    cli_args: list[str] = [
         "-l", str(targets_file),
-        "-severity", severity,
-        "-tags", tags,
         "-jsonl",
         "-silent",
         "-no-color",
@@ -163,11 +173,20 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         "-o", str(raw_log),
     ]
 
+    # When explicit templates are provided, the LLM's template selection
+    # already acts as the filter.  Adding -severity / -tags would silently
+    # exclude templates whose severity doesn't match (e.g. info-level
+    # actuator-detection templates filtered by -severity medium,high,critical),
+    # resulting in "no templates provided for scan" and exit=1.
+    if not templates:
+        cli_args += ["-severity", severity, "-tags", tags]
+
     # Load POC from secbot/resource/poc/ ONLY when the LLM explicitly nominates
     # individual template files or subdirectories. The directory as a whole is
     # never auto-included because it can contain hundreds of unrelated POCs;
-    # the LLM is expected to glob ``secbot/resource/poc/**/*.yaml`` first and
-    # pass the matching entries via ``templates``.
+    # the LLM is expected to progressively drill into
+    # ``secbot/resource/poc/`` (ls → sub-folder → pick) and pass the
+    # matching entries via ``templates``.
     for tpl in templates:
         resolved = resolve_resource(ctx, "poc", tpl)
         if resolved is None:
@@ -203,6 +222,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         "findings_count": len(findings),
         "elapsed_sec": elapsed,
     }
+    if skipped:
+        summary["skipped_targets"] = skipped
     if result.exit_code != 0 and not findings:
         summary["error"] = f"exit={result.exit_code}"
 

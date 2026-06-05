@@ -80,7 +80,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     return (
       <div className={cn("flex gap-3", baseAnim)}>
         <AgentAvatar agentName={message.agentName} size="md" />
-        <div className="max-w-[80%] min-w-0 space-y-1.5">
+        <div className="max-w-[80%] min-w-0 space-y-2">
           <AgentMeta agentName={message.agentName} />
           <AgentEventCard payload={message.agentEvent} agentName={message.agentName} />
         </div>
@@ -135,11 +135,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     return null;
   }
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
-  const agentInfo = resolveAgent(message.agentName);
   return (
     <div className={cn("flex gap-3", baseAnim)}>
       <AgentAvatar agentName={message.agentName} size="md" />
-      <div className="max-w-[80%] min-w-0 space-y-1.5">
+      <div className="max-w-[80%] min-w-0 space-y-2">
         <AgentMeta agentName={message.agentName} />
         {showTypingPlaceholder ? (
           <TypingDots />
@@ -147,26 +146,21 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <>
             <div
               className={cn(
-                "rounded-2xl rounded-tl-sm border border-border/40 px-4 py-3 text-sm leading-relaxed",
+                "text-sm leading-relaxed",
                 "break-words whitespace-pre-wrap",
               )}
-              style={
-                agentInfo.type === "subagent"
-                  ? { borderLeft: `2px solid ${agentInfo.accent}` }
-                  : undefined
-              }
             >
               {!empty ? <MarkdownText>{message.content}</MarkdownText> : null}
               {message.isStreaming && !empty ? <StreamCursor /> : null}
-              {/* Render nested tool calls inside the bubble */}
-              {visibleToolCalls.length > 0 ? (
-                <div className="mt-2 space-y-1.5">
-                  {visibleToolCalls.map((tc, i) => (
-                    <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
-                  ))}
-                </div>
-              ) : null}
             </div>
+            {/* Render tool calls outside the text block */}
+            {visibleToolCalls.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {visibleToolCalls.map((tc, i) => (
+                  <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
+                ))}
+              </div>
+            ) : null}
             {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
             {showAssistantActions ? (
               <div className="flex items-center gap-1 text-muted-foreground">
@@ -239,7 +233,7 @@ function MediaCell({ media }: { media: UIMediaAttachment }) {
           aria-label={media.name ? `${t("message.videoAttachment", { defaultValue: "Video attachment" })}: ${media.name}` : t("message.videoAttachment", { defaultValue: "Video attachment" })}
         />
         {media.name ? (
-          <figcaption className="truncate px-3 py-1.5 text-[11.5px] text-muted-foreground">
+          <figcaption className="truncate px-3 py-1.5 text-xs text-muted-foreground">
             {media.name}
           </figcaption>
         ) : null}
@@ -528,7 +522,7 @@ function TraceGroup({ message, animClass }: TraceGroupProps) {
           {lines.map((line, i) => (
             <li
               key={i}
-              className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-muted-foreground/90"
+              className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground/90"
             >
               {line}
             </li>
@@ -619,7 +613,7 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
       ? "denied"
       : status;
   const style = TOOL_STATUS_STYLE[variant];
-  const [open, setOpen] = useState(variant !== "running");
+  const [open, setOpen] = useState(false);
   const args = toolCallArgs(payload);
   const hasArgs = args && Object.keys(args).length > 0;
   const argsSummary = hasArgs
@@ -629,7 +623,7 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
   return (
     <div
       className={cn(
-        "rounded-[10px] border bg-popover text-[12.5px] leading-snug overflow-hidden",
+        "rounded-lg border bg-popover text-xs leading-snug overflow-hidden",
         style.border,
         animClass,
       )}
@@ -654,7 +648,7 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
           {payload.tool_name ?? "tool"}
         </span>
         {argsSummary ? (
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground/80">
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground/80">
             {argsSummary}
           </span>
         ) : (
@@ -676,7 +670,7 @@ function ToolCallCard({ payload, animClass }: AgentEventCardProps) {
 
       {/* Body */}
       {open && (
-        <div className="border-t border-border-subtle/60 bg-background/50 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed">
+        <div className="border-t border-border-subtle/60 bg-background/50 px-3 py-2.5 font-mono text-xs leading-relaxed">
           {payload.reason && (variant === "error" || variant === "denied") ? (
             <p className={cn("mb-2 whitespace-pre-wrap break-words", style.text)}>
               {payload.reason}
@@ -743,7 +737,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
               {lines.map((line, i) => (
                 <li
                   key={i}
-                  className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-muted-foreground/90"
+                  className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground/90"
                 >
                   {line}
                 </li>
@@ -761,7 +755,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
             <span className="font-medium text-foreground">{lifecycleAgentName}</span>
             <span className="ml-1">已启动</span>
             {payload.task_description ? (
-              <p className="mt-0.5 line-clamp-2 text-[11px]">{payload.task_description}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs">{payload.task_description}</p>
             ) : null}
           </div>
         </div>
@@ -779,7 +773,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
                   <span className="min-w-0">
                     <span className="block break-words font-medium text-foreground">{step.title}</span>
                     {step.detail ? (
-                      <span className="mt-0.5 block break-words text-[11px] leading-5">{step.detail}</span>
+                      <span className="mt-0.5 block break-words text-xs leading-5">{step.detail}</span>
                     ) : null}
                   </span>
                 </li>
@@ -803,7 +797,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
               {payload.status === "ok" ? "已完成" : "失败"}
             </span>
             {payload.result ? (
-              <p className="mt-0.5 line-clamp-3 text-[11px]">{payload.result}</p>
+              <p className="mt-0.5 line-clamp-3 text-xs">{payload.result}</p>
             ) : null}
           </div>
         </div>
@@ -817,7 +811,7 @@ function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) 
           <ClipboardList className="h-4 w-4 shrink-0 text-primary" aria-hidden />
           <div className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">[{payload.agent_name}]</span>
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-[11px]">{payload.text}</p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-xs">{payload.text}</p>
           </div>
         </div>
       );

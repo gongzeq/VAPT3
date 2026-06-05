@@ -207,7 +207,14 @@ def test_empty_session_history():
     assert history == []
 
 
-def test_get_history_preserves_reasoning_content():
+def test_get_history_strips_reasoning_content_and_thinking_blocks():
+    """reasoning_content / thinking_blocks are stripped from replay.
+
+    The LLM's chain-of-thought from a completed turn is never needed in
+    future replay — only the chosen actions (tool_calls) and their outcomes
+    matter.  Stripping these fields reduces orchestrator replay tokens by
+    30-50% in long scanning sessions.
+    """
     session = Session(key="test:reasoning")
     session.messages.append({"role": "user", "content": "hi"})
     session.messages.append({
@@ -221,16 +228,7 @@ def test_get_history_preserves_reasoning_content():
 
     assert history == [
         {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "done",
-            "reasoning_content": "hidden chain of thought",
-            "thinking_blocks": [{
-                "type": "thinking",
-                "thinking": "hidden chain of thought",
-                "signature": "sig",
-            }],
-        },
+        {"role": "assistant", "content": "done"},
     ]
 
 

@@ -63,14 +63,14 @@ _HARD_RULES = (
 - What happens if you send negative quantities, negative prices, or overflow values?
 - What happens when you send unexpected types? (string where int expected, array where string expected)
 
-**Never accept "this is probably secure" — verify it.**'''
+**Never accept "this is probably secure" — verify it.**''',
     "- Protocol-aware routing: `vuln_detec` is endpoint-bound and ONLY for "
     "HTTP / HTTPS Web endpoints. NEVER route non-HTTP services (Redis, FTP, "
     "SSH, MySQL, SMB, RDP, etc.) to `vuln_detec`. For non-HTTP ports, collect "
     "them and route to `vuln_scan` (which runs `fscan-vuln-scan` for generic "
     "service vulnerability checks).",
-    "- You MUST respect the natural ordering: asset_discovery \u2192 port_scan \u2192 "
-    "vuln_scan \u2192 (weak_password | pentest) \u2192 report. "
+    "- You MUST respect the natural ordering: asset_discovery → port_scan → "
+    "crawl_web → vuln_scan → (weak_password | pentest) → report. "
     "HOWEVER, if the user's target is a single host (IP, domain, or URL with a "
     "known port), SKIP asset_discovery and start directly with port_scan or "
     "vuln_scan — the host is already identified, no enumeration is needed. "
@@ -80,10 +80,13 @@ _HARD_RULES = (
     "- Before delegating to the next expert agent, you MUST call `read_blackboard` "
     "to check for findings already recorded by peer agents. Pass discovered facts "
     "(e.g. known open ports, services) in the `task` parameter so the next agent "
-    "- After the final scan stage succeeds (or the user opts out of remaining stages), "
-    "you MUST call the `report` expert (via `create_agent(name=\"report\", ...)`) "
-    "to materialise an HTML deliverable via the `report-html` skill. Do NOT end "
-    "the task without a report unless the user explicitly says they do not want one.",
+    "can reuse them.",
+    "- After the final scan stage completes — whether it succeeds, partially "
+    "succeeds, or fails — you MUST call the `report` expert (via "
+    "`create_agent(name=\"report\", ...)`) to materialise an HTML deliverable "
+    "via the `report-html` skill. A report with partial or zero findings is "
+    "always better than no report. Do NOT end the task without a report "
+    "unless the user explicitly says they do not want one.",
     "- When the user asks for phishing-email detection summaries, log-analysis results, "
     "or any report based on detection data (detection_results.db), delegate to the "
     "`report` agent with `mode=detection`. The report agent has `detection-db-query` "
@@ -102,10 +105,11 @@ _WORKING_STYLE = (
     "the expert agent returned.",
     "- Use `[finding]` and `[milestone]` entries from the blackboard to refine the "
     "next `task` description. Do not ask an agent to discover what is already known.",
-    "- When the scan pipeline is done, finish by delegating to the `report` expert via "
+    "- When the scan pipeline is done (or a scan stage has failed and no retry "
+    "is feasible), finish by delegating to the `report` expert via "
     "`create_agent(name=\"report\", target=\"<scan_id>\", task=\"... include {\\\"scan_id\\\": <id>} ...\")` "
     "and surface the returned `report_path` to the user.",
-    "- Use the user's language (default: \u4e2d\u6587).",
+    "- Use the user's language (default: 中文).",
 )
 
 

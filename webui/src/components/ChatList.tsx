@@ -47,7 +47,7 @@ export function ChatList({
   const { t } = useTranslation();
   if (loading && sessions.length === 0) {
     return (
-      <div className="px-3 py-6 text-[12px] text-muted-foreground">
+      <div className="px-3 py-6 text-xs text-muted-foreground">
         {t("chat.loading")}
       </div>
     );
@@ -55,7 +55,7 @@ export function ChatList({
 
   if (sessions.length === 0) {
     return (
-      <div className="px-3 py-6 text-[12px] leading-5 text-muted-foreground/80">
+      <div className="px-3 py-6 text-xs leading-5 text-muted-foreground/80">
         {emptyLabel ?? t("chat.noSessions")}
       </div>
     );
@@ -72,7 +72,7 @@ export function ChatList({
       <div className="px-2 py-1.5">
         {groups.map((group) => (
           <section key={group.label} aria-label={group.label}>
-            <div className="mt-5 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mt-5 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
               {group.label}
             </div>
             <ul className="mt-1 space-y-1">
@@ -112,7 +112,7 @@ export function ChatList({
                         >
                           {title}
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground/70">
                           {timeLabel}
                         </span>
                       </div>

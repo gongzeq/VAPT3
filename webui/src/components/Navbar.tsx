@@ -84,12 +84,6 @@ export function Navbar(_props: NavbarProps) {
             className="h-9 w-9 rounded-lg ring-1 ring-primary/30"
             draggable={false}
           />
-          <img
-            src="/brand/text-logo.png"
-            alt="海盾"
-            className="hidden h-7 md:block"
-            draggable={false}
-          />
         </div>
 
         {/* Nav links */}

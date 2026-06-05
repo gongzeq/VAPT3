@@ -2907,6 +2907,73 @@ async def test_pending_queue_preserves_overflow_for_next_injection_cycle(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_pending_queue_prioritizes_subagent_result_over_stale_asset_events(tmp_path):
+    """A completed subagent should wake orchestration before its stale asset pings."""
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.events import InboundMessage
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    captured_messages: list[list[dict]] = []
+    call_count = {"n": 0}
+
+    async def chat_with_retry(*, messages, **kwargs):
+        call_count["n"] += 1
+        captured_messages.append([dict(message) for message in messages])
+        if call_count["n"] == 1:
+            return LLMResponse(content="waiting", tool_calls=[], usage={})
+        return LLMResponse(content="handled result", tool_calls=[], usage={})
+
+    provider.chat_with_retry = chat_with_retry
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
+    loop.tools.get_definitions = MagicMock(return_value=[])
+
+    pending_queue = asyncio.Queue()
+    for idx in range(5):
+        await pending_queue.put(InboundMessage(
+            channel="system",
+            sender_id="vuln_scan",
+            chat_id="websocket:chat-1",
+            content=(
+                f"New asset discovered (kind=vuln, id={idx + 1}). "
+                "Call read_assets to consume and decide if a downstream agent "
+                "should be dispatched."
+            ),
+            metadata={
+                "injected_event": "asset_discovered",
+                "asset_id": idx + 1,
+            },
+        ))
+    await pending_queue.put(InboundMessage(
+        channel="system",
+        sender_id="vuln_scan",
+        chat_id="websocket:chat-1",
+        content="[Subagent 'vuln_scan' completed successfully]\n\nResult:\nscan done",
+        metadata={
+            "injected_event": "subagent_result",
+            "subagent_task_id": "scan-1",
+        },
+    ))
+
+    final_content, _, _, _, had_injections = await loop._run_agent_loop(
+        [{"role": "user", "content": "scan target"}],
+        channel="websocket",
+        chat_id="chat-1",
+        pending_queue=pending_queue,
+    )
+
+    assert final_content == "handled result"
+    assert had_injections is True
+    assert call_count["n"] == 2
+    rendered_second_prompt = json.dumps(captured_messages[-1], ensure_ascii=False)
+    assert "Subagent 'vuln_scan' completed successfully" in rendered_second_prompt
+    assert "New asset discovered" not in rendered_second_prompt
+    assert pending_queue.empty()
+
+
+@pytest.mark.asyncio
 async def test_pending_queue_full_falls_back_to_queued_task(tmp_path):
     """QueueFull should preserve the message by dispatching a queued task."""
     from secbot.bus.events import InboundMessage

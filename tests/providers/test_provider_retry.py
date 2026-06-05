@@ -43,7 +43,7 @@ async def test_chat_with_retry_retries_transient_error_then_succeeds(monkeypatch
     assert response.finish_reason == "stop"
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [5]
 
 
 @pytest.mark.asyncio
@@ -71,6 +71,8 @@ async def test_chat_with_retry_returns_final_error_after_retries(monkeypatch) ->
         LLMResponse(content="429 rate limit a", finish_reason="error"),
         LLMResponse(content="429 rate limit b", finish_reason="error"),
         LLMResponse(content="429 rate limit c", finish_reason="error"),
+        LLMResponse(content="503 server error d", finish_reason="error"),
+        LLMResponse(content="503 server error e", finish_reason="error"),
         LLMResponse(content="503 final server error", finish_reason="error"),
     ])
     delays: list[int] = []
@@ -83,8 +85,11 @@ async def test_chat_with_retry_returns_final_error_after_retries(monkeypatch) ->
     response = await provider.chat_with_retry(messages=[{"role": "user", "content": "hello"}])
 
     assert response.content == "503 final server error"
-    assert provider.calls == 4
-    assert delays == [1, 2, 4]
+    assert provider.calls == 6
+    # _sleep_with_heartbeat splits each delay into ≤30s chunks, so
+    # asyncio.sleep is called multiple times per retry. Sum the chunks
+    # to verify total wait per retry: 5, 15, 30, 60, 300 seconds.
+    assert sum(delays) == 5 + 15 + 30 + 60 + 300
 
 
 @pytest.mark.asyncio
@@ -93,6 +98,8 @@ async def test_chat_with_retry_emits_terminal_progress_when_standard_retries_exh
         LLMResponse(content="429 rate limit a", finish_reason="error"),
         LLMResponse(content="429 rate limit b", finish_reason="error"),
         LLMResponse(content="429 rate limit c", finish_reason="error"),
+        LLMResponse(content="503 server error d", finish_reason="error"),
+        LLMResponse(content="503 server error e", finish_reason="error"),
         LLMResponse(content="503 final server error", finish_reason="error"),
     ])
     progress: list[str] = []
@@ -111,7 +118,7 @@ async def test_chat_with_retry_emits_terminal_progress_when_standard_retries_exh
     )
 
     assert response.content == "503 final server error"
-    assert progress[-1] == "Model request failed after 4 retries, giving up."
+    assert progress[-1] == "Model request failed after 6 retries, giving up."
 
 
 @pytest.mark.asyncio
@@ -348,7 +355,7 @@ async def test_chat_with_retry_retries_structured_status_code_without_keyword(mo
 
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [5]
 
 
 @pytest.mark.asyncio
@@ -425,7 +432,7 @@ async def test_chat_with_retry_retries_structured_timeout_kind(monkeypatch) -> N
 
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [5]
 
 
 @pytest.mark.asyncio
@@ -495,7 +502,10 @@ async def test_persistent_retry_aborts_after_ten_identical_transient_errors(monk
     assert response.finish_reason == "error"
     assert response.content == "429 rate limit"
     assert provider.calls == 10
-    assert delays == [1, 2, 4, 4, 4, 4, 4, 4, 4]
+    # Persistent mode caps delay at _PERSISTENT_MAX_DELAY=60s. With
+    # _sleep_with_heartbeat chunking (≤30s per call), the 9 sleeps
+    # produce: 5 + 15 + 30 + 60 + 60*5 = 450s total.
+    assert sum(delays) == 5 + 15 + 30 + 60 + 60 * 5
 
 
 @pytest.mark.asyncio
@@ -567,7 +577,7 @@ async def test_chat_with_retry_retries_zhipu_1302_rate_limit(monkeypatch) -> Non
 
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [5]
 
 
 @pytest.mark.asyncio
@@ -593,7 +603,7 @@ async def test_chat_with_retry_retries_zhipu_1302_with_429_status(monkeypatch) -
 
     assert response.content == "ok"
     assert provider.calls == 2
-    assert delays == [1]
+    assert delays == [5]
 
 
 @pytest.mark.asyncio

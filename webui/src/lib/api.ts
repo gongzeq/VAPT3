@@ -23,6 +23,18 @@ export class ApiError extends Error {
 
 /** In-flight token refresh so parallel 401s don't multiply bootstrap calls. */
 let _refreshPromise: Promise<string> | null = null;
+let _tokenRefreshListener: ((token: string) => void) | null = null;
+
+export function setApiTokenRefreshListener(
+  listener: ((token: string) => void) | null,
+): () => void {
+  _tokenRefreshListener = listener;
+  return () => {
+    if (_tokenRefreshListener === listener) {
+      _tokenRefreshListener = null;
+    }
+  };
+}
 
 async function _refreshToken(): Promise<string> {
   if (_refreshPromise) return _refreshPromise;
@@ -30,6 +42,7 @@ async function _refreshToken(): Promise<string> {
     try {
       const secret = loadSavedSecret();
       const boot = await fetchBootstrap("", secret);
+      _tokenRefreshListener?.(boot.token);
       return boot.token;
     } finally {
       _refreshPromise = null;

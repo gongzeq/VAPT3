@@ -86,7 +86,7 @@ async def _read_json(request: web.Request) -> dict[str, Any]:
     if not raw:
         return {}
     try:
-        data = _json.loads(raw.decode("utf-8"))
+        data = _json.loads(raw.decode("utf-8", errors="replace"))
     except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
         raise _BadJSON(str(exc)) from exc
     if not isinstance(data, dict):

@@ -91,6 +91,8 @@ export function ThreadShell({
         return {
           question: message.content,
           buttons: message.buttons,
+          variant: (message.promptKind === "approval" ? "approval" : "question") as "question" | "approval",
+          detail: message.approvalDetail as string | undefined,
         };
       }
       if (message.role === "assistant") return null;
@@ -188,6 +190,8 @@ export function ThreadShell({
         <AskUserPrompt
           question={pendingAsk.question}
           buttons={pendingAsk.buttons}
+          variant={pendingAsk.variant}
+          detail={pendingAsk.detail}
           onAnswer={send}
         />
       ) : null}
@@ -230,12 +234,7 @@ export function ThreadShell({
   ) : (
     <>
       <div className="flex flex-col items-center justify-center">
-        <img
-          src="/brand/text-logo.png"
-          alt="VAPT"
-          className="h-10 w-auto opacity-90"
-          draggable={false}
-        />
+        <span className="brand-zh text-2xl">智海智盾</span>
       </div>
       <QuickPrompts className="w-full" />
     </>

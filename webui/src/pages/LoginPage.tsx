@@ -36,7 +36,7 @@ function resolveNext(search: string): string {
 }
 
 /**
- * /login — 海盾登录页。严格对齐 prototypes/01-login.html 双栏设计：
+ * /login — 智海智盾登录页。严格对齐 prototypes/01-login.html 双栏设计：
  *   - 左栏（lg+）：banner 装饰 + 网格叠加 + 品牌标语 + 4 特性卡；底部空位
  *     （prototype 明确注释「公司名称已移除」）。
  *   - 右栏：居中单卡片，gradient-card + border-glow，shield-glow 图标徽章，
@@ -118,8 +118,9 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
                 boxShadow: "0 0 0 4px hsl(var(--primary) / 0.18)",
               }}
             />
-            <img src="/brand/text-logo.png" alt="海盾" className="h-9" />
+            <span className="brand-zh leading-tight" style={{ fontSize: '26px' }}>智海智盾</span>
           </div>
+          <p className="text-sm text-white/60">多智能体网络安全协作系统</p>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/85 backdrop-blur">
             <ShieldCheck className="h-3.5 w-3.5" />
             全栈漏洞检测 · AI 智能体协同
@@ -166,7 +167,6 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
         {/* 移动端品牌 */}
         <div className="absolute left-6 top-6 flex items-center gap-2 lg:hidden">
           <img src="/brand/logo.png" alt="logo" className="h-9 w-9 rounded-lg" />
-          <img src="/brand/text-logo.png" alt="海盾" className="h-7" />
         </div>
 
         <div className="w-full max-w-md animate-slide-in-right space-y-8">

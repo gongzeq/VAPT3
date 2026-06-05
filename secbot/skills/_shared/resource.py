@@ -76,3 +76,38 @@ def resolve_resource(ctx: SkillContext, *parts: str) -> Path | None:
         if path.exists():
             return path
     return None
+
+
+def list_dicts(ctx: SkillContext, category: str) -> list[str]:
+    """List available dictionary/resource files under *category*.
+
+    Returns sorted relative paths (POSIX strings) under
+    ``secbot/resource/<category>/`` across all candidate resource roots.
+    Hidden files and ``__pycache__`` entries are excluded.
+
+    Skills can call this to enumerate available wordlists before prompting
+    the LLM to pick one — avoiding the need for the LLM to glob the tree
+    with relative paths (which the glob tool cannot resolve).
+
+    >>> list_dicts(ctx, "fuzzDicts")
+    ['XXEDicts/README.MD', 'apiDict/api.txt', ...]
+    """
+    results: set[str] = set()
+    for root in _candidate_resource_dirs(ctx):
+        cat_dir = root / category
+        if not cat_dir.is_dir():
+            continue
+        for path in cat_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            # Skip hidden files and Python bytecode caches
+            if any(
+                part.startswith(".") or part == "__pycache__"
+                for part in path.parts
+            ):
+                continue
+            if path.suffix in {".pyc", ".pyo"}:
+                continue
+            rel = path.relative_to(cat_dir)
+            results.add(rel.as_posix())
+    return sorted(results)

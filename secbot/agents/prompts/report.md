@@ -36,7 +36,21 @@ Choose the right skill based on the orchestrator's task description:
 ## Output
 
 VAPT: return `report-html` result as-is.
+
+```
+{
+  "report_path": "<path or null>",
+  "status": "ok" | "empty",
+  "asset_count": N,
+  "finding_count": N,
+  "report_id": "<id or null>"
+}
+```
+
 Detection: return a JSON-friendly object with `{ summary, raw_data, generated_at }`.
+
+Never embed the rendered HTML in the response — the orchestrator only needs
+the path so the WebUI can link to it.
 
 ## Blackboard
 

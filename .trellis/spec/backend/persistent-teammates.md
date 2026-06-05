@@ -107,6 +107,9 @@ shutdown_teammate
 - A teammate run uses a fresh `AgentRunSpec.initial_messages` list and `session_key="teammate:<name>"`. Its internal messages are process-local and are not appended to the parent chat session.
 - Stale `working` records found at manager startup are reconciled to `idle` with `current_task=null` and a recovery `last_error`.
 - `shutdown_teammate` marks the durable status as `shutdown` and blocks future assignments. It is not a force-cancel primitive for an already running Python thread.
+- One-shot expert subagent completion is a control signal for the parent Orchestrator, not only a normal inbound message. If the parent session has an active pending queue, `SubagentManager` MUST deliver the `subagent_result` directly to that queue and use the message bus only as a fallback. Relying solely on the bus relay can leave the parent loop waiting even after the expert finished.
+- When pending injections contain both `subagent_result` and `asset_discovered` messages from the same completed one-shot expert, the parent loop MUST prioritize the `subagent_result` and MAY drop those stale per-asset wake-ups. The asset feed remains queryable via `read_assets`; the completion result is the lifecycle control signal that decides whether orchestration continues to downstream experts or report generation.
+- The `agent/subagent_announce.md` template MUST describe a completion as an orchestration control signal. It MUST NOT tell the parent to only summarize for the user, because that conflicts with the orchestrator rule to continue the scan pipeline and generate a final report unless the user opts out.
 
 ### 4. Validation & Error Matrix
 
@@ -140,6 +143,9 @@ shutdown_teammate
 - Deterministic lifecycle test covers `spawn -> working -> idle -> working -> shutdown` without a real model call.
 - Tool-surface test verifies orchestrator registers teammate tools and operational expert loops do not receive them.
 - One-shot subagent isolation test verifies parent session receives only the child summary, not child intermediate tool messages.
+- One-shot subagent delivery test verifies a completed expert wakes an active parent pending queue without requiring the outer run loop to relay the message through the inbound bus.
+- Pending-injection priority test verifies stale `asset_discovered` notifications from a completed expert cannot hide or delay the expert's `subagent_result` beyond the current drain cycle.
+- Subagent announcement-template test verifies the completion message tells the parent to continue orchestration/report generation when required, not merely summarize.
 
 ### 7. Wrong vs Correct
 

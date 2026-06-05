@@ -147,7 +147,7 @@ export function AgentMeta({ agentName, timestamp }: { agentName?: string; timest
   const info = resolveAgent(agentName);
   const typeLabel = info.type === "orchestrator" ? "主编排" : "subagent";
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="font-semibold text-foreground" style={{ color: info.accent }}>
         {info.label}
       </span>

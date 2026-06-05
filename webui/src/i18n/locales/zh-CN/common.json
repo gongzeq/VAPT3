@@ -1,20 +1,21 @@
 {
   "app": {
     "brand": "secbot",
+    "brandZh": "智海智盾",
     "loading": {
-      "connecting": "正在连接 secbot…",
-      "boot": "正在加载 secbot…"
+      "connecting": "正在连接 智海智盾…",
+      "boot": "正在加载 智海智盾…"
     },
     "error": {
-      "title": "无法连接到 secbot",
+      "title": "无法连接到 智海智盾",
       "gatewayHint": "请确认 gateway 已启动（`secbot gateway`），并且当前页面与 gateway 运行在同一台机器上。"
     },
     "documentTitle": {
-      "base": "secbot",
-      "chat": "{{title}} · secbot"
+      "base": "智海智盾",
+      "chat": "{{title}} · 智海智盾"
     },
     "meta": {
-      "description": "secbot Web UI —— 与你的 secbot 工作区对话。"
+      "description": "智海智盾 Web UI —— 在你的工作区进行对话。"
     }
   },
   "sidebar": {

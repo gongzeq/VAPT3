@@ -73,6 +73,8 @@ async def test_subagent_announces_only_summary_not_child_history(tmp_path):
     injected = await bus.consume_inbound()
     assert injected.metadata["injected_event"] == "subagent_result"
     assert "concise child summary" in injected.content
+    assert "Use this as an orchestration control signal" in injected.content
+    assert "Do not stop with only a user-facing summary" in injected.content
     assert "CHILD_INTERMEDIATE_SECRET" not in injected.content
     assert "tool_call_id" not in injected.content
 

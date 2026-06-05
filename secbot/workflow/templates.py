@@ -56,6 +56,7 @@ _PHISHING_LLM_USER = (
     '  "risk_factors": ["可疑特征 1", "可疑特征 2"],\n'
     '  "suggested_action": "拒绝|隔离|标记|放行"\n'
     "}\n\n"
+    "${steps.step1.result.parsed.features.domain_whitelist_hint}\n\n"
     "邮件特征（已脱敏）：\n"
     "- 发件人域名：${steps.step1.result.parsed.features.sender_domain}\n"
     "- 发件人前缀：${steps.step1.result.parsed.features.sender_local}\n"
@@ -234,17 +235,19 @@ def _phishing_email_template() -> dict[str, Any]:
 _LOG_ANALYSIS_LLM_SYSTEM = (
     "你是一个专业的安全日志分析专家。分析用户提供的设备安全日志完整内容，"
     "逐条识别攻击行为、异常流量、可疑访问、暴力破解等安全威胁。"
-    "日志格式可能为 TSV、CSV 或 Excel 导出文本，字段顺序和命名不固定，你需要自行理解表头和内容。"
+    "凡是已被安全设备成功拦截/阻断/拒绝的请求，即使其本身是恶意请求，"
+    "也视为防护已生效，不应计入威胁日志（不纳入"
+    "anomaly_entries、anomaly_count 与 severity_distribution 统计）。"
     "只输出 JSON，不输出多余文字。"
 )
 
 _LOG_ANALYSIS_LLM_USER = (
-    "请分析以下设备安全日志的全部内容，逐条识别异常行为和安全威胁。\n\n"
-    "=== 日志完整内容 ===\n"
-    "${inputs.log_content}"
-    "\n${steps.step1.result.parsed.log_content}"
-    "=== 内容结束 ===\n\n"
-    "请按以下 JSON 格式输出分析结果：\n"
+    "请分析以下设备安全日志片段（可能是完整日志的一部分）。\n\n"
+    "=== 日志片段内容 ===\n"
+    "<<CHUNK>>"
+    "\n=== 内容结束 ===\n\n"
+
+    "请仅针对本片段，按以下 JSON 格式输出分析结果：\n"
     "{\n"
     '  "confidence": 0.0-1.0,  // 整体威胁置信度\n'
     '  "reason": "综合分析依据（≤500 字）",\n'
@@ -303,7 +306,7 @@ def _log_analysis_template() -> dict[str, Any]:
                 ref="python",
                 args={
                     "kind": "python",
-                    "timeoutMs": 15000,
+                    "timeoutMs": 150000,
                     "code": LOG_ANALYSIS_STEP1_CODE,
                     # Always small — only the path string, never the
                     # content itself.  Uses condition so the exec tool
@@ -314,17 +317,25 @@ def _log_analysis_template() -> dict[str, Any]:
                 on_error="continue",
                 retry=0,
             ),
-            # ── step2: LLM 智能分析 ──
+            # ── step2: LLM 智能分析（按 10000 字符分块，逐块分析后聚合）──
             WorkflowStep(
                 id="step2",
                 name="LLM 智能分析",
-                kind="llm",
+                kind="llm_chunked",
                 ref="default",
                 args={
                     "systemPrompt": _LOG_ANALYSIS_LLM_SYSTEM,
                     "userPrompt": _LOG_ANALYSIS_LLM_USER,
+                    # 上传模式内容来自 inputs.log_content；路径模式来自 step1。
+                    # 执行器按行边界将其切分为 ≤chunkMaxChars 的分块，
+                    # 逐块调用 LLM 后合并结构化结果。
+                    "chunkContent": (
+                        "${inputs.log_content}"
+                        "\n${steps.step1.result.parsed.log_content}"
+                    ),
+                    "chunkMaxChars": 10000,
                     "temperature": 0.1,
-                    "maxTokens": 16000,
+                    "maxTokens": 32000,
                     "responseFormat": "json",
                 },
                 on_error="continue",

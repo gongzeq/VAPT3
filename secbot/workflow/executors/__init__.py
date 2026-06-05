@@ -57,6 +57,7 @@ def build_default_executors(
     """
     from secbot.workflow.executors.agent import AgentExecutor
     from secbot.workflow.executors.llm import LlmExecutor
+    from secbot.workflow.executors.llm_chunked import ChunkedLlmExecutor
     from secbot.workflow.executors.script import ScriptExecutor
     from secbot.workflow.executors.tool import ToolExecutor
 
@@ -69,6 +70,10 @@ def build_default_executors(
             provider_loader=provider_loader,
         ),
         "llm": LlmExecutor(
+            llm_provider=llm_provider,
+            provider_loader=provider_loader,
+        ),
+        "llm_chunked": ChunkedLlmExecutor(
             llm_provider=llm_provider,
             provider_loader=provider_loader,
         ),

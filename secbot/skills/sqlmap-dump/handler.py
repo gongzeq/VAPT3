@@ -94,6 +94,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     data: str | None = args.get("data")
     cookie: str | None = args.get("cookie")
 
+    # Auto-promote to POST when body data is provided without explicit method.
+    if data and method == "GET":
+        method = "POST"
+
     if action == "tables" and not database:
         raise InvalidSkillArg("action=tables requires 'database'")
     if action in ("columns", "dump") and not (database and table):

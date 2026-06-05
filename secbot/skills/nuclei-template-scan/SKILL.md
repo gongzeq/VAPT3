@@ -23,12 +23,19 @@ blindly passing it to nuclei wastes the scan budget.
 
 Before calling this skill, the LLM MUST:
 
-1. Use the `glob` tool to inspect what exists, e.g.
-   `glob("secbot/resource/poc/**/*.yaml")`.
-2. Pick only the entries that actually match the target profile
-   (product, framework, CVE year, ...).
-3. Pass those entries via the `templates` argument as relative paths
-   (file OR subdirectory) under `secbot/resource/poc/`, for example
+1. List the top-level categories first:
+   ```
+   ls secbot/resource/poc/
+   ```
+2. Drill into the folders that match the target profile
+   (product, framework, CVE year, ...), e.g.
+   `ls secbot/resource/poc/cve/2023/`.
+3. Pass only the matching entries via the `templates` argument as relative
+   paths (file OR subdirectory) under `secbot/resource/poc/`, for example
    `["cve/2023/CVE-2023-1234.yaml", "exposure/nginx"]`.
+
+> **Note:** Do NOT use `glob("secbot/resource/poc/**/*.yaml")` —
+> relative-path globs are not resolved correctly by the glob tool.
+> Always drill down from the top-level listing.
 
 Omit `templates` entirely when only built-in nuclei templates should run.

@@ -6,7 +6,7 @@ description: |
   CTF、AI/LLM 安全测试 (Prompt 注入/越狱/MCP/Agent/沙箱逃逸)。用户明确给出测试目标
   (URL/代码/模型/Agent 架构) 且意图是"测试/审计/挖漏洞/利用"。
   DO NOT trigger:
-  - 安全概念讨论（"什么是 XSS"、"SQL 注入原理是什么"）→ 普通问答
+  - 安全概念讨论（"什么是 XSS"、）→ 普通问答
   - 非安全性质的 code review / debug / 性能优化 → code-audit-skill 或其他
   - 修复语法错误 / 业务逻辑 bug → 普通编程协助
   - 纯 Web 白盒代码审计（Java/JS 深度审计）→ code-audit-skill

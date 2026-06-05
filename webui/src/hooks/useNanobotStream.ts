@@ -151,7 +151,7 @@ function isNonStreamingEvent(ev: InboundEvent): boolean {
     || ev.event === "error"
     || (
       ev.event === "agent_event"
-      && (ev.type === "asset_pushed" || ev.type === "agent_status")
+      && (ev.type === "asset_pushed" || ev.type === "agent_status" || ev.type === "llm_retry")
     )
     || (
       ev.event === "agent_event"
@@ -311,6 +311,9 @@ export function useNanobotStream(
       }
 
       if (ev.event === "delta") {
+        // A delta arriving after an llm_retry means the provider recovered.
+        // Clear the disruption banner so the user sees the stream resume.
+        setStreamError((prev) => prev?.kind === "llm_retry" ? null : prev);
         if (ev.text.length === 0) return;
         if (!buffer.current && ev.text.trim().length === 0) return;
         const id = buffer.current?.messageId ?? randomId();
@@ -354,6 +357,8 @@ export function useNanobotStream(
           clearTimeout(streamEndTimerRef.current);
           streamEndTimerRef.current = null;
         }
+        // If the LLM recovered after a retry, dismiss the disruption banner.
+        setStreamError((prev) => prev?.kind === "llm_retry" ? null : prev);
         setIsStreaming(false);
         setMessages((prev) =>
           prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
@@ -454,6 +459,19 @@ export function useNanobotStream(
         // subsequent plain ``delta`` / ``message`` turns inherit the label.
         const inferredAgent = payload.agent_name || payload.agent || currentAgentRef.current;
         currentAgentRef.current = inferredAgent;
+
+        // ── llm_retry → surface connection-disruption banner ────────────
+        // The backend emits this when the LLM provider drops and the agent
+        // loop is retrying with backoff. Surface it as a streamError so
+        // StreamErrorNotice renders a visible alert above the composer.
+        if (payload.type === "llm_retry") {
+          setStreamError({
+            kind: "llm_retry",
+            attempt: payload.attempt ?? null,
+            delaySec: payload.delay_sec ?? null,
+          });
+          return;
+        }
 
         // ── tool_call merge logic (F2) ─────────────────────────────────
         // Merge into the most recent assistant message from the same agent

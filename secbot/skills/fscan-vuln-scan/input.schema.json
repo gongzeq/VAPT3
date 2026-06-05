@@ -19,12 +19,12 @@
     "user_dict": {
       "type": "string",
       "maxLength": 128,
-      "description": "Optional user dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). Glob that directory first with the glob tool and pick ONE filename matching the service — do NOT guess."
+      "description": "Optional user dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). List sub-categories with `ls secbot/resource/fuzzDicts/` first, drill into the matching folder, then pass the relative path — do NOT guess."
     },
     "pass_dict": {
       "type": "string",
       "maxLength": 128,
-      "description": "Optional password dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). Glob that directory first with the glob tool and pick ONE filename matching the service — do NOT guess."
+      "description": "Optional password dictionary filename under secbot/resource/fuzzDicts/ (enables brute-force). List sub-categories with `ls secbot/resource/fuzzDicts/` first, drill into the matching folder, then pass the relative path — do NOT guess."
     }
   }
 }

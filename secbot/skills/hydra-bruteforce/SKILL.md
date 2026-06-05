@@ -20,13 +20,21 @@ authorisation for the target service before calling it.
 Dictionary files live under `secbot/resource/fuzzDicts/` but are **never**
 auto-loaded. Before calling this skill with `user_dict` / `pass_dict`:
 
-1. Use the `glob` tool to list what exists, e.g.
-   `glob("secbot/resource/fuzzDicts/**/*.txt")`.
-2. Pick exactly ONE filename per slot that fits the service
-   (e.g. `ssh_users.txt` for SSH, `top1000-passwords.txt` for a
-   generic login page).
-3. Pass those filenames via `user_dict` / `pass_dict` as relative paths
-   under `secbot/resource/fuzzDicts/`.
+1. List the sub-categories first:
+   ```
+   ls secbot/resource/fuzzDicts/
+   ```
+   This reveals category folders such as `passwordDict/`, `userNameDict/`,
+   `ServiceWeakPass/`, etc.
+2. Drill into the folder that matches the target service
+   (e.g. `ls secbot/resource/fuzzDicts/passwordDict/ServiceWeakPass/ssh弱口令/`).
+3. Pick exactly ONE filename per slot (`user_dict` / `pass_dict`).
+4. Pass those filenames as relative paths under `secbot/resource/fuzzDicts/`
+   (e.g. `passwordDict/ServiceWeakPass/ssh弱口令/ssh-user.txt`).
+
+> **Note:** Do NOT use `glob("secbot/resource/fuzzDicts/**/*.txt")` —
+> relative-path globs are not resolved correctly by the glob tool.
+> Always drill down from the top-level listing.
 
 Inline `users` / `passwords` arrays still take precedence when supplied;
 `user_dict` / `pass_dict` only extend them.

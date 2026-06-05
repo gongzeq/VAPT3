@@ -326,7 +326,6 @@ name: port_scan
 scoped_skills:
   - nmap-port-scan
   - nmap-service-fingerprint
-  - fscan-port-scan
 ```
 
 **约束：**

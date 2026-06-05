@@ -207,6 +207,17 @@
     -webkit-text-fill-color: transparent;
     color: transparent;
   }
+  /* Chinese brand name styled to match the VAPT logotype.
+     Uses the ocean-blue primary with bold weight and CJK-optimised spacing. */
+  .brand-zh {
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    background-image: linear-gradient(135deg, hsl(var(--ocean-300)), hsl(var(--primary)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
   .bg-glass {
     background-color: hsl(var(--card) / 0.7);
     backdrop-filter: blur(12px);

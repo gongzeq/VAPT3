@@ -28,7 +28,11 @@ export type StreamError =
   /** Server rejected the inbound frame as too large (WS close code 1009).
    * Typically means the user attached images whose base64 size exceeded
    * ``maxMessageBytes`` on the server. */
-  | { kind: "message_too_big" };
+  | { kind: "message_too_big" }
+  /** LLM provider connection lost; the backend is retrying with backoff.
+   * ``attempt`` is the current retry number (1-based), ``delaySec`` is the
+   * wait before the next attempt. */
+  | { kind: "llm_retry"; attempt: number | null; delaySec: number | null };
 
 type ErrorHandler = (error: StreamError) => void;
 

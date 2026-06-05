@@ -88,7 +88,7 @@
 ### R3 安全工具 skill 化（首批）
 覆盖 baseline 三步流程的 skill 集合（具体函数清单由 trellis-research 调研定）：
 - 资产探测：`nmap-host-discovery`、`fscan-asset-discovery`、`masscan-discovery`（可选）
-- 端口/服务：`nmap-port-scan`、`nmap-service-fingerprint`、`fscan-port-scan`
+- 端口/服务：`nmap-port-scan`、`nmap-service-fingerprint`
 - 漏洞扫描：`nuclei-template-scan`、`fscan-vuln-scan`
 - 弱口令：`hydra-bruteforce`、`fscan-weak-password`（**默认禁用，需高危二次确认**）
 - 报告生成：`report-markdown`、`report-pdf`、`report-docx`

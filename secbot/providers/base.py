@@ -94,7 +94,7 @@ class LLMProvider(ABC):
 
     supports_progress_deltas = False
 
-    _CHAT_RETRY_DELAYS = (1, 2, 4)
+    _CHAT_RETRY_DELAYS = (5, 15, 30, 60, 300)
     _PERSISTENT_MAX_DELAY = 60
     _PERSISTENT_IDENTICAL_ERROR_LIMIT = 10
     _RETRY_HEARTBEAT_CHUNK = 30

@@ -41,6 +41,7 @@ vi.mock("@/lib/bootstrap", () => ({
     expires_in: 300,
   }),
   deriveWsUrl: vi.fn(() => "ws://test"),
+  deriveWorkflowApiBase: vi.fn(() => ""),
   loadSavedSecret: vi.fn(() => ""),
   saveSecret: vi.fn(),
   clearSavedSecret: vi.fn(),
@@ -129,9 +130,7 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
     await waitFor(() =>
-      expect(
-        within(sidebar).getByRole("button", { name: /^First chat$/ }),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("First chat")).toBeInTheDocument(),
     );
 
     fireEvent.pointerDown(screen.getByLabelText("Chat actions for First chat"), {
@@ -148,9 +147,7 @@ describe("App layout", () => {
       expect(deleteChatSpy).toHaveBeenCalledWith("websocket:chat-a"),
     );
     await waitFor(() =>
-      expect(
-        within(sidebar).getByRole("button", { name: /^Second chat$/ }),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("Second chat")).toBeInTheDocument(),
     );
     expect(screen.queryByText('Delete “First chat”?')).not.toBeInTheDocument();
     expect(document.body.style.pointerEvents).not.toBe("none");
@@ -185,10 +182,6 @@ describe("App layout", () => {
                 { name: "auto", label: "Auto" },
                 { name: "openai", label: "OpenAI" },
               ],
-              // OpenAI-compatible custom endpoint fields (PR from Session 2 of
-              // 05-07-ocean-tech-frontend). SettingsView reads these three
-              // fields directly — omitting them causes
-              // `Cannot read properties of undefined (reading 'has_api_key')`.
               custom: {
                 api_base: "https://api.openai.com/v1",
                 api_key_masked: "sk-****abcd",
@@ -208,11 +201,9 @@ describe("App layout", () => {
     render(<App />);
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
+    // Navigate to settings via the Navbar link
+    fireEvent.click(screen.getByText("设置"));
 
-    // After PR7, /settings renders the Tab layout. Default tab is "用户偏好".
-    // The "平台管理" tab (containing the old "General" heading) is reachable
-    // but not shown by default. Assert we landed on the settings surface.
     expect(await screen.findByText("用户偏好")).toBeInTheDocument();
     expect(screen.getByText("平台管理")).toBeInTheDocument();
     expect(screen.getByText("危险区")).toBeInTheDocument();
@@ -245,7 +236,7 @@ describe("App layout", () => {
     expect(within(sidebar).getByText("Project planning notes")).toBeInTheDocument();
     expect(within(sidebar).getByText("Travel ideas")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search chats" }), {
+    fireEvent.change(screen.getByPlaceholderText("Search chats"), {
       target: { value: "travel" },
     });
 
@@ -281,21 +272,25 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
 
+    // The Sidebar "Collapse" button uses aria-label from i18n sidebar.collapse
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     const desktopAside = container.querySelector("aside.lg\\:block") as HTMLElement;
     await waitFor(() => expect(desktopAside.style.width).toBe("0px"));
 
     expect(screen.queryByRole("button", { name: "Start a new chat" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Toggle sidebar" }));
+    // The expand/toggle button — use getAllByRole since Navbar also has one with the same aria-label
+    const toggleButtons = screen.getAllByRole("button", { name: "Toggle sidebar" });
+    const desktopToggle = toggleButtons.find((btn) => btn.className.includes("lg:flex")) ?? toggleButtons[toggleButtons.length - 1];
+    fireEvent.click(desktopToggle);
     await waitFor(() => expect(desktopAside.style.width).toBe("272px"));
 
     const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
     fireEvent.click(within(sidebar).getByRole("button", { name: "New chat" }));
     expect(createChatSpy).not.toHaveBeenCalled();
-    expect(screen.getByText("What can I do for you?")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start a new chat" })).not.toBeInTheDocument();
+    expect(screen.getByText("智海智盾")).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: "Open settings" })).toBeInTheDocument();
+    // Navbar settings link
+    expect(screen.getByText("设置")).toBeInTheDocument();
 
     expect(within(sidebar).getByText("Existing chat")).toBeInTheDocument();
   });

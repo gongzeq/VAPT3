@@ -9,11 +9,17 @@ rendering via WeasyPrint. DOCX is built programmatically from the
 
 from __future__ import annotations
 
+import html as _html_mod
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from secbot.report.builder import ReportModel, ReportRenderError, SEVERITY_ORDER
+
+
+def _esc(s: str) -> str:
+    """HTML-escape a string (short alias to keep render lines readable)."""
+    return _html_mod.escape(str(s), quote=True)
 
 if TYPE_CHECKING:  # pragma: no cover
     pass
@@ -91,16 +97,46 @@ def render_markdown(model: ReportModel) -> str:
                 out.append("")
 
             if a.findings:
-                out.append("#### 发现")
+                out.append("#### 漏洞详情")
                 out.append("")
-                out.append("| 严重级别 | 类别 | 标题 | CVE | 发现工具 |")
-                out.append("|---|---|---|---|---|")
                 for f in a.findings:
-                    out.append(
-                        f"| {_SEV_LABELS.get(f.severity, f.severity)} | {f.category} | {f.title} | "
-                        f"{f.cve_id or '—'} | {f.discovered_by} |"
-                    )
-                out.append("")
+                    sev_label = _SEV_LABELS.get(f.severity, f.severity)
+                    out.append(f"##### [{sev_label}] {f.title}")
+                    out.append("")
+                    meta = f"- **类别**: {f.category}  "
+                    meta += f"**发现工具**: {f.discovered_by}"
+                    if f.cve_id:
+                        meta += f"  \n- **CVE**: `{f.cve_id}`"
+                    out.append(meta)
+                    if f.affected_url:
+                        out.append(f"- **受影响端点**: `{f.affected_url}`")
+                    if f.evidence_summary:
+                        out.append(f"- **漏洞描述**: {f.evidence_summary}")
+                    out.append("")
+                    if f.verification_steps:
+                        out.append("**验证步骤**:")
+                        out.append("")
+                        for i, step in enumerate(f.verification_steps, 1):
+                            out.append(f"{i}. {step}")
+                        out.append("")
+                    if f.evidence_detail:
+                        out.append("**证据详情**:")
+                        out.append("")
+                        out.append("```")
+                        out.append(f.evidence_detail)
+                        out.append("```")
+                        out.append("")
+                    if f.remediation:
+                        out.append(f"**修复建议**: {f.remediation}")
+                        out.append("")
+                    if f.references:
+                        out.append("**参考资料**:")
+                        out.append("")
+                        for ref in f.references:
+                            out.append(f"- {ref}")
+                        out.append("")
+                    out.append("---")
+                    out.append("")
 
     if model.appendix.raw_log_paths:
         out.append("## 附录：原始日志")
@@ -188,6 +224,19 @@ def render_html(model: ReportModel) -> str:
     .sev-info { background: #475569; }
     ul { padding-left: 20px; }
     code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #334155; }
+    .finding-card { background: #fff; border-radius: 8px; border: 1px solid #E2E8F0; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .finding-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .finding-title { font-weight: 600; font-size: 14px; color: #0F172A; }
+    .finding-meta { font-size: 12px; color: #64748B; }
+    .finding-section { margin-top: 10px; }
+    .finding-section-title { font-weight: 600; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .finding-detail { font-size: 13px; color: #334155; white-space: pre-wrap; word-break: break-word; }
+    .finding-steps { padding-left: 18px; margin: 4px 0 0 0; }
+    .finding-steps li { font-size: 13px; color: #334155; margin-bottom: 3px; }
+    .finding-refs { font-size: 12px; }
+    .finding-refs a { color: #2563EB; text-decoration: none; }
+    .finding-refs a:hover { text-decoration: underline; }
+    pre.evidence { background: #1E293B; color: #E2E8F0; padding: 12px 16px; border-radius: 6px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
     @media print {
       .toolbar { display: none !important; }
       body { background: #fff; }
@@ -249,15 +298,67 @@ def render_html(model: ReportModel) -> str:
                 )
             lines.append("</tbody></table>")
         if a.findings:
-            lines.append("<table><thead><tr><th>严重级别</th><th>标题</th>"
-                         "<th>CVE</th><th>发现工具</th></tr></thead><tbody>")
+            lines.append("<h4>漏洞详情</h4>")
             for f in a.findings:
-                lines.append(
-                    f"<tr><td><span class=\"badge sev-{f.severity}\">{_SEV_LABELS.get(f.severity, f.severity)}</span></td>"
-                    f"<td>{f.title}</td><td>{f.cve_id or '—'}</td>"
-                    f"<td>{f.discovered_by}</td></tr>"
-                )
-            lines.append("</tbody></table>")
+                sev_label = _SEV_LABELS.get(f.severity, f.severity)
+                lines.append('<div class="finding-card">')
+                # Header
+                lines.append('<div class="finding-header">')
+                lines.append(f'<span class="badge sev-{f.severity}">{sev_label}</span>')
+                lines.append(f'<span class="finding-title">{_esc(f.title)}</span>')
+                lines.append('</div>')
+                # Meta row
+                meta_parts = [f'类别: {f.category}', f'发现工具: {f.discovered_by}']
+                if f.cve_id:
+                    meta_parts.append(f'CVE: {f.cve_id}')
+                lines.append(f'<div class="finding-meta">{" · ".join(_esc(p) for p in meta_parts)}</div>')
+                # Affected URL
+                if f.affected_url:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">受影响端点</div>')
+                    lines.append(f'<code>{_esc(f.affected_url)}</code>')
+                    lines.append('</div>')
+                # Evidence summary
+                if f.evidence_summary:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">漏洞描述</div>')
+                    lines.append(f'<div class="finding-detail">{_esc(f.evidence_summary)}</div>')
+                    lines.append('</div>')
+                # Verification steps
+                if f.verification_steps:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">验证步骤</div>')
+                    lines.append('<ol class="finding-steps">')
+                    for step in f.verification_steps:
+                        lines.append(f'<li>{_esc(step)}</li>')
+                    lines.append('</ol>')
+                    lines.append('</div>')
+                # Evidence detail (request/response/curl)
+                if f.evidence_detail:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">证据详情</div>')
+                    lines.append(f'<pre class="evidence">{_esc(f.evidence_detail)}</pre>')
+                    lines.append('</div>')
+                # Remediation
+                if f.remediation:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">修复建议</div>')
+                    lines.append(f'<div class="finding-detail">{_esc(f.remediation)}</div>')
+                    lines.append('</div>')
+                # References
+                if f.references:
+                    lines.append('<div class="finding-section">')
+                    lines.append('<div class="finding-section-title">参考资料</div>')
+                    lines.append('<div class="finding-refs">')
+                    for ref in f.references:
+                        ref_escaped = _esc(ref)
+                        if ref.startswith("http"):
+                            lines.append(f'<a href="{ref_escaped}" target="_blank">{ref_escaped}</a><br>')
+                        else:
+                            lines.append(f'{ref_escaped}<br>')
+                    lines.append('</div>')
+                    lines.append('</div>')
+                lines.append('</div>')
     lines.append("</div></body></html>")
     return "\n".join(lines)
 
@@ -340,22 +441,43 @@ def render_docx(model: ReportModel, out_path: Path) -> Path:
                 doc.add_paragraph(f"操作系统推测: {a.os_guess}")
 
             if a.findings:
-                doc.add_paragraph("发现:")
-                ftbl = doc.add_table(rows=1, cols=4)
-                ftbl.style = "Light List Accent 2"
-                h = ftbl.rows[0].cells
-                h[0].text, h[1].text, h[2].text, h[3].text = (
-                    "严重级别",
-                    "标题",
-                    "CVE",
-                    "发现工具",
-                )
+                doc.add_heading("漏洞详情", level=4)
                 for f in a.findings:
-                    r = ftbl.add_row().cells
-                    r[0].text = _SEV_LABELS.get(f.severity, f.severity)
-                    r[1].text = f.title
-                    r[2].text = f.cve_id or "—"
-                    r[3].text = f.discovered_by
+                    sev_label = _SEV_LABELS.get(f.severity, f.severity)
+                    doc.add_heading(f"[{sev_label}] {f.title}", level=5)
+                    p = doc.add_paragraph()
+                    p.add_run("类别: ").bold = True
+                    p.add_run(f.category)
+                    p.add_run("  ·  ")
+                    p.add_run("发现工具: ").bold = True
+                    p.add_run(f.discovered_by)
+                    if f.cve_id:
+                        p.add_run("  ·  ")
+                        p.add_run("CVE: ").bold = True
+                        p.add_run(f.cve_id)
+                    if f.affected_url:
+                        p2 = doc.add_paragraph()
+                        p2.add_run("受影响端点: ").bold = True
+                        p2.add_run(f.affected_url)
+                    if f.evidence_summary:
+                        p3 = doc.add_paragraph()
+                        p3.add_run("漏洞描述: ").bold = True
+                        p3.add_run(f.evidence_summary)
+                    if f.verification_steps:
+                        doc.add_paragraph("验证步骤:").bold = True
+                        for i, step in enumerate(f.verification_steps, 1):
+                            doc.add_paragraph(f"{i}. {step}", style="List Number")
+                    if f.evidence_detail:
+                        doc.add_paragraph("证据详情:").bold = True
+                        doc.add_paragraph(f.evidence_detail, style="No Spacing")
+                    if f.remediation:
+                        p4 = doc.add_paragraph()
+                        p4.add_run("修复建议: ").bold = True
+                        p4.add_run(f.remediation)
+                    if f.references:
+                        doc.add_paragraph("参考资料:").bold = True
+                        for ref in f.references:
+                            doc.add_paragraph(ref, style="List Bullet")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))

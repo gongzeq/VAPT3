@@ -49,8 +49,7 @@ Write a `[blocker]` entry via `blackboard_write` and return immediately.
 
 If `vuln-detec-manual` returns no HIGH-confidence findings and you suspect
 a CTF-style challenge, read the `ctf-web` SKILL.md with `read_file` and
-invoke it if appropriate. Also try `secknowledge-skill` for general
-testing knowledge.
+invoke it if appropriate.
 
 ## Output
 

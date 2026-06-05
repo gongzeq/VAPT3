@@ -20,6 +20,7 @@ import {
   loadSavedSecret,
   saveSecret,
 } from "@/lib/bootstrap";
+import { setApiTokenRefreshListener } from "@/lib/api";
 import { SecbotClient } from "@/lib/secbot-client";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { HomePage } from "@/pages/HomePage";
@@ -74,6 +75,18 @@ export default function App() {
           onReauth: async () => {
             try {
               const refreshed = await fetchBootstrap("", secret);
+              setState((current) =>
+                current.status === "ready" && current.client === client
+                  ? {
+                      ...current,
+                      token: refreshed.token,
+                      modelName: refreshed.model_name ?? current.modelName,
+                      workflowApiBase: deriveWorkflowApiBase(
+                        refreshed.workflow_api_port,
+                      ),
+                    }
+                  : current,
+              );
               return deriveWsUrl(refreshed.ws_path, refreshed.token);
             } catch {
               return null;
@@ -112,6 +125,14 @@ export default function App() {
     const saved = loadSavedSecret();
     return bootstrapWithSecret(saved);
   }, [bootstrapWithSecret]);
+
+  useEffect(() => {
+    return setApiTokenRefreshListener((token) => {
+      setState((current) =>
+        current.status === "ready" ? { ...current, token } : current,
+      );
+    });
+  }, []);
 
   useEffect(() => {
     const warm = () => preloadMarkdownText();

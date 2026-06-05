@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -232,6 +233,13 @@ async def test_run_no_vulnerabilities(ctx: SkillContext) -> None:
         assert result.summary["targets"] == 1
         assert result.summary["findings"] == 0
         assert result.summary["high_confidence"] == 0
+        assert result.raw_log_path is not None
+        raw_log = Path(result.raw_log_path)
+        assert raw_log.name == "vuln-detec-manual.log"
+        assert raw_log.exists()
+        raw_payload = json.loads(raw_log.read_text(encoding="utf-8"))
+        assert raw_payload["summary"] == result.summary
+        assert raw_payload["findings"] == []
         assert result.cmdb_writes == []
 
 

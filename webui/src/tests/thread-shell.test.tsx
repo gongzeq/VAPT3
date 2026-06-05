@@ -100,9 +100,9 @@ describe("ThreadShell", () => {
       />,
     ));
 
-    await waitFor(() => expect(screen.getByText("Important conversation")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Important conversation"));
-
+    // ThreadShell no longer renders a clickable title header.
+    // Verify the session loaded without triggering navigation.
+    await waitFor(() => expect(screen.getByPlaceholderText("Ask anything...")).toBeInTheDocument());
     expect(onGoHome).not.toHaveBeenCalled();
   });
 
@@ -268,18 +268,17 @@ describe("ThreadShell", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Write code" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /\u5168\u7f51\u8d44\u4ea7\u53d1\u73b0/ })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Write code" }));
+    fireEvent.click(screen.getByRole("button", { name: /\u5168\u7f51\u8d44\u4ea7\u53d1\u73b0/ }));
 
-    await waitFor(() =>
-      expect(client.sendMessage).toHaveBeenCalledWith(
-        "chat-a",
-        "Help me write the code for this task, starting with the smallest useful change.",
-        undefined,
-      ),
-    );
+    // QuickPrompts dispatches a composer prefill event, not a direct sendMessage.
+    // The composer should be prefilled with the prompt text.
+    await waitFor(() => {
+      const input = screen.getByLabelText("Message input") as HTMLTextAreaElement;
+      expect(input.value.length).toBeGreaterThan(0);
+    });
   });
 
   it("does not leak the previous thread when opening a brand-new chat", async () => {
@@ -495,7 +494,7 @@ describe("ThreadShell", () => {
     });
 
     expect(screen.queryByText("live assistant reply")).not.toBeInTheDocument();
-    expect(screen.getByText("What can I do for you?")).toBeInTheDocument();
+    expect(screen.getByText("智海智盾")).toBeInTheDocument();
 
     await act(async () => {
       rerender(

@@ -84,8 +84,14 @@ async def test_asset_push_emits_inbound_with_injected_event() -> None:
     assert msg.metadata.get("asset_kind") == "url"
     assert msg.metadata.get("asset_id") == 1
     assert msg.metadata.get("asset_agent") == "crawl_web"
+    assert "since_id=0" in msg.content
     # Routes back to the originating session queue.
     assert msg.session_key_override == "websocket:abc"
+
+    await tool.execute(kind="url", payload={"url": "/admin"})
+    msg2 = await bus.consume_inbound()
+    assert msg2.metadata.get("asset_id") == 2
+    assert "since_id=1" in msg2.content
 
 
 @pytest.mark.asyncio

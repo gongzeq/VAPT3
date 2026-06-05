@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -319,6 +321,31 @@ class ChannelManager:
                         continue
 
                 if msg.metadata.get("_retry_wait"):
+                    # Broadcast an ``llm_retry`` agent_event to the WebSocket
+                    # channel so the frontend can surface a connection-disruption
+                    # notice instead of silently dropping the message.
+                    ws_channel = self.channels.get("websocket")
+                    if ws_channel is not None:
+                        retry_content = msg.content or ""
+                        attempt_match = re.search(r"attempt (\d+)", retry_content)
+                        delay_match = re.search(r"retry in (\d+)s", retry_content)
+                        retry_payload: dict[str, Any] = {
+                            "type": "llm_retry",
+                            "content": retry_content,
+                            "attempt": int(attempt_match.group(1)) if attempt_match else None,
+                            "delay_sec": int(delay_match.group(1)) if delay_match else None,
+                        }
+                        retry_body = {
+                            "event": "agent_event",
+                            "chat_id": msg.chat_id,
+                            "type": "llm_retry",
+                            "payload": retry_payload,
+                            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                        }
+                        try:
+                            await ws_channel._broadcast_frame(retry_body, chat_id=msg.chat_id)
+                        except Exception:
+                            logger.debug("llm_retry broadcast failed", exc_info=True)
                     continue
 
                 # Coalesce consecutive _stream_delta messages for the same (channel, chat_id)
