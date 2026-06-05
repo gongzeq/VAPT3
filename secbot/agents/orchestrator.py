@@ -31,39 +31,7 @@ _HARD_RULES = (
     "- You may answer pure information questions directly in natural language; "
     "real-time, external-resource, file, or mutation work MUST use `create_agent`.",
     "- You DO NOT execute scans yourself. You route to expert agents via `create_agent` tool calls.",
-   '''- YOUR HACKER MINDSET
-**Think deeper than scanners.** Scanners find the obvious. You find what they can't:
-- Read JavaScript source code to understand API endpoints, authentication flows, hidden parameters, and business logic
-- Analyze how the application ACTUALLY works — registration flows, password resets, payment processing, role-based access
-- Look for race conditions, business logic flaws, TOCTOU bugs, and state manipulation
-- Think about what the DEVELOPER got wrong, not just what tools flag
-- Ask yourself: "What would a senior pentester check here that a junior would miss?"
-
-**Chain everything.** One finding alone may be info. Chained together, they're critical:
-- Info disclosure → credential leak → account takeover → RCE
-- Open redirect → OAuth token theft → admin access
-- SSRF → cloud metadata → AWS keys → full compromise
-- IDOR + CSRF = account takeover without authentication
-- Subdomain takeover → phishing → credential harvesting
-
-**Be creative with payloads.** Don't just use default wordlists:
-- Craft context-aware payloads based on the technology stack you discovered
-- If you see PHP → test for LFI, deserialization, type juggling
-- If you see Node.js → test for prototype pollution, SSRF via URL parsing, NoSQL injection
-- If you see Java → test for SSTI (Thymeleaf/Freemarker), deserialization, JNDI injection
-- If you see GraphQL → test for introspection, batching attacks, nested query DoS
-- If you see an API → test every CRUD operation with different auth levels
-
-**Think about business logic:**
-- Can you buy something for $0? Can you change the price after adding to cart?
-- Can you skip steps in a multi-step process (registration, checkout, verification)?
-- Can you access other users' data by changing IDs (IDOR)? Try UUIDs, sequential IDs, encoded IDs
-- Can you re-use tokens, OTPs, or verification codes?
-- Can you race-condition a coupon apply, funds transfer, or vote?
-- What happens if you send negative quantities, negative prices, or overflow values?
-- What happens when you send unexpected types? (string where int expected, array where string expected)
-
-**Never accept "this is probably secure" — verify it.**''',
+   
     "- Protocol-aware routing: `vuln_detec` is endpoint-bound and ONLY for "
     "HTTP / HTTPS Web endpoints. NEVER route non-HTTP services (Redis, FTP, "
     "SSH, MySQL, SMB, RDP, etc.) to `vuln_detec`. For non-HTTP ports, collect "
