@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
+import { CumulativeUsageBar } from "@/components/TokenUsageBadge";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
 import { QuickPrompts } from "@/components/QuickPrompts";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
@@ -80,6 +81,7 @@ export function ThreadShell({
     setMessages,
     streamError,
     dismissStreamError,
+    cumulativeUsage,
   } = useNanobotStream(chatId, initial, onTurnEnd);
   const showHeroComposer = messages.length === 0 && !loading;
   const pendingAsk = useMemo(() => {
@@ -187,6 +189,7 @@ export function ThreadShell({
           onDismiss={dismissStreamError}
         />
       ) : null}
+      <CumulativeUsageBar usage={cumulativeUsage} />
       {pendingAsk ? (
         <AskUserPrompt
           question={pendingAsk.question}
@@ -250,8 +253,27 @@ export function ThreadShell({
     </div>
   ) : (
     <>
-      <div className="flex flex-col items-center justify-center">
-        <span className="brand-zh text-2xl">智海智盾</span>
+      <div className="flex flex-col items-center justify-center gap-4 pt-2 animate-fade-in-up">
+        {/* 品牌 logo — 与左上角 Navbar 一致 */}
+        <div className="relative">
+          <span
+            aria-hidden
+            className="absolute inset-0 -z-10 rounded-3xl bg-primary/25 blur-2xl"
+          />
+          <img
+            src="/brand/logo.png"
+            alt=""
+            className="relative h-20 w-20 rounded-3xl ring-1 ring-primary/25 shadow-glow"
+          />
+        </div>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="brand-zh brand-zh-hero text-3xl">粤海智盾</span>
+          <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
+            {t("home.hero.tagline", {
+              defaultValue: "AI 驱动的智能安全运营平台 · 资产·漏洞·合规一体化",
+            })}
+          </p>
+        </div>
       </div>
       <QuickPrompts className="w-full" />
     </>

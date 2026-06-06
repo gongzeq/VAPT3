@@ -347,7 +347,9 @@ export function ThreadComposer({
       <div
         className={cn(
           "relative mx-auto flex w-full flex-col overflow-hidden rounded-xl border border-border/60 bg-muted/30 p-2 transition-all duration-200",
-          isHero ? "max-w-[58rem]" : "max-w-[49.5rem]",
+          isHero
+            ? "max-w-[58rem] rounded-2xl bg-gradient-to-b from-muted/40 to-muted/20 shadow-[0_12px_44px_-16px_hsl(var(--primary)/0.32)]"
+            : "max-w-[49.5rem]",
           disabled && "opacity-60",
           isDragging && "ring-2 ring-primary/40 motion-reduce:ring-0 motion-reduce:border-primary",
           !disabled && "focus-within:border-primary/40 focus-within:shadow-[0_0_16px_hsl(var(--primary)/0.08)]",

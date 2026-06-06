@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import {
+  ArrowUpRight,
   Bug,
   FileText,
   Key,
@@ -60,15 +61,19 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
   const { t } = useTranslation();
   return (
     <section className={className}>
-      <header className="mb-3 flex items-center gap-2">
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
-          <Zap className="h-3.5 w-3.5 text-primary" />
+      <header className="mb-4 flex items-center gap-2.5">
+        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+          <Zap className="h-4 w-4 text-primary" />
         </span>
-        <h4 className="text-sm font-semibold">
+        <h4 className="text-sm font-semibold tracking-wide text-foreground">
           {t("home.prompts.title", { defaultValue: "快捷指令" })}
         </h4>
+        <span
+          aria-hidden
+          className="ml-1 h-px flex-1 bg-gradient-to-r from-border/70 to-transparent"
+        />
       </header>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {PROMPTS.map((p) => {
           const Icon = p.icon;
           const title = t(`home.prompts.${p.key}.title`, {
@@ -84,18 +89,28 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
             <button
               key={p.key}
               type="button"
-              className="prompt-accent card-hover-glow group w-full rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 pl-4 text-left text-sm"
+              className="group relative w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-muted/40 to-muted/10 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_hsl(var(--primary)/0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
               onClick={() => dispatchComposerPrefill(prefill)}
             >
-              <div className="flex items-center gap-2.5 font-medium text-foreground">
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                  <Icon className="h-3.5 w-3.5 text-primary" />
+              {/* 悬停时右上角浮现的海蓝辉光 */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none"
+              />
+              <div className="relative flex items-start gap-3">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-cyan-glow/10 ring-1 ring-primary/15 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                  <Icon className="h-5 w-5 text-primary" />
                 </span>
-                {title}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                    <span className="truncate">{title}</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 -translate-x-1 text-primary opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 motion-reduce:transition-none" />
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground group-hover:text-muted-foreground/90">
+                    {subtitle}
+                  </p>
+                </div>
               </div>
-              <p className="mt-0.5 pl-[2.125rem] text-xs text-muted-foreground group-hover:text-muted-foreground/90">
-                {subtitle}
-              </p>
             </button>
           );
         })}
