@@ -304,10 +304,10 @@ async def test_asset_distribution_empty_db_emits_full_roster(
     )
     body = _body(resp)
     types = [b["type"] for b in body["buckets"]]
-    assert types == ["web_app", "api", "database", "server", "network", "other"]
+    assert types == ["业务", "智能体", "OA", "中间件", "支撑", "内网", "其他"]
     names = {b["type"]: b["name"] for b in body["buckets"]}
-    assert names["web_app"] == "Web 应用"
-    assert names["network"] == "网络设备"
+    assert names["业务"] == "业务"
+    assert names["内网"] == "内网"
     assert all(b["count"] == 0 for b in body["buckets"])
 
 
@@ -316,7 +316,7 @@ async def test_asset_distribution_groups_by_tags_type(
 ) -> None:
     async with cmdb_db.get_session() as session:
         scan = await repo.create_scan(session, "local", target="t")
-        for i, kind in enumerate(["web_app", "web_app", "api", None]):
+        for i, kind in enumerate(["业务", "业务", "OA", None]):
             tags = {"type": kind} if kind else None
             await repo.upsert_asset(
                 session,
@@ -331,10 +331,10 @@ async def test_asset_distribution_groups_by_tags_type(
     )
     body = _body(resp)
     by_type = {b["type"]: b["count"] for b in body["buckets"]}
-    assert by_type["web_app"] == 2
-    assert by_type["api"] == 1
-    # NULL ``tags.type`` folds into ``other`` per spec §2.4.
-    assert by_type["other"] == 1
+    assert by_type["业务"] == 2
+    assert by_type["OA"] == 1
+    # NULL ``tags.type`` folds into ``其他`` per spec §2.4.
+    assert by_type["其他"] == 1
 
 
 # ---------------------------------------------------------------------------

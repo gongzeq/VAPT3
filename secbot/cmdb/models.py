@@ -239,8 +239,17 @@ VALID_VULN_CATEGORIES = frozenset(
 )
 
 # Reserved vocabulary for the `asset.tags.type` JSON key (spec §2.1.1).
+# Business-oriented asset classification (Chinese labels).
 VALID_ASSET_TYPES = frozenset(
-    {"web_app", "api", "database", "server", "network", "other"}
+    {
+        "智能体",   # AI agent / bot / crawler endpoint
+        "内网",     # Internal network host (RFC-1918, non-web service)
+        "OA",       # Office automation (mail, LDAP, SSO, collaboration)
+        "支撑",     # Infrastructure / support (DNS, DHCP, NTP, monitoring)
+        "中间件",   # Middleware (Tomcat, Nginx, Redis, RabbitMQ, Kafka)
+        "业务",     # Business application (web app, API, e-commerce)
+        "其他",     # Catch-all
+    }
 )
 
 # Allowed ``report_meta.type`` / ``report_meta.status`` values.

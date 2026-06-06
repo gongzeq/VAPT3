@@ -177,23 +177,24 @@ async def test_vuln_distribution_counts_per_category(tmp_cmdb) -> None:
 
 
 async def test_asset_type_distribution_folds_null_into_other(tmp_cmdb) -> None:
-    await _mk_asset(tmp_cmdb, target="a1", tags={"type": "web_app"})
-    await _mk_asset(tmp_cmdb, target="a2", tags={"type": "api"})
+    await _mk_asset(tmp_cmdb, target="a1", tags={"type": "业务"})
+    await _mk_asset(tmp_cmdb, target="a2", tags={"type": "OA"})
     await _mk_asset(tmp_cmdb, target="a3", tags=None)  # no tags at all
     await _mk_asset(tmp_cmdb, target="a4", tags={"system": "CRM"})  # no `type`
 
     dist = await repo.asset_type_distribution(tmp_cmdb, "local")
     assert set(dist.keys()) == {
-        "web_app",
-        "api",
-        "database",
-        "server",
-        "network",
-        "other",
+        "业务",
+        "智能体",
+        "OA",
+        "中间件",
+        "支撑",
+        "内网",
+        "其他",
     }
-    assert dist["web_app"] == 1
-    assert dist["api"] == 1
-    assert dist["other"] == 2
+    assert dist["业务"] == 1
+    assert dist["OA"] == 1
+    assert dist["其他"] == 2
 
 
 async def test_asset_type_distribution_empty_returns_zeroed_buckets(tmp_cmdb) -> None:
@@ -212,7 +213,7 @@ async def test_asset_cluster_empty_returns_empty_mapping(tmp_cmdb) -> None:
 
 
 async def test_asset_cluster_folds_critical_into_high(tmp_cmdb) -> None:
-    asset = await _mk_asset(tmp_cmdb, tags={"system": "CRM", "type": "web_app"})
+    asset = await _mk_asset(tmp_cmdb, tags={"system": "CRM", "type": "业务"})
     await _mk_vuln(tmp_cmdb, asset, severity="critical", title="c1", category="cve")
     await _mk_vuln(tmp_cmdb, asset, severity="high", title="h1", category="cve")
     await _mk_vuln(tmp_cmdb, asset, severity="medium", title="m1", category="cve")

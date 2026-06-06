@@ -97,20 +97,22 @@ _VULN_DISTRIBUTION_OPTIONAL: tuple[str, ...] = ("cve", "weak_password")
 _VULN_FOLD_THRESHOLD = 5
 
 _ASSET_TYPE_DISPLAY: dict[str, str] = {
-    "web_app": "Web 应用",
-    "api": "API 端点",
-    "database": "数据库",
-    "server": "服务器",
-    "network": "网络设备",
-    "other": "其他",
+    "业务": "业务",
+    "智能体": "智能体",
+    "OA": "OA",
+    "中间件": "中间件",
+    "支撑": "支撑",
+    "内网": "内网",
+    "其他": "其他",
 }
 _ASSET_TYPE_ORDER: tuple[str, ...] = (
-    "web_app",
-    "api",
-    "database",
-    "server",
-    "network",
-    "other",
+    "业务",
+    "智能体",
+    "OA",
+    "中间件",
+    "支撑",
+    "内网",
+    "其他",
 )
 
 # WS broadcast throttle: at most 1 event / 1s per (event_name, scope_key). Per
@@ -552,6 +554,10 @@ class WebSocketChannel(BaseChannel):
         # Throttle state for WS broadcasts (per spec: 1 update / 1s per key).
         # Maps ``(event, scope)`` → monotonic timestamp of last emission.
         self._broadcast_last_emit: dict[tuple[str, str], float] = {}
+        # Pending high-risk confirmations: ask_id → Future[bool].
+        # ``surface_confirm`` registers a Future and broadcasts the prompt;
+        # ``_dispatch_envelope`` resolves it when ``scan.user_reply`` arrives.
+        self._pending_confirms: dict[str, asyncio.Future[bool]] = {}
         self._static_dist_path: Path | None = (
             static_dist_path.resolve() if static_dist_path is not None else None
         )
@@ -2083,6 +2089,64 @@ class WebSocketChannel(BaseChannel):
 
         return await self._broadcast_frame(body, chat_id=chat_id)
 
+    async def surface_confirm(
+        self,
+        payload: dict[str, Any],
+        *,
+        chat_id: str,
+    ) -> bool:
+        """Broadcast a ``high_risk_confirm`` prompt and block until the user replies.
+
+        Called by the agent loop's ``ctx.confirm`` callback (see
+        ``secbot/agent/loop.py``).  The flow:
+
+        1. Generate a unique ``ask_id``.
+        2. Register an ``asyncio.Future`` in ``_pending_confirms``.
+        3. Broadcast the payload (with ``ask_id``) as an ``agent_event``.
+        4. Await the Future — resolved when ``scan.user_reply`` arrives via
+           ``_dispatch_envelope``, or cancelled after ``timeout_sec``.
+
+        Returns ``True`` if the user approved, ``False`` otherwise.
+        """
+        ask_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+        self._pending_confirms[ask_id] = future
+
+        enriched = dict(payload)
+        enriched["ask_id"] = ask_id
+
+        self.logger.info(
+            "surface_confirm: broadcasting high_risk_confirm ask_id={} skill={}",
+            ask_id,
+            payload.get("skill", "unknown"),
+        )
+        await self.broadcast_agent_event(
+            chat_id=chat_id,
+            type="high_risk_confirm",
+            payload=enriched,
+        )
+
+        try:
+            return await future
+        finally:
+            self._pending_confirms.pop(ask_id, None)
+
+    def resolve_confirm(self, ask_id: str, decision: bool) -> bool:
+        """Resolve a pending ``high_risk_confirm`` Future.
+
+        Called by ``_dispatch_envelope`` when a ``scan.user_reply`` envelope
+        arrives.  Returns ``True`` if a matching Future was found and resolved.
+        """
+        future = self._pending_confirms.get(ask_id)
+        if future is None or future.done():
+            self.logger.warning(
+                "resolve_confirm: no pending future for ask_id={}", ask_id,
+            )
+            return False
+        future.set_result(decision)
+        return True
+
     async def _broadcast_frame(
         self, body: dict[str, Any], *, chat_id: str | None
     ) -> bool:
@@ -2619,6 +2683,31 @@ class WebSocketChannel(BaseChannel):
                 metadata=metadata,
             )
             return
+        if t == "scan.user_reply":
+            ask_id = envelope.get("ask_id")
+            decision_raw = envelope.get("decision")
+            if not isinstance(ask_id, str) or not ask_id:
+                await self._send_event(connection, "error", detail="missing ask_id")
+                return
+            if decision_raw not in ("approve", "deny"):
+                await self._send_event(
+                    connection, "error",
+                    detail="invalid decision",
+                )
+                return
+            approved = decision_raw == "approve"
+            resolved = self.resolve_confirm(ask_id, approved)
+            if not resolved:
+                await self._send_event(
+                    connection, "error",
+                    detail="unknown ask_id",
+                )
+                return
+            await self._send_event(
+                connection, "confirm_resolved",
+                ask_id=ask_id, decision=decision_raw,
+            )
+            return
         if t == "message":
             cid = envelope.get("chat_id")
             content = envelope.get("content")
@@ -2691,6 +2780,12 @@ class WebSocketChannel(BaseChannel):
         self._conn_default.clear()
         self._issued_tokens.clear()
         self._api_tokens.clear()
+        # Cancel any pending high-risk confirmation futures so awaiting
+        # tasks (HighRiskGate.guard → ctx.confirm) unblock promptly.
+        for fut in self._pending_confirms.values():
+            if not fut.done():
+                fut.cancel()
+        self._pending_confirms.clear()
 
     async def _safe_send_to(self, connection: Any, raw: str, *, label: str = "") -> None:
         """Send a raw frame to one connection, cleaning up on ConnectionClosed."""

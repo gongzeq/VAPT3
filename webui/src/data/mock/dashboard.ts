@@ -125,11 +125,12 @@ export interface AssetSlice {
 }
 
 export const assetDistribution: AssetSlice[] = [
-  { name: "Web 应用", value: 342 },
-  { name: "API 端点", value: 289 },
-  { name: "数据库", value: 156 },
-  { name: "服务器", value: 231 },
-  { name: "网络设备", value: 98 },
+  { name: "业务", value: 342 },
+  { name: "智能体", value: 89 },
+  { name: "OA", value: 156 },
+  { name: "中间件", value: 231 },
+  { name: "支撑", value: 98 },
+  { name: "内网", value: 128 },
   { name: "其他", value: 88 },
 ];
 

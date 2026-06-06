@@ -420,12 +420,13 @@ async def list_vulnerabilities(
 # the second argument (``'localtime'``). The project deploys with UTC+8.
 _SEVERITY_TREND_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low")
 _ASSET_TYPE_ORDER: tuple[str, ...] = (
-    "web_app",
-    "api",
-    "database",
-    "server",
-    "network",
-    "other",
+    "业务",
+    "智能体",
+    "OA",
+    "中间件",
+    "支撑",
+    "内网",
+    "其他",
 )
 _VULN_CATEGORY_ORDER: tuple[str, ...] = (
     "injection",
@@ -664,7 +665,7 @@ async def asset_type_distribution(
 ) -> dict[str, int]:
     """Return ``{asset_type: count}`` keyed by ``asset.tags.type``.
 
-    NULL / unknown / missing values are folded into ``other``.
+    NULL / unknown / missing values are folded into ``\u5176\u4ed6``.
     """
 
     type_expr = func.json_extract(Asset.tags, "$.type").label("kind")
@@ -676,7 +677,7 @@ async def asset_type_distribution(
     rows = (await session.execute(stmt)).all()
     counts: dict[str, int] = {t: 0 for t in _ASSET_TYPE_ORDER}
     for row in rows:
-        kind = row.kind if row.kind in VALID_ASSET_TYPES else "other"
+        kind = row.kind if row.kind in VALID_ASSET_TYPES else "其他"
         counts[kind] = counts.get(kind, 0) + int(row.n)
     return counts
 
