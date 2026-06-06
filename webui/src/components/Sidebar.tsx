@@ -68,7 +68,7 @@ export function Sidebar(props: SidebarProps) {
         <button
           type="button"
           onClick={props.onNewChat}
-          className="hover-lift inline-flex w-full items-center justify-center gap-2 rounded-lg gradient-primary px-3 py-2 text-sm font-semibold text-white shadow-md"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg gradient-primary px-3 py-2 text-sm font-semibold text-white shadow-[0_2px_12px_hsl(var(--primary)/0.3)] transition-all duration-200 hover:shadow-[0_4px_20px_hsl(var(--primary)/0.45)] hover:scale-[1.01] active:scale-[0.99]"
         >
           <Plus className="h-4 w-4" />
           {t("sidebar.newChat", { defaultValue: "新建会话" })}
@@ -82,7 +82,7 @@ export function Sidebar(props: SidebarProps) {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t("sidebar.searchPlaceholder", { defaultValue: "搜索历史会话…" })}
-          className="w-full rounded-lg border border-border bg-muted/40 py-2 pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+          className="focus-ring-primary w-full rounded-lg border border-border/60 bg-muted/30 py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/70"
         />
       </div>
 

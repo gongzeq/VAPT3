@@ -105,7 +105,7 @@ export function ScheduleTab({ workflow, client, onUpdated }: ScheduleTabProps) {
           className={cn(
             "ml-auto rounded-full border px-3 py-1 text-xs",
             hasSchedule
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              ? "border-alert-success/40 bg-alert-success/10 text-alert-success"
               : "border-border/40 bg-muted/30 text-muted-foreground",
           )}
         >
@@ -228,7 +228,7 @@ export function ScheduleTab({ workflow, client, onUpdated }: ScheduleTabProps) {
         )}
 
         {error && (
-          <p className="text-xs text-rose-300">
+          <p className="text-xs text-destructive">
             {t("workflow.error.schedule")}: {error}
           </p>
         )}
@@ -248,14 +248,14 @@ export function ScheduleTab({ workflow, client, onUpdated }: ScheduleTabProps) {
               type="button"
               onClick={() => void detach()}
               disabled={detaching}
-              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-300 transition-colors hover:bg-rose-500/20 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
               {t("workflow.schedule.detach")}
             </button>
           )}
           {saved && (
-            <span className="text-xs text-emerald-300">
+            <span className="text-xs text-alert-success">
               ✓ {t("workflow.schedule.saved")}
             </span>
           )}
@@ -280,7 +280,7 @@ function InputsMatrix({
         <label key={input.name} className="flex flex-col gap-1 text-xs">
           <span className="text-muted-foreground">
             {input.label || input.name}
-            {input.required && <span className="ml-1 text-rose-400">*</span>}
+            {input.required && <span className="ml-1 text-destructive">*</span>}
           </span>
           <input
             value={values[input.name] ?? ""}

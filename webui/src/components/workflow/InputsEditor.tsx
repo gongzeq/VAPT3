@@ -98,7 +98,7 @@ export function InputsEditor({ value, onChange, className }: InputsEditorProps) 
         <div className="space-y-3">
           {value.map((input, i) => (
             <div
-              key={i}
+              key={`input-${input.name}-${i}`}
               className="rounded-xl border border-[hsl(var(--border))] bg-background/40 p-4"
             >
               <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
@@ -222,7 +222,7 @@ export function InputsEditor({ value, onChange, className }: InputsEditorProps) 
                   type="button"
                   onClick={() => remove(i)}
                   aria-label={t("workflow.basic.removeInput")}
-                  className="inline-flex items-center gap-1 rounded-lg border border-border/40 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-rose-500/50 hover:text-rose-400"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border/40 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   {t("workflow.basic.removeInput")}

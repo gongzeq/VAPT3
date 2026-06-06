@@ -144,10 +144,9 @@ export function BlackboardPanel({
           return merged;
         });
       })
-      .catch((err) => {
+      .catch(() => {
         // Network / 4xx — degrade-don't-crash: leave entries empty so the
         // WS feed can still populate the panel.
-        console.warn("fetchBlackboard failed", err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

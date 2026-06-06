@@ -140,7 +140,7 @@ export function AgentEditor({ name, onClose }: AgentEditorProps) {
 
       {/* Restart warning banner */}
       {saved && (
-        <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-2.5 text-sm text-yellow-200">
+        <div className="rounded-lg border border-alert-warning/40 bg-alert-warning/10 px-4 py-2.5 text-sm text-alert-warning">
           Configuration saved. A service restart is required for changes to take effect.
         </div>
       )}

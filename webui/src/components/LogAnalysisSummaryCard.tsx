@@ -25,10 +25,10 @@ import { cn } from "@/lib/utils";
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 const SEV_COLORS: Record<string, string> = {
-  critical: "bg-rose-500/15 text-rose-400 border-rose-500/40",
-  high: "bg-orange-500/15 text-orange-400 border-orange-500/40",
-  medium: "bg-amber-500/15 text-amber-400 border-amber-500/40",
-  low: "bg-sky-500/15 text-sky-400 border-sky-500/40",
+  critical: "bg-severity-critical/15 text-severity-critical border-severity-critical/40",
+  high: "bg-severity-high/15 text-severity-high border-severity-high/40",
+  medium: "bg-severity-medium/15 text-severity-medium border-severity-medium/40",
+  low: "bg-severity-low/15 text-severity-low border-severity-low/40",
 };
 
 const SEV_LABELS: Record<string, string> = {
@@ -51,6 +51,7 @@ function formatDate(raw: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────────
 
+/** @description Summary card showing the latest log-analysis scan result with confidence and action. */
 export function LogAnalysisSummaryCard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -96,7 +97,7 @@ export function LogAnalysisSummaryCard() {
   return (
     <section>
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-1 h-5 rounded-full bg-gradient-to-b from-emerald-500 to-cyan-500" />
+        <div className="w-1 h-5 rounded-full bg-gradient-to-b from-ocean-500 to-cyan-glow" />
         <h2 className="text-base font-semibold">
           {t("logAnalysis.title", { defaultValue: "日志安全分析" })}
         </h2>
@@ -108,16 +109,12 @@ export function LogAnalysisSummaryCard() {
       <button
         type="button"
         onClick={() => navigate("/dashboard/log-analysis")}
-        className="w-full text-left rounded-xl border border-border/40 bg-card hover:border-emerald-500/50 hover-lift p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center transition-colors"
+        className="w-full text-left rounded-xl border border-border/40 bg-card hover:border-alert-success/50 hover-lift p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 items-center transition-colors"
       >
         {/* Hero metric — anomaly count */}
         <div className="lg:col-span-2 flex items-center gap-4">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-            style={{
-              background: "rgba(16,185,129,0.15)",
-              border: "1px solid rgba(16,185,129,0.3)",
-            }}
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-alert-success/15 border border-alert-success/30"
           >
             📋
           </div>
@@ -129,8 +126,8 @@ export function LogAnalysisSummaryCard() {
               </div>
             ) : (
               <>
-                <p className="text-3xl font-bold tracking-tight font-mono text-emerald-400">
-                  {hasData ? latest!.anomaly_count : "—"}
+                <p className="text-3xl font-bold tracking-tight font-mono text-alert-success">
+                  {hasData ? latest?.anomaly_count ?? "—" : "—"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   最近检测异常数
@@ -149,13 +146,13 @@ export function LogAnalysisSummaryCard() {
             </div>
           ) : hasData ? (
             <>
-              <p className="text-sm font-medium truncate" title={latest!.file_name}>
-                {latest!.file_name}
+              <p className="text-sm font-medium truncate" title={latest?.file_name}>
+                {latest?.file_name}
               </p>
               <p className="text-xs text-muted-foreground">
-                {formatDate(latest!.created_at)}
+                {formatDate(latest?.created_at ?? "")}
                 {" · "}
-                置信度 {formatConfidence(latest!.confidence)}
+                置信度 {formatConfidence(latest?.confidence ?? 0)}
               </p>
             </>
           ) : (
@@ -201,14 +198,14 @@ export function LogAnalysisSummaryCard() {
             <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
           ) : hasData ? (
             <span className="text-xs text-muted-foreground truncate">
-              {latest!.suggested_action || "—"}
+              {latest?.suggested_action || "—"}
             </span>
           ) : (
             <span />
           )}
           <div className="flex items-center gap-2 shrink-0">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span className="text-emerald-400 text-sm">→</span>
+            <ShieldCheck className="h-4 w-4 text-alert-success" />
+            <span className="text-alert-success text-sm">→</span>
           </div>
         </div>
       </button>

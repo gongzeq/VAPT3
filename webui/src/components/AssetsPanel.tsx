@@ -24,12 +24,12 @@ const KIND_META: Record<
   AssetKind,
   { icon: LucideIcon; label: string; color: string }
 > = {
-  url: { icon: Globe, label: "URL", color: "text-sky-300" },
-  port: { icon: Network, label: "PORT", color: "text-amber-300" },
-  service: { icon: Server, label: "SERVICE", color: "text-emerald-300" },
-  credential: { icon: KeyRound, label: "CREDENTIAL", color: "text-fuchsia-300" },
-  vuln: { icon: Bug, label: "VULN", color: "text-rose-300" },
-  tech: { icon: Layers, label: "TECH", color: "text-indigo-300" },
+  url: { icon: Globe, label: "URL", color: "text-severity-low" },
+  port: { icon: Network, label: "PORT", color: "text-alert-warning" },
+  service: { icon: Server, label: "SERVICE", color: "text-alert-success" },
+  credential: { icon: KeyRound, label: "CREDENTIAL", color: "text-cyan-glow" },
+  vuln: { icon: Bug, label: "VULN", color: "text-destructive" },
+  tech: { icon: Layers, label: "TECH", color: "text-ocean-300" },
 };
 
 const KNOWN_KINDS = new Set<string>([
@@ -116,6 +116,7 @@ function describePayload(entry: AssetEntry): string {
   }
 }
 
+/** @description Props for the assets sidebar panel. */
 export interface AssetsPanelProps {
   chatId: string | null;
   className?: string;
@@ -175,8 +176,8 @@ export function AssetsPanel({
           return merged;
         });
       })
-      .catch((err) => {
-        console.warn("fetchAssetFeed failed", err);
+      .catch(() => {
+        // Degrade-don't-crash: leave feed empty so the panel still renders.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

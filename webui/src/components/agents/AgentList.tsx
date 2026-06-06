@@ -117,7 +117,7 @@ export function AgentList({ onEdit, onCreate }: AgentListProps) {
                           root and defaults to true). */}
                       {agent.available === false && (
                         <span
-                          className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+                          className="rounded-full border border-alert-warning/40 bg-alert-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-alert-warning"
                           title={
                             agent.missing_binaries && agent.missing_binaries.length > 0
                               ? `离线：本机缺少 ${agent.missing_binaries.join(", ")}`

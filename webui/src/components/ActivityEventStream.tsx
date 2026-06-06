@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
-  Loader2,
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
@@ -21,17 +20,17 @@ import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const LEVEL_TONE: Record<ActivityLevel, string> = {
-  critical: "text-rose-400",
-  warning: "text-amber-400",
-  info: "text-ocean-400",
-  ok: "text-emerald-400",
+  critical: "text-severity-critical",
+  warning: "text-alert-warning",
+  info: "text-ocean-300",
+  ok: "text-alert-success",
 };
 
 const LEVEL_DOT: Record<ActivityLevel, string> = {
-  critical: "bg-rose-500",
-  warning: "bg-amber-400",
-  info: "bg-ocean-400",
-  ok: "bg-emerald-400",
+  critical: "bg-severity-critical",
+  warning: "bg-alert-warning",
+  info: "bg-ocean-300",
+  ok: "bg-alert-success",
 };
 
 function levelIcon(level: ActivityLevel) {
@@ -96,11 +95,11 @@ function ActivityEventStreamView({
     >
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="flex items-center gap-2 text-base font-semibold">
+          <h3 className="section-accent-bar flex items-center gap-2 text-base font-semibold">
             <Activity className="h-4 w-4 text-primary" />
             {t("activity.title", { defaultValue: "活动事件流" })}
           </h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground pl-3">
             {t("activity.subtitle", { defaultValue: "大屏实时智能体行为" })}
           </p>
         </div>
@@ -109,15 +108,15 @@ function ActivityEventStreamView({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium",
               state === "error"
-                ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
-                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : "border-alert-success/40 bg-alert-success/10 text-alert-success",
             )}
             data-testid="activity-live-indicator"
           >
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
-                state === "error" ? "bg-rose-500" : "bg-emerald-400 animate-pulse",
+                state === "error" ? "bg-destructive" : "bg-alert-success animate-pulse",
               )}
             />
             {state === "error"
@@ -128,7 +127,7 @@ function ActivityEventStreamView({
             type="button"
             onClick={() => onRefresh()}
             aria-label={t("activity.retry", { defaultValue: "重试" })}
-            className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+            className="rounded-md border border-border/60 p-1.5 text-muted-foreground transition-all duration-200 hover:border-primary/30 hover:text-primary hover:shadow-[0_0_8px_hsl(var(--primary)/0.1)]"
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
@@ -136,15 +135,17 @@ function ActivityEventStreamView({
       </div>
 
       {state === "loading" && events.length === 0 && (
-        <div className="flex items-center justify-center py-10 text-xs text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          {t("activity.loading", { defaultValue: "加载中…" })}
+        <div className="flex flex-col items-center justify-center gap-3 py-10">
+          <div className="h-6 w-6 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+          <span className="text-xs text-muted-foreground">
+            {t("activity.loading", { defaultValue: "加载中…" })}
+          </span>
         </div>
       )}
 
       {state === "error" && events.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-          <AlertTriangle className="h-4 w-4 text-amber-400" />
+          <AlertTriangle className="h-4 w-4 text-alert-warning" />
           <span>
             {t(`activity.error.${errorCode ?? "network"}`, {
               defaultValue: t("activity.error.network", {
@@ -163,8 +164,11 @@ function ActivityEventStreamView({
       )}
 
       {state !== "loading" && state !== "error" && events.length === 0 && (
-        <div className="flex items-center justify-center py-10 text-xs text-muted-foreground">
-          {t("activity.empty", { defaultValue: "暂无事件" })}
+        <div className="flex flex-col items-center justify-center gap-2 py-10">
+          <Activity className="h-5 w-5 text-muted-foreground/40" />
+          <span className="text-xs text-muted-foreground">
+            {t("activity.empty", { defaultValue: "暂无事件" })}
+          </span>
         </div>
       )}
 
@@ -176,7 +180,7 @@ function ActivityEventStreamView({
               return (
                 <li
                   key={ev.id}
-                  className="flex items-start gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 transition-colors hover:border-border"
+                  className="flex items-start gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-2.5 transition-all duration-150 hover:border-border/70 hover:bg-muted/35"
                   data-testid="activity-event-row"
                   data-level={ev.level}
                   data-source={ev.source}

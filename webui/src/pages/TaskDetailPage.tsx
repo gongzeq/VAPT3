@@ -16,17 +16,17 @@ import { demoTask, type TaskFinding, type TaskModule } from "@/data/mock/task-de
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 
 const SEVERITY_BORDER: Record<TaskFinding["severity"], string> = {
-  critical: "border-l-rose-500",
-  high: "border-l-orange-400",
-  medium: "border-l-amber-400",
-  low: "border-l-sky-400",
+  critical: "border-l-severity-critical",
+  high: "border-l-severity-high",
+  medium: "border-l-severity-medium",
+  low: "border-l-severity-low",
 };
 
 const SEVERITY_BADGE: Record<TaskFinding["severity"], string> = {
-  critical: "bg-rose-500/20 text-rose-300",
-  high: "bg-orange-400/20 text-orange-300",
-  medium: "bg-amber-400/20 text-amber-300",
-  low: "bg-sky-400/20 text-sky-300",
+  critical: "bg-severity-critical/20 text-severity-critical",
+  high: "bg-severity-high/20 text-severity-high",
+  medium: "bg-severity-medium/20 text-severity-medium",
+  low: "bg-severity-low/20 text-severity-low",
 };
 
 const CATEGORY_LABEL: Record<TaskFinding["category"], string> = {
@@ -80,7 +80,7 @@ function ModuleRow({ mod }: { mod: TaskModule }) {
           {mod.endedAt && ` → ${mod.endedAt}`}
         </span>
         {mod.findingsCount > 0 && (
-          <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
+          <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-[10px] font-semibold text-destructive">
             {mod.findingsCount} 发现
           </span>
         )}
@@ -146,19 +146,19 @@ export function TaskDetailPage() {
                 <p className="mt-1 text-xs text-muted-foreground">总发现</p>
               </div>
               <div className="rounded-xl border border-border/40 bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-rose-400 font-mono">
+                <p className="text-2xl font-bold text-severity-critical font-mono">
                   {task.criticalCount}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">严重</p>
               </div>
               <div className="rounded-xl border border-border/40 bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-orange-400 font-mono">
+                <p className="text-2xl font-bold text-severity-high font-mono">
                   {task.highCount}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">高危</p>
               </div>
               <div className="rounded-xl border border-border/40 bg-card p-4 text-center">
-                <p className="text-2xl font-bold text-emerald-400 font-mono">
+                <p className="text-2xl font-bold text-alert-success font-mono">
                   {task.modules.filter((m) => m.status === "completed").length}/
                   {task.modules.length}
                 </p>

@@ -8,6 +8,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -82,10 +83,10 @@ export function ThreadHeader({
 
       {/* Right: actions */}
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <Badge variant="success" className="gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-alert-success animate-pulse" />
           Streaming
-        </span>
+        </Badge>
         {onToggleRightRail && (
           <Button
             variant="ghost"

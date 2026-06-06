@@ -27,6 +27,7 @@ function groupIntoTurns(messages: UIMessage[]): UIMessage[][] {
   return turns;
 }
 
+/** @description Renders grouped message turns with visual separation. */
 export function ThreadMessages({ messages }: ThreadMessagesProps) {
   const turns = useMemo(() => groupIntoTurns(messages), [messages]);
 

@@ -81,7 +81,7 @@ export function Navbar(_props: NavbarProps) {
           <img
             src="/brand/logo.png"
             alt=""
-            className="h-9 w-9 rounded-lg ring-1 ring-primary/30"
+            className="h-9 w-9 rounded-lg ring-1 ring-primary/20 shadow-[0_0_12px_hsl(var(--primary)/0.25)]"
             draggable={false}
           />
         </div>
@@ -100,10 +100,10 @@ export function Navbar(_props: NavbarProps) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                  "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-all duration-200",
                   active
-                    ? "gradient-primary font-medium text-white shadow-md"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-white",
+                    ? "gradient-primary font-medium text-white shadow-[0_2px_12px_hsl(var(--primary)/0.35)]"
+                    : "text-muted-foreground hover:bg-primary/8 hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -118,14 +118,16 @@ export function Navbar(_props: NavbarProps) {
         {/* Right section */}
         <div className="hidden items-center gap-2 md:flex">
           {/* WS status */}
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-xs backdrop-blur-sm">
             <span
               className={cn(
-                "h-2 w-2 rounded-full animate-pulse",
-                isOpen ? "bg-emerald-500" : "bg-muted-foreground",
+                "h-1.5 w-1.5 rounded-full",
+                isOpen
+                  ? "bg-alert-success shadow-[0_0_6px_hsl(var(--alert-success)/0.6)]"
+                  : "bg-muted-foreground/60",
               )}
             />
-            <span className="font-mono text-muted-foreground">
+            <span className="font-mono text-muted-foreground/80">
               {statusLabel}
             </span>
           </div>
@@ -135,7 +137,7 @@ export function Navbar(_props: NavbarProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="relative rounded-lg border border-border bg-muted/40 p-2 transition hover:border-primary/40"
+                className="relative rounded-lg border border-border/60 bg-card/60 p-2 transition-all duration-200 hover:border-primary/30 hover:shadow-[0_0_12px_hsl(var(--primary)/0.12)]"
                 aria-label={t("nav.notifications", { defaultValue: "通知" })}
                 data-testid="notification-bell"
               >
@@ -143,7 +145,7 @@ export function Navbar(_props: NavbarProps) {
                 {unread.unreadCount > 0 && (
                   <span
                     className={cn(
-                      "pointer-events-none absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold leading-none text-white shadow-md",
+                      "pointer-events-none absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground shadow-md",
                       unreadDisplay.length > 2 ? "h-[18px]" : "h-[18px]",
                     )}
                     data-testid="notification-badge"

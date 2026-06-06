@@ -121,7 +121,7 @@ export function AskUserPrompt({
               className={cn(
                 "h-9 justify-start rounded-[10px] px-3 text-left font-medium transition-all active:scale-[0.98]",
                 isApproveBtn &&
-                  "bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow",
+                  "bg-alert-success text-white hover:bg-alert-success/90 shadow-sm hover:shadow",
               )}
             >
               <span className="truncate">{option}</span>

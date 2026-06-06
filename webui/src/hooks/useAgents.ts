@@ -41,9 +41,8 @@ export function useAgents({ chatId }: UseAgentsOptions = {}): {
         if (cancelled) return;
         setAgents(rows);
       })
-      .catch((err) => {
+      .catch(() => {
         // Degrade-don't-crash: empty registry still renders the header.
-        console.warn("fetchAgents failed", err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

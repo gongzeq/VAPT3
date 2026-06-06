@@ -68,9 +68,9 @@ function mergeToolCall(
     );
     if (msgIdx !== -1) {
       const msg = messages[msgIdx];
-      const tcIdx = msg.toolCalls!.findIndex((tc) => tc.tool_call_id === tcId);
+      const tcIdx = msg.toolCalls?.findIndex((tc) => tc.tool_call_id === tcId) ?? -1;
       if (tcIdx !== -1) {
-        const updatedToolCalls = [...msg.toolCalls!];
+        const updatedToolCalls = [...(msg.toolCalls ?? [])];
         updatedToolCalls[tcIdx] = { ...updatedToolCalls[tcIdx], ...payload, tool_status: status };
         const updated: UIMessage = {
           ...msg,
@@ -589,7 +589,7 @@ export function useNanobotStream(
       // the image blocks via ``media`` paths.
       if (!hasImages && !content.trim()) return;
 
-      const previews = hasImages ? images!.map((i) => i.preview) : undefined;
+      const previews = hasImages ? images?.map((i) => i.preview) : undefined;
       setMessages((prev) => [
         ...prev,
         {
@@ -603,7 +603,7 @@ export function useNanobotStream(
       // Mark streaming immediately so the UI shows the loading indicator
       // right away, before the first delta arrives from the server.
       setIsStreaming(true);
-      const wireMedia = hasImages ? images!.map((i) => i.media) : undefined;
+      const wireMedia = hasImages ? images?.map((i) => i.media) : undefined;
       client.sendMessage(chatId, content, wireMedia);
     },
     [chatId, client],

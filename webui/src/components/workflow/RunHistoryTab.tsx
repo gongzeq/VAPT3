@@ -106,7 +106,7 @@ export function RunHistoryTab({
       </header>
 
       {error && (
-        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
           {error}
         </div>
       )}
@@ -181,7 +181,7 @@ function RunRow({
       {expanded && (
         <div className="space-y-2 border-t border-border/30 p-3">
           {run.error && (
-            <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
               {run.error}
             </div>
           )}
@@ -230,7 +230,7 @@ function StepResultRow({
       {open && (
         <div className="mt-2 space-y-2">
           {result.error && (
-            <pre className="max-h-40 overflow-auto rounded border border-rose-500/40 bg-rose-500/10 p-2 text-[11px] text-rose-200">
+            <pre className="max-h-40 overflow-auto rounded border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
               {result.error}
             </pre>
           )}
@@ -254,11 +254,11 @@ function RunStatusBadge({ status }: { status: RunStatus }) {
     },
     ok: {
       icon: <CheckCircle2 className="h-3 w-3" />,
-      cls: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+      cls: "border-alert-success/40 bg-alert-success/10 text-alert-success",
     },
     error: {
       icon: <XCircle className="h-3 w-3" />,
-      cls: "border-rose-500/40 bg-rose-500/10 text-rose-300",
+      cls: "border-destructive/40 bg-destructive/10 text-destructive",
     },
     cancelled: {
       icon: <AlertCircle className="h-3 w-3" />,
@@ -283,12 +283,12 @@ function StepStatusChip({ status }: { status: StepResult["status"] }) {
   const { t } = useTranslation();
   const tone =
     status === "ok"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+      ? "border-alert-success/40 bg-alert-success/10 text-alert-success"
       : status === "error"
-        ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
+        ? "border-destructive/40 bg-destructive/10 text-destructive"
         : status === "skipped"
           ? "border-border/40 bg-muted/30 text-muted-foreground"
-          : "border-amber-500/40 bg-amber-500/10 text-amber-300";
+          : "border-alert-warning/40 bg-alert-warning/10 text-alert-warning";
   return (
     <span
       className={cn(

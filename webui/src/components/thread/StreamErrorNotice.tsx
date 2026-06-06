@@ -28,7 +28,7 @@ export function StreamErrorNotice({ error, onDismiss }: StreamErrorNoticeProps) 
       className={cn(
         "mb-2 flex items-start gap-2 rounded-lg border",
         error.kind === "llm_retry"
-          ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+          ? "border-alert-warning/30 bg-alert-warning/10 text-alert-warning"
           : "border-destructive/30 bg-destructive/10 text-destructive",
         "px-3 py-2 text-[12px] leading-5",
         "animate-in fade-in-0 slide-in-from-bottom-1",
@@ -37,7 +37,7 @@ export function StreamErrorNotice({ error, onDismiss }: StreamErrorNoticeProps) 
       <Icon
         className={cn(
           "mt-0.5 h-4 w-4 shrink-0",
-          error.kind === "llm_retry" ? "text-amber-400" : "",
+          error.kind === "llm_retry" ? "text-alert-warning" : "",
         )}
         aria-hidden
       />
@@ -45,7 +45,7 @@ export function StreamErrorNotice({ error, onDismiss }: StreamErrorNoticeProps) 
         <p className="font-medium">{title}</p>
         <p className={cn(
           "mt-0.5",
-          error.kind === "llm_retry" ? "text-amber-300/80" : "text-destructive/80",
+          error.kind === "llm_retry" ? "text-alert-warning/80" : "text-destructive/80",
         )}>{body}</p>
       </div>
       <Button
@@ -56,7 +56,7 @@ export function StreamErrorNotice({ error, onDismiss }: StreamErrorNoticeProps) 
         className={cn(
           "h-6 w-6 shrink-0 hover:bg-destructive/15",
           error.kind === "llm_retry"
-            ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/15"
+            ? "text-alert-warning hover:text-alert-warning hover:bg-alert-warning/15"
             : "text-destructive hover:text-destructive",
         )}
       >

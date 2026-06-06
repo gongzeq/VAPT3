@@ -37,13 +37,13 @@ function iconFor(kind: string): {
 } {
   switch (kind) {
     case "critical_vuln":
-      return { Icon: ShieldAlert, tone: "text-rose-400" };
+      return { Icon: ShieldAlert, tone: "text-destructive" };
     case "scan_failed":
-      return { Icon: AlertTriangle, tone: "text-amber-400" };
+      return { Icon: AlertTriangle, tone: "text-alert-warning" };
     case "high_risk_confirm":
-      return { Icon: ShieldAlert, tone: "text-orange-400" };
+      return { Icon: ShieldAlert, tone: "text-severity-high" };
     case "scan_completed":
-      return { Icon: CheckCheck, tone: "text-emerald-400" };
+      return { Icon: CheckCheck, tone: "text-alert-success" };
     default:
       return { Icon: Info, tone: "text-muted-foreground" };
   }
@@ -131,7 +131,7 @@ export function NotificationPanel({
 
       {state === "error" && (
         <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-xs text-muted-foreground">
-          <AlertTriangle className="h-4 w-4 text-amber-400" />
+          <AlertTriangle className="h-4 w-4 text-alert-warning" />
           <span>
             {t(`notifications.error.${errorCode ?? "network"}`, {
               defaultValue: t("notifications.error.network", {

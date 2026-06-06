@@ -7,13 +7,13 @@ import type { TaskStatus } from "@/data/mock/task-detail";
  */
 
 const STATUS_STYLES: Record<TaskStatus, { bg: string; text: string; dot?: string }> = {
-  queued: { bg: "bg-slate-500/20", text: "text-slate-300" },
-  running: { bg: "bg-ocean-500/20", text: "text-ocean-300", dot: "bg-ocean-400" },
-  awaiting_user: { bg: "bg-amber-500/20", text: "text-amber-300", dot: "bg-amber-400" },
-  completed: { bg: "bg-emerald-500/20", text: "text-emerald-300" },
-  failed: { bg: "bg-rose-500/20", text: "text-rose-300" },
-  cancelled: { bg: "bg-slate-500/20", text: "text-slate-400" },
-  paused: { bg: "bg-violet-500/20", text: "text-violet-300" },
+  queued: { bg: "bg-muted/60", text: "text-muted-foreground" },
+  running: { bg: "bg-ocean-500/20", text: "text-ocean-300", dot: "bg-ocean-500" },
+  awaiting_user: { bg: "bg-alert-warning/15", text: "text-alert-warning", dot: "bg-alert-warning" },
+  completed: { bg: "bg-alert-success/15", text: "text-alert-success" },
+  failed: { bg: "bg-destructive/15", text: "text-destructive" },
+  cancelled: { bg: "bg-muted/40", text: "text-muted-foreground/70" },
+  paused: { bg: "bg-severity-low/15", text: "text-severity-low" },
 };
 
 const STATUS_LABEL: Record<TaskStatus, string> = {

@@ -8,13 +8,13 @@ import type { ConnectionStatus } from "@/lib/types";
 const COPY: Record<ConnectionStatus, { color: string }> = {
   idle: { color: "text-muted-foreground" },
   connecting: {
-    color: "text-amber-700 dark:text-amber-300",
+    color: "text-alert-warning",
   },
   open: {
-    color: "text-emerald-700 dark:text-emerald-400",
+    color: "text-alert-success",
   },
   reconnecting: {
-    color: "text-amber-700 dark:text-amber-300",
+    color: "text-alert-warning",
   },
   closed: {
     color: "text-muted-foreground",

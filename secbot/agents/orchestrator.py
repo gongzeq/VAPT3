@@ -34,8 +34,18 @@ _HARD_RULES = (
     "SSH, MySQL, SMB, RDP, etc.) to `vuln_detec`. For non-HTTP ports, collect "
     "them and route to `vuln_scan` (which runs `fscan-vuln-scan` for generic "
     "service vulnerability checks).",
+    "- `vuln_detec` budget: Pick only the most suspicious / parameter-rich URLs from "
+    "`crawl_web` results — do NOT test every discovered endpoint. "
+    "Pass the resulting `hypotheses` to `vuln_scan` so it can gate "
+    "`sqlmap-detect` on them.",
+    "- `sqlmap-detect` gate: `vuln_scan` may ONLY call `sqlmap-detect` when "
+    "`hypotheses` from `vuln_detec` are provided. In standard scanning "
+    "(no hypotheses), sqlmap is forbidden. If `vuln_scan` sees "
+    "parameterised URLs, route them back through `vuln_detec` first.",
     "- You MUST respect the natural ordering: asset_discovery → port_scan → "
-    "crawl_web → vuln_scan → (weak_password | pentest) → report. "
+    "crawl_web → vuln_detec → vuln_scan → (weak_password | pentest) → report. "
+    "`vuln_detec` runs between `crawl_web` and `vuln_scan` to pre-screen "
+    "parameterised URLs; its hypotheses gate `sqlmap-detect` in `vuln_scan`. "
     "HOWEVER, if the user's target is a single host (IP, domain, or URL with a "
     "known port), SKIP asset_discovery and start directly with port_scan or "
     "vuln_scan — the host is already identified, no enumeration is needed. "
@@ -59,8 +69,6 @@ _HARD_RULES = (
     "- You MUST request high-risk confirmation when an expert is about to invoke a "
     "critical-risk skill (the expert handles the gate; you must NOT bypass it by "
     "inventing skill calls of your own).",
-    "- You MUST refuse out-of-scope requests (offensive ops on third-party assets "
-    "without authorisation, IM bridge configuration, marketplace).",
 )
 
 _WORKING_STYLE = (

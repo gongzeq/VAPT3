@@ -15,8 +15,8 @@ const STATUS_STYLE: Record<
   queued: { dot: "bg-status-wait", label: "排队", text: "text-status-wait" },
   idle: { dot: "bg-status-idle", label: "空闲", text: "text-status-idle" },
   offline: { dot: "bg-status-off", label: "离线", text: "text-status-off" },
-  completed: { dot: "bg-emerald-500", label: "已完成", text: "text-emerald-400" },
-  error: { dot: "bg-red-500", label: "失败", text: "text-red-400" },
+  completed: { dot: "bg-alert-success", label: "已完成", text: "text-alert-success" },
+  error: { dot: "bg-destructive", label: "失败", text: "text-destructive" },
 };
 
 function AgentRow({ agent }: { agent: AgentRegistryRow }) {

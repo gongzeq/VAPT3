@@ -49,21 +49,22 @@ function healthBadge(health: PhishingHealth | null): {
   if (hasDown) {
     return {
       label: "链路异常",
-      cls: "bg-rose-500/15 text-rose-300 border border-rose-500/40",
+      cls: "bg-destructive/15 text-destructive border border-destructive/40",
     };
   }
   if (hasSlow) {
     return {
       label: "链路降级",
-      cls: "bg-amber-400/15 text-amber-300 border border-amber-400/40",
+      cls: "bg-alert-warning/15 text-alert-warning border border-alert-warning/40",
     };
   }
   return {
     label: "链路正常",
-    cls: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40",
+    cls: "bg-alert-success/15 text-alert-success border border-alert-success/40",
   };
 }
 
+/** @description Summary card showing phishing detection KPIs with trend chart navigation. */
 export function PhishingSummaryCard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -151,7 +152,7 @@ export function PhishingSummaryCard() {
   return (
     <section>
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-1 h-5 rounded-full bg-gradient-to-b from-ocean-500 to-violet-500" />
+        <div className="w-1 h-5 rounded-full bg-gradient-to-b from-ocean-500 to-cyan-glow" />
         <h2 className="text-base font-semibold">
           {t("phishing.title", { defaultValue: "钓鱼邮件检测" })}
         </h2>
@@ -168,16 +169,12 @@ export function PhishingSummaryCard() {
         {/* Hero metric */}
         <div className="lg:col-span-3 flex items-center gap-4">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-            style={{
-              background: "rgba(239,68,68,0.15)",
-              border: "1px solid rgba(239,68,68,0.3)",
-            }}
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-destructive/15 border border-destructive/30"
           >
             🎣
           </div>
           <div>
-            <p className="text-3xl font-bold tracking-tight font-mono text-rose-400">
+            <p className="text-2xl font-bold tracking-tight font-mono text-destructive">
               {todayPhishing}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -201,10 +198,10 @@ export function PhishingSummaryCard() {
               {phishingRate.toFixed(2)}%
             </span>
           </div>
-          <div style={{ height: 56 }}>
+          <div className="h-14 overflow-hidden">
             <ReactECharts
               option={sparkOption}
-              style={{ height: "100%", width: "100%" }}
+              className="h-full w-full"
               opts={{ renderer: "svg" }}
             />
           </div>

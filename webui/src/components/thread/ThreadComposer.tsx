@@ -6,23 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import {
-  Activity,
-  BookOpen,
-  CircleHelp,
-  History,
-  ImageIcon,
-  Loader2,
-  Paperclip,
-  RotateCw,
-  Send,
-  Sparkles,
-  Square,
-  SquarePen,
-  Undo2,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { ImageIcon, Paperclip, Send, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -39,16 +23,15 @@ import { useClipboardAndDrop } from "@/hooks/useClipboardAndDrop";
 import type { SendImage } from "@/hooks/useNanobotStream";
 import type { SlashCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  SlashCommandPalette,
+  slashCommandI18nKey,
+} from "@/components/thread/SlashCommandPalette";
+import { AttachmentChip, formatBytes } from "@/components/thread/AttachmentChip";
 
 /** ``<input accept>``: aligned with the server's MIME whitelist. SVG is
  * deliberately excluded to avoid an embedded-script XSS surface. */
 const ACCEPT_ATTR = "image/png,image/jpeg,image/webp,image/gif";
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 interface ThreadComposerProps {
   onSend: (content: string, images?: SendImage[]) => void;
@@ -63,22 +46,7 @@ interface ThreadComposerProps {
   slashCommands?: SlashCommand[];
 }
 
-const COMMAND_ICONS: Record<string, LucideIcon> = {
-  activity: Activity,
-  "book-open": BookOpen,
-  "circle-help": CircleHelp,
-  history: History,
-  "rotate-cw": RotateCw,
-  sparkles: Sparkles,
-  square: Square,
-  "square-pen": SquarePen,
-  "undo-2": Undo2,
-};
-
-function slashCommandI18nKey(command: string): string {
-  return command.replace(/^\//, "").replace(/-/g, "_");
-}
-
+/** @description Composer textarea with slash-command palette, image attachments, and send/stop controls. */
 export function ThreadComposer({
   onSend,
   onStop,
@@ -102,8 +70,7 @@ export function ThreadComposer({
     ? t("thread.composer.placeholderStreaming")
     : placeholder ?? t("thread.composer.placeholderThread");
 
-  const { images, enqueue, remove, clear, encoding, full } =
-    useAttachedImages();
+  const { images, enqueue, remove, clear, encoding, full } = useAttachedImages();
 
   const formatRejection = useCallback(
     (reason: AttachmentError): string => {
@@ -126,14 +93,8 @@ export function ThreadComposer({
     [enqueue, formatRejection],
   );
 
-  const {
-    isDragging,
-    onPaste,
-    onDragEnter,
-    onDragOver,
-    onDragLeave,
-    onDrop,
-  } = useClipboardAndDrop(addFiles);
+  const { isDragging, onPaste, onDragEnter, onDragOver, onDragLeave, onDrop } =
+    useClipboardAndDrop(addFiles);
 
   useEffect(() => {
     if (disabled) return;
@@ -144,18 +105,20 @@ export function ThreadComposer({
   }, [disabled]);
 
   const readyImages = useMemo(
-    () => images.filter((img): img is AttachedImage & { dataUrl: string } =>
-      img.status === "ready" && typeof img.dataUrl === "string",
-    ),
+    () =>
+      images.filter(
+        (img): img is AttachedImage & { dataUrl: string } =>
+          img.status === "ready" && typeof img.dataUrl === "string",
+      ),
     [images],
   );
   const hasErrors = images.some((img) => img.status === "error");
 
   const canSend =
-    !disabled
-    && !encoding
-    && !hasErrors
-    && (value.trim().length > 0 || readyImages.length > 0);
+    !disabled &&
+    !encoding &&
+    !hasErrors &&
+    (value.trim().length > 0 || readyImages.length > 0);
 
   const slashQuery = useMemo(() => {
     if (disabled || slashMenuDismissed || !value.startsWith("/")) return null;
@@ -168,18 +131,27 @@ export function ThreadComposer({
     if (slashQuery === null) return [];
     return slashCommands
       .filter((command) => {
-        const haystack = [
-          command.command,
-          command.title,
-          command.description,
-          command.argHint ?? "",
-          t(`thread.composer.slash.commands.${slashCommandI18nKey(command.command)}.title`, {
-            defaultValue: "",
-          }),
-          t(`thread.composer.slash.commands.${slashCommandI18nKey(command.command)}.description`, {
-            defaultValue: "",
-          }),
-        ].join(" ").toLowerCase();
+        const haystack =
+          [
+            command.command,
+            command.title,
+            command.description,
+            command.argHint ?? "",
+            t(
+              `thread.composer.slash.commands.${slashCommandI18nKey(command.command)}.title`,
+              {
+                defaultValue: "",
+              },
+            ),
+            t(
+              `thread.composer.slash.commands.${slashCommandI18nKey(command.command)}.description`,
+              {
+                defaultValue: "",
+              },
+            ),
+          ]
+            .join(" ")
+            .toLowerCase();
         return haystack.includes(slashQuery);
       })
       .slice(0, 8);
@@ -205,7 +177,9 @@ export function ThreadComposer({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ComposerPrefillDetail>).detail;
       if (!detail || typeof detail.text !== "string" || !detail.text) return;
-      setValue((prev) => (prev.trim() === "" ? detail.text : `${prev}\n${detail.text}`));
+      setValue((prev) =>
+        prev.trim() === "" ? detail.text : `${prev}\n${detail.text}`,
+      );
       setInlineError(null);
       if (detail.focus !== false) {
         requestAnimationFrame(() => {
@@ -222,10 +196,7 @@ export function ThreadComposer({
     };
     window.addEventListener(COMPOSER_PREFILL_EVENT, handler as EventListener);
     return () => {
-      window.removeEventListener(
-        COMPOSER_PREFILL_EVENT,
-        handler as EventListener,
-      );
+      window.removeEventListener(COMPOSER_PREFILL_EVENT, handler as EventListener);
     };
   }, []);
 
@@ -375,10 +346,11 @@ export function ThreadComposer({
       ) : null}
       <div
         className={cn(
-          "relative mx-auto flex w-full flex-col overflow-hidden rounded-xl border border-border bg-muted/40 p-2 transition focus-within:border-primary/60",
+          "relative mx-auto flex w-full flex-col overflow-hidden rounded-xl border border-border/60 bg-muted/30 p-2 transition-all duration-200",
           isHero ? "max-w-[58rem]" : "max-w-[49.5rem]",
           disabled && "opacity-60",
           isDragging && "ring-2 ring-primary/40 motion-reduce:ring-0 motion-reduce:border-primary",
+          !disabled && "focus-within:border-primary/40 focus-within:shadow-[0_0_16px_hsl(var(--primary)/0.08)]",
         )}
       >
         {images.length > 0 ? (
@@ -465,7 +437,7 @@ export function ThreadComposer({
               disabled={attachButtonDisabled}
               aria-label={t("thread.composer.attachImage")}
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-primary"
+              className="rounded-md p-1.5 text-muted-foreground/80 transition-colors duration-150 hover:bg-primary/8 hover:text-primary"
             >
               <Paperclip className="h-4 w-4" />
             </button>
@@ -473,7 +445,7 @@ export function ThreadComposer({
               type="button"
               disabled={attachButtonDisabled}
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-primary disabled:opacity-50"
+              className="rounded-md p-1.5 text-muted-foreground/80 transition-colors duration-150 hover:bg-primary/8 hover:text-primary disabled:opacity-50"
               aria-label={t("thread.composer.image", { defaultValue: "图片" })}
             >
               <ImageIcon className="h-4 w-4" />
@@ -501,8 +473,8 @@ export function ThreadComposer({
               disabled={!canSend}
               aria-label={t("thread.composer.send")}
               className={cn(
-                "hover-lift inline-flex items-center gap-1.5 rounded-lg gradient-primary px-3 py-1.5 text-xs font-semibold text-white shadow-md",
-                !canSend && "opacity-50",
+                "inline-flex items-center gap-1.5 rounded-lg gradient-primary px-3.5 py-1.5 text-xs font-semibold text-white shadow-[0_2px_10px_hsl(var(--primary)/0.3)] transition-all duration-200 hover:shadow-[0_4px_16px_hsl(var(--primary)/0.45)] active:scale-[0.97]",
+                !canSend && "opacity-50 shadow-none",
               )}
             >
               <Send className="h-3.5 w-3.5" />
@@ -512,196 +484,5 @@ export function ThreadComposer({
         </div>
       </div>
     </form>
-  );
-}
-
-interface SlashCommandPaletteProps {
-  commands: SlashCommand[];
-  selectedIndex: number;
-  isHero: boolean;
-  onHover: (index: number) => void;
-  onChoose: (command: SlashCommand) => void;
-}
-
-function SlashCommandPalette({
-  commands,
-  selectedIndex,
-  isHero,
-  onHover,
-  onChoose,
-}: SlashCommandPaletteProps) {
-  const { t } = useTranslation();
-  return (
-    <div
-      role="listbox"
-      aria-label={t("thread.composer.slash.ariaLabel")}
-      className={cn(
-        "absolute bottom-full left-1/2 z-30 mb-2 max-h-[22rem] w-[calc(100%-0.5rem)] -translate-x-1/2 overflow-hidden rounded-[18px] border",
-        "border-border/65 bg-popover/98 p-1.5 text-popover-foreground shadow-[0_18px_55px_rgba(15,23,42,0.18)] backdrop-blur",
-        "dark:border-white/10 dark:shadow-[0_22px_55px_rgba(0,0,0,0.45)]",
-        isHero ? "max-w-[58rem]" : "max-w-[49.5rem]",
-      )}
-    >
-      <div className="px-2 pb-1 pt-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground/70">
-        {t("thread.composer.slash.label")}
-      </div>
-      <div className="max-h-[18rem] overflow-y-auto pr-0.5">
-        {commands.map((command, index) => {
-          const Icon = COMMAND_ICONS[command.icon] ?? CircleHelp;
-          const selected = index === selectedIndex;
-          const commandKey = slashCommandI18nKey(command.command);
-          const title = t(`thread.composer.slash.commands.${commandKey}.title`, {
-            defaultValue: command.title,
-          });
-          const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
-            defaultValue: command.description,
-          });
-          return (
-            <button
-              key={command.command}
-              type="button"
-              role="option"
-              aria-selected={selected}
-              onMouseEnter={() => onHover(index)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onChoose(command);
-              }}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-[13px] px-3 py-2.5 text-left transition-colors",
-                selected
-                  ? "bg-primary/10 text-foreground"
-                  : "text-foreground/86 hover:bg-accent/55",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border",
-                  selected
-                    ? "border-primary/25 bg-primary/12 text-primary"
-                    : "border-border/65 bg-muted/45 text-muted-foreground",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="font-mono text-[13px] font-semibold text-foreground">
-                    {command.command}
-                  </span>
-                  {command.argHint ? (
-                    <span className="font-mono text-[12px] text-muted-foreground">
-                      {command.argHint}
-                    </span>
-                  ) : null}
-                  <span className="truncate text-[13px] font-medium">
-                    {title}
-                  </span>
-                </span>
-                <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-                  {description}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex items-center gap-2 px-2 pt-1.5 text-[10.5px] text-muted-foreground/70">
-        <span>{t("thread.composer.slash.navigateHint")}</span>
-        <span>{t("thread.composer.slash.selectHint")}</span>
-        <span>{t("thread.composer.slash.closeHint")}</span>
-      </div>
-    </div>
-  );
-}
-
-interface AttachmentChipProps {
-  image: AttachedImage;
-  labelRemove: string;
-  labelEncoding: string;
-  normalizedHint: (origBytes: number, currentBytes: number) => string;
-  formatError: (reason: AttachmentError) => string;
-  onRemove: () => void;
-  onKeyDown: (e: ReactKeyboardEvent<HTMLButtonElement>) => void;
-  registerRef: (el: HTMLButtonElement | null) => void;
-}
-
-function AttachmentChip({
-  image,
-  labelRemove,
-  labelEncoding,
-  normalizedHint,
-  formatError,
-  onRemove,
-  onKeyDown,
-  registerRef,
-}: AttachmentChipProps) {
-  const sizeLabel =
-    image.status === "ready" && image.normalized && image.encodedBytes
-      ? normalizedHint(image.file.size, image.encodedBytes)
-      : formatBytes(image.file.size);
-  const tone =
-    image.status === "error"
-      ? "border-destructive/40 bg-destructive/5 text-destructive"
-      : "border-border/70 bg-muted/60";
-
-  return (
-    <div
-      className={cn(
-        "group relative flex items-center gap-2 rounded-[12px] border px-2 py-1.5",
-        "transition-colors motion-reduce:transition-none",
-        tone,
-      )}
-      data-testid="composer-chip"
-    >
-      <div className="relative h-10 w-10 overflow-hidden rounded-md bg-background">
-        {image.previewUrl ? (
-          <img
-            src={image.previewUrl}
-            alt=""
-            aria-hidden
-            loading="eager"
-            draggable={false}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <ImageIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-          </div>
-        )}
-        {image.status === "encoding" ? (
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-background/60"
-            aria-label={labelEncoding}
-          >
-            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
-          </div>
-        ) : null}
-      </div>
-      <div className="flex min-w-0 flex-col text-[11.5px] leading-4">
-        <span className="truncate max-w-[14rem] font-medium" title={image.file.name}>
-          {image.file.name}
-        </span>
-        <span className="truncate text-muted-foreground">
-          {image.status === "error" && image.error
-            ? formatError(image.error)
-            : sizeLabel}
-        </span>
-      </div>
-      <button
-        type="button"
-        ref={registerRef}
-        onClick={onRemove}
-        onKeyDown={onKeyDown}
-        aria-label={labelRemove}
-        className={cn(
-          "ml-1 grid h-5 w-5 flex-none place-items-center rounded-full",
-          "text-muted-foreground/80 hover:bg-foreground/8 hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30",
-        )}
-      >
-        <X className="h-3.5 w-3.5" aria-hidden />
-      </button>
-    </div>
   );
 }

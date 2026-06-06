@@ -21,10 +21,10 @@ import { cn } from "@/lib/utils";
 const PAGE_SIZE = 15;
 
 const SEV_STYLES: Record<string, string> = {
-  critical: "text-rose-400 bg-rose-500/10 border-rose-500/30",
-  high: "text-orange-400 bg-orange-500/10 border-orange-500/30",
-  medium: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-  low: "text-sky-400 bg-sky-500/10 border-sky-500/30",
+  critical: "text-severity-critical bg-severity-critical/10 border-severity-critical/30",
+  high: "text-severity-high bg-severity-high/10 border-severity-high/30",
+  medium: "text-severity-medium bg-severity-medium/10 border-severity-medium/30",
+  low: "text-severity-low bg-severity-low/10 border-severity-low/30",
 };
 
 const SEV_LABELS: Record<string, string> = {
@@ -35,10 +35,10 @@ const SEV_LABELS: Record<string, string> = {
 };
 
 const SUGGESTED_BADGE: Record<string, string> = {
-  紧急处理: "text-rose-400 bg-rose-500/10 border-rose-500/30",
-  告警: "text-orange-400 bg-orange-500/10 border-orange-500/30",
-  标记关注: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-  忽略: "text-sky-400 bg-sky-500/10 border-sky-500/30",
+  紧急处理: "text-severity-critical bg-severity-critical/10 border-severity-critical/30",
+  告警: "text-severity-high bg-severity-high/10 border-severity-high/30",
+  标记关注: "text-severity-medium bg-severity-medium/10 border-severity-medium/30",
+  忽略: "text-severity-low bg-severity-low/10 border-severity-low/30",
 };
 
 function formatConfidence(c: number): string {
@@ -90,7 +90,7 @@ function DetailRow({ item }: { item: LogAnalysisHistoryItem }) {
           </span>
         </td>
         <td className="py-3 text-right">
-          <span className="font-mono text-sm text-emerald-400">
+          <span className="font-mono text-sm text-alert-success">
             {formatConfidence(item.confidence)}
           </span>
         </td>
@@ -137,8 +137,8 @@ function DetailRow({ item }: { item: LogAnalysisHistoryItem }) {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1.5">风险因素：</p>
                   <ul className="list-disc list-inside text-sm text-foreground space-y-0.5">
-                    {item.risk_factors.map((rf, i) => (
-                      <li key={i}>{rf}</li>
+                    {item.risk_factors.map((rf) => (
+                      <li key={`rf-${rf}`}>{rf}</li>
                     ))}
                   </ul>
                 </div>
@@ -151,9 +151,9 @@ function DetailRow({ item }: { item: LogAnalysisHistoryItem }) {
                     异常条目（共 {item.anomaly_entries.length} 条）：
                   </p>
                   <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                    {item.anomaly_entries.map((ae, i) => (
+                    {item.anomaly_entries.map((ae, idx) => (
                       <div
-                        key={i}
+                        key={`ae-${ae.severity}-${ae.desc.slice(0, 20)}-${idx}`}
                         className="flex items-start gap-2 text-sm bg-white/[0.03] rounded-lg px-3 py-2"
                       >
                         <span
@@ -198,6 +198,7 @@ function DetailRow({ item }: { item: LogAnalysisHistoryItem }) {
 
 // ─── Page component ─────────────────────────────────────────────────────
 
+/** @description Paginated detail page for log-analysis security scan results. */
 export function LogAnalysisDetailPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -303,7 +304,7 @@ export function LogAnalysisDetailPage() {
             <div className="p-10 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
-                  key={i}
+                  key={`row-skeleton-${i}`}
                   className="h-10 bg-white/5 rounded animate-pulse"
                 />
               ))}

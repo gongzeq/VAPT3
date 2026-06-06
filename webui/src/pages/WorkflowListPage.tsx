@@ -1,38 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowRight,
-  Bot,
-  Brain,
-  Clock,
-  Layers,
-  Pause,
-  PlayCircle,
-  Plus,
-  Search,
-  Sparkles,
-  Terminal,
-  TriangleAlert,
-  Trash2,
-  Workflow as WorkflowIcon,
-  Wrench,
-  XCircle,
-} from "lucide-react";
+import { Search } from "lucide-react";
 
 import { Navbar } from "@/components/Navbar";
 import { useClient } from "@/providers/ClientProvider";
-import { cn } from "@/lib/utils";
 import {
   WorkflowClient,
   emptyWorkflowDraft,
-  STEP_KIND_TONE,
-  type FailedRunItem,
-  type StepKind,
   type Workflow,
   type WorkflowDraft,
   type WorkflowListResponse,
-  type WorkflowStep,
   type WorkflowTemplate,
 } from "@/lib/workflow-client";
 import {
@@ -46,16 +24,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  LeftFilter,
+  type StatusFilter,
+  type CountBundle,
+} from "@/pages/workflow/LeftFilter";
+import { WorkflowListCard } from "@/pages/workflow/WorkflowListCard";
+import {
+  RightAside,
+  EmptyState,
+  CardListSkeleton,
+  FailedRunsDialog,
+} from "@/pages/workflow/RightAside";
 
 const DRAFT_STORAGE_KEY = "workflow.pending-draft";
-
-type StatusFilter = "all" | "scheduled" | "manual" | "running";
 
 /**
  * ``/workflows`` — prototype §ListView 三栏还原:
@@ -131,9 +112,7 @@ export function WorkflowListPage() {
     return Array.from(set).sort();
   }, [data]);
 
-  // 计数拆分：scheduled (有 scheduleRef) / draft (无)。"running" 和
-  // "failed" 依赖 stats（后端级聚合），卡片级状态做不到。
-  const counts = useMemo(() => {
+  const counts = useMemo((): CountBundle => {
     const all = data?.items.length ?? 0;
     const scheduled = data?.items.filter((w) => !!w.scheduleRef).length ?? 0;
     const manual = all - scheduled;
@@ -229,7 +208,7 @@ export function WorkflowListPage() {
               </div>
 
               {error && (
-                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
                   {t("workflow.error.load")}: {error}
                 </div>
               )}
@@ -263,23 +242,16 @@ export function WorkflowListPage() {
         </div>
       </main>
 
-      <AlertDialog
-        open={!!toDelete}
-        onOpenChange={(open) => !open && setToDelete(null)}
-      >
+      <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("workflow.deleteDialog.title")}
-            </AlertDialogTitle>
+            <AlertDialogTitle>{t("workflow.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("workflow.deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("workflow.deleteDialog.cancel")}
-            </AlertDialogCancel>
+            <AlertDialogCancel>{t("workflow.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -294,627 +266,12 @@ export function WorkflowListPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <FailedRunsDialog
-        open={failedOpen}
-        onOpenChange={setFailedOpen}
-        client={client}
-      />
+      <FailedRunsDialog open={failedOpen} onOpenChange={setFailedOpen} client={client} />
     </div>
   );
 }
 
 export default WorkflowListPage;
 
-// ─── Left filter ────────────────────────────────────────────────────────
-
-interface CountBundle {
-  all: number;
-  scheduled: number;
-  manual: number;
-  running: number;
-  runningIds: string[];
-  failed24h: number;
-}
-
-function LeftFilter({
-  counts,
-  statusFilter,
-  setStatusFilter,
-  tag,
-  setTag,
-  allTags,
-  onCreate,
-  onOpenFailedRuns,
-}: {
-  counts: CountBundle;
-  statusFilter: StatusFilter;
-  setStatusFilter: (v: StatusFilter) => void;
-  tag: string;
-  setTag: (v: string) => void;
-  allTags: string[];
-  onCreate: () => void;
-  onOpenFailedRuns: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <aside className="gradient-card h-fit space-y-5 rounded-2xl border border-[hsl(var(--border))] p-4">
-      <button
-        type="button"
-        onClick={onCreate}
-        className="gradient-primary hover-lift inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-md"
-      >
-        <Plus className="h-4 w-4" />
-        {t("workflow.createNew")}
-      </button>
-
-      <div>
-        <p className="px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-          {t("workflow.filter.statusTitle")}
-        </p>
-        <ul className="mt-1 space-y-1 text-sm">
-          <StatusRow
-            active={statusFilter === "all"}
-            onClick={() => setStatusFilter("all")}
-            icon={<Layers className="h-3.5 w-3.5" />}
-            label={t("workflow.filter.statusAll")}
-            count={counts.all}
-          />
-          <StatusRow
-            active={statusFilter === "running"}
-            onClick={() => setStatusFilter("running")}
-            icon={<PlayCircle className="h-3.5 w-3.5 text-emerald-400" />}
-            label={t("workflow.filter.statusRunning")}
-            count={counts.running}
-            tone="emerald"
-          />
-          <StatusRow
-            active={statusFilter === "scheduled"}
-            onClick={() => setStatusFilter("scheduled")}
-            icon={<Clock className="h-3.5 w-3.5 text-primary" />}
-            label={t("workflow.filter.statusScheduled")}
-            count={counts.scheduled}
-          />
-          <StatusRow
-            active={statusFilter === "manual"}
-            onClick={() => setStatusFilter("manual")}
-            icon={<Pause className="h-3.5 w-3.5 text-muted-foreground" />}
-            label={t("workflow.filter.statusManual", { defaultValue: "未调度" })}
-            count={counts.manual}
-          />
-          <StatusRow
-            active={false}
-            onClick={onOpenFailedRuns}
-            icon={<TriangleAlert className="h-3.5 w-3.5 text-rose-400" />}
-            label={t("workflow.filter.statusFailed", { defaultValue: "失败历史" })}
-            count={counts.failed24h}
-            tone="rose"
-          />
-        </ul>
-      </div>
-
-      {allTags.length > 0 && (
-        <div>
-          <p className="px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            {t("workflow.filter.tagsTitle")}
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5 px-1">
-            {allTags.map((x) => {
-              const active = tag === x;
-              return (
-                <button
-                  key={x}
-                  type="button"
-                  onClick={() => setTag(active ? "" : x)}
-                  className={cn(
-                    "rounded-full border px-2 py-0.5 text-xs transition-colors",
-                    active
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 hover:border-primary/40",
-                  )}
-                >
-                  #{x}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-function StatusRow({
-  active,
-  onClick,
-  icon,
-  label,
-  count,
-  tone,
-  disabled,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  tone?: "emerald" | "rose";
-  disabled?: boolean;
-}) {
-  const toneCls =
-    tone === "emerald"
-      ? "text-emerald-400"
-      : tone === "rose"
-        ? "text-rose-400"
-        : "";
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className={cn(
-          "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors",
-          active
-            ? "border border-primary/30 bg-primary/10 text-primary"
-            : "hover:bg-white/5",
-          disabled && "cursor-not-allowed opacity-60",
-        )}
-      >
-        <span className={cn("inline-flex items-center gap-2", toneCls)}>
-          {icon} {label}
-        </span>
-        <span className="font-mono text-xs text-muted-foreground">
-          {count}
-        </span>
-      </button>
-    </li>
-  );
-}
-
-// ─── Right aside ────────────────────────────────────────────────────────
-
-function RightAside({
-  counts,
-  templates,
-  templatesLoading,
-  onPickTemplate,
-}: {
-  counts: CountBundle;
-  templates: WorkflowTemplate[];
-  templatesLoading: boolean;
-  onPickTemplate: (tpl: WorkflowTemplate) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <aside className="space-y-4">
-      <div className="gradient-card space-y-3 rounded-2xl border border-[hsl(var(--border))] p-5">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">
-            {t("workflow.stats.todayTitle")}
-          </h4>
-          <span className="text-xs text-muted-foreground">
-            {t("workflow.stats.live")}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <MiniStat
-            label={t("workflow.stats.scheduled")}
-            value={counts.scheduled}
-            valueCls="text-primary"
-          />
-          <MiniStat
-            label={t("workflow.stats.running")}
-            value={counts.running}
-            valueCls="text-gradient"
-          />
-          <MiniStat
-            label={t("workflow.stats.total")}
-            value={counts.all}
-          />
-          <MiniStat
-            label={t("workflow.stats.failed24h")}
-            value={counts.failed24h}
-            valueCls={counts.failed24h > 0 ? "text-rose-400" : ""}
-          />
-        </div>
-      </div>
-
-      <div className="gradient-card space-y-3 rounded-2xl border border-[hsl(var(--border))] p-5">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h4 className="text-sm font-semibold">
-            {t("workflow.templates.title")}
-          </h4>
-        </div>
-        {templatesLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-14 animate-pulse rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40"
-              />
-            ))}
-          </div>
-        ) : templates.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {t("workflow.templates.empty")}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {templates.slice(0, 4).map((tpl) => (
-              <button
-                key={tpl.id}
-                type="button"
-                onClick={() => onPickTemplate(tpl)}
-                className="group w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-3 py-2.5 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5"
-              >
-                <div className="flex items-center gap-2 font-medium">
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                  <span className="truncate">{tpl.name}</span>
-                </div>
-                {tpl.description && (
-                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                    {tpl.description}
-                  </p>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  valueCls,
-}: {
-  label: string;
-  value: number;
-  valueCls?: string;
-}) {
-  return (
-    <div className="hover-lift cursor-default rounded-lg bg-[hsl(var(--muted))]/40 p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div
-        className={cn(
-          "mt-1 text-2xl font-bold tabular-nums text-foreground",
-          valueCls,
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-// ─── Workflow card (with mini-flow) ─────────────────────────────────────
-
-function WorkflowListCard({
-  workflow,
-  onOpen,
-  onDelete,
-}: {
-  workflow: Workflow;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const updated = new Date(workflow.updatedAtMs).toLocaleString(
-    i18n.resolvedLanguage || "zh-CN",
-  );
-  const status: StatusFilter = workflow.scheduleRef ? "scheduled" : "manual";
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      className={cn(
-        "gradient-card hover-lift animate-fade-in-up block cursor-pointer rounded-2xl border p-5",
-        status === "scheduled"
-          ? "border-primary/30"
-          : "border-[hsl(var(--border))]",
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            <StatusBadge status={status} />
-            <span className="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {workflow.id}
-            </span>
-            {workflow.tags.slice(0, 3).map((tg) => (
-              <span
-                key={tg}
-                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-[10px] text-muted-foreground"
-              >
-                #{tg}
-              </span>
-            ))}
-          </div>
-          <h3 className="truncate text-base font-semibold text-foreground">
-            {workflow.name || workflow.id}
-          </h3>
-          {workflow.description && (
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-              {workflow.description}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          aria-label={t("workflow.card.delete")}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-rose-400"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-
-      {workflow.steps.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-          <MiniFlow steps={workflow.steps} />
-        </div>
-      )}
-
-      <div className="mt-4 grid grid-cols-4 gap-3 text-xs">
-        <FactCell
-          label={t("workflow.card.stepsLabel")}
-          value={String(workflow.steps.length)}
-        />
-        <FactCell
-          label={t("workflow.card.inputsLabel")}
-          value={String(workflow.inputs.length)}
-        />
-        <FactCell
-          label={t("workflow.card.scheduleLabel")}
-          value={
-            workflow.scheduleRef
-              ? t("workflow.card.scheduled")
-              : t("workflow.card.unscheduled")
-          }
-          valueCls={
-            workflow.scheduleRef ? "text-primary" : "text-muted-foreground"
-          }
-        />
-        <FactCell
-          label={t("workflow.card.updatedLabel")}
-          value={updated}
-          mono={false}
-        />
-      </div>
-    </div>
-  );
-}
-
-function FactCell({
-  label,
-  value,
-  valueCls,
-  mono = true,
-}: {
-  label: string;
-  value: string;
-  valueCls?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div
-        className={cn(
-          "mt-0.5 truncate text-sm text-foreground",
-          mono && "font-mono",
-          valueCls,
-        )}
-        title={value}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: StatusFilter }) {
-  const { t } = useTranslation();
-  if (status === "scheduled") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-[10px] text-primary">
-        <Clock className="h-3 w-3" /> {t("workflow.badge.scheduled")}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] text-emerald-400">
-      <PlayCircle className="h-3 w-3" /> {t("workflow.badge.manual", { defaultValue: "已保存" })}
-    </span>
-  );
-}
-
-const KIND_ICON: Record<StepKind, React.ComponentType<{ className?: string }>> =
-  {
-    tool: Wrench,
-    script: Terminal,
-    agent: Bot,
-    llm: Brain,
-  };
-
-function MiniFlow({ steps }: { steps: WorkflowStep[] }) {
-  const head = steps.slice(0, 5);
-  const more = Math.max(0, steps.length - head.length);
-  return (
-    <>
-      {head.map((step, i) => {
-        const Icon = KIND_ICON[step.kind];
-        const tone = STEP_KIND_TONE[step.kind];
-        return (
-          <span key={step.id} className="inline-flex items-center gap-1">
-            {i > 0 && (
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-            )}
-            <span
-              className={cn(
-                "inline-flex max-w-[120px] items-center gap-1 rounded-md border px-1.5 py-0.5",
-                tone.badge,
-              )}
-              title={step.name || step.ref || step.kind}
-            >
-              <Icon className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {step.name || step.ref || step.kind}
-              </span>
-            </span>
-          </span>
-        );
-      })}
-      {more > 0 && (
-        <span className="text-muted-foreground">+{more}</span>
-      )}
-    </>
-  );
-}
-
-// ─── Empty / loading ────────────────────────────────────────────────────
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border/40 bg-muted/20 py-16">
-      <WorkflowIcon className="h-8 w-8 text-muted-foreground" />
-      <p className="text-sm text-muted-foreground">{t("workflow.empty")}</p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="gradient-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white shadow-md"
-      >
-        <Plus className="h-4 w-4" />
-        {t("workflow.createNew")}
-      </button>
-    </div>
-  );
-}
-
-function CardListSkeleton() {
-  return (
-    <div className="space-y-4">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-40 animate-pulse rounded-2xl border border-border/40 bg-muted/30"
-        />
-      ))}
-    </div>
-  );
-}
-
 /** Exported so the detail page can pop the same stash. */
 export { DRAFT_STORAGE_KEY };
-
-// ─── Failed Runs Dialog ─────────────────────────────────────────────────
-
-function FailedRunsDialog({
-  open,
-  onOpenChange,
-  client,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  client: WorkflowClient;
-}) {
-  const { i18n } = useTranslation();
-  const navigate = useNavigate();
-  const [items, setItems] = useState<FailedRunItem[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setLoading(true);
-    client
-      .listFailedRuns(50)
-      .then((res) => setItems(res.items))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-  }, [open, client]);
-
-  const fmtDate = (ms: number) =>
-    new Date(ms).toLocaleString(i18n.resolvedLanguage || "zh-CN");
-
-  const fmtDur = (run: FailedRunItem) => {
-    if (!run.finishedAtMs) return "—";
-    const sec = (run.finishedAtMs - run.startedAtMs) / 1000;
-    return sec < 1 ? `${Math.round(sec * 1000)}ms` : `${sec.toFixed(1)}s`;
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>失败历史</DialogTitle>
-          <DialogDescription>所有失败的工作流运行记录</DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[60vh] overflow-y-auto">
-          {loading ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">
-              加载中…
-            </div>
-          ) : items.length === 0 ? (
-            <div className="py-10 text-center text-xs text-muted-foreground">
-              暂无失败记录
-            </div>
-          ) : (
-            <ul className="space-y-2">
-              {items.map((run) => (
-                <li
-                  key={run.id}
-                  className="rounded-xl border border-border/40 bg-muted/10 p-3 transition-colors hover:bg-muted/20"
-                >
-                  <div className="flex items-center gap-3">
-                    <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {run.workflowName}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {fmtDate(run.startedAtMs)}
-                        <span className="mx-1.5">·</span>
-                        耗时 {fmtDur(run)}
-                        <span className="mx-1.5">·</span>
-                        <code className="font-mono text-[10px]">{run.id}</code>
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenChange(false);
-                        navigate(`/workflows/${run.workflowId}`);
-                      }}
-                      className="shrink-0 rounded-lg border border-border/40 bg-muted/30 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                    >
-                      查看工作流
-                    </button>
-                  </div>
-                  {run.error && (
-                    <div className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs text-rose-300">
-                      {run.error}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}

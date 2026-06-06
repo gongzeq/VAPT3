@@ -106,7 +106,8 @@ describe("MessageBubble", () => {
     render(<MessageBubble message={message} />);
 
     fireEvent.click(screen.getByRole("button", { name: /sqlmap-detect/i }));
-    expect(screen.getByText(/target\.test\/sqli\.php/)).toBeInTheDocument();
+    // URL 同时出现在按钮摘要 span 和展开详情 pre 中，用 getAllByText 匹配
+    expect(screen.getAllByText(/target\.test\/sqli\.php/).length).toBeGreaterThan(0);
     expect(screen.queryByText("无参数")).not.toBeInTheDocument();
   });
 

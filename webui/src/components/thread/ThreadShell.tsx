@@ -37,7 +37,7 @@ function toModelBadgeLabel(modelName: string | null): string | null {
 // Quick-action definitions removed — no longer rendered by this
 // shell. Re-introduce alongside the UI if/when hero actions come back.
 
-
+/** @description Main chat shell with message list, composer, and sidebar toggle. */
 export function ThreadShell({
   session,
   title,
@@ -93,6 +93,7 @@ export function ThreadShell({
           buttons: message.buttons,
           variant: (message.promptKind === "approval" ? "approval" : "question") as "question" | "approval",
           detail: message.approvalDetail as string | undefined,
+          askId: message.askId as string | undefined,
         };
       }
       if (message.role === "assistant") return null;
@@ -192,7 +193,23 @@ export function ThreadShell({
           buttons={pendingAsk.buttons}
           variant={pendingAsk.variant}
           detail={pendingAsk.detail}
-          onAnswer={send}
+          onAnswer={(answer: string) => {
+            // Route approval decisions through scan.user_reply so the
+            // backend's surface_confirm Future resolves. Regular question
+            // answers still go through the normal message path.
+            if (pendingAsk.askId && pendingAsk.variant === "approval") {
+              const decision = answer.toLowerCase().includes("approve")
+                ? "approve"
+                : answer.toLowerCase().includes("deny")
+                  ? "deny"
+                  : answer;
+              if (decision === "approve" || decision === "deny") {
+                client.sendUserReply(pendingAsk.askId, decision);
+                return;
+              }
+            }
+            send(answer);
+          }}
         />
       ) : null}
       {session ? (

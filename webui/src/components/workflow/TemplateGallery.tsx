@@ -51,7 +51,7 @@ export function TemplateGallery({
           templates.length === 0 &&
           Array.from({ length: 3 }).map((_, i) => (
             <div
-              key={i}
+              key={`skeleton-${i}`}
               className="h-24 w-64 shrink-0 animate-pulse rounded-xl border border-border/40 bg-muted/30"
             />
           ))}

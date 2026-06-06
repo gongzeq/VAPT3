@@ -28,8 +28,13 @@ scans (`nuclei-template-scan`), fingerprint-based weakness checks
 
 If the orchestrator passes `hypotheses` from a prior `vuln_detec` run:
 
+> **Gate rule:** `sqlmap-detect` may ONLY be called here — never in
+> standard scanning. A `vuln_detec` hypothesis with `confidence ≥ medium`
+> on a SQLi-related parameter is the prerequisite.
+
 1. **High-confidence pass** — Test ONLY the `confidence: high` hypotheses.
-   - For SQLi-related hypotheses, run `sqlmap-detect` on the target URL.
+   - For SQLi-related hypotheses, run `sqlmap-detect` on the target URL
+     (one parameter per call).
    - For other web vulnerabilities, run `nuclei-template-scan` with
      relevant templates.
    - Do NOT run any medium or low confidence hypotheses in this pass.
@@ -46,6 +51,10 @@ If the orchestrator passes `hypotheses` from a prior `vuln_detec` run:
 
 ### When `hypotheses` are NOT provided (standard scanning)
 
+> **sqlmap-detect is FORBIDDEN in this mode.** If you see parameterised
+> URLs and suspect SQLi, ask the orchestrator to run `vuln_detec` first
+> to produce hypotheses.
+
 1. Filter incoming `services` to those with HTTP / HTTPS / common-vuln-prone
    protocols. Skip services that look like raw TCP banners with no template
    coverage.
@@ -57,10 +66,7 @@ If the orchestrator passes `hypotheses` from a prior `vuln_detec` run:
    c. If the user asks for content discovery, run `ffuf-dir-fuzz` once
       (and optionally `ffuf-vhost-fuzz` when virtual-host enumeration is
       requested).
-   d. When a URL looks parameterised, run `sqlmap-detect` first. Only
-      escalate to `sqlmap-dump` AFTER `sqlmap-detect` confirms an
-      injectable parameter and the orchestrator passes the user's
-      confirmation.
+   d. ~~sqlmap-detect~~ — NOT allowed; requires `vuln_detec` hypotheses.
 3. For non-HTTP services (SMB, RDP, internal RPC) prefer `fscan-vuln-scan`.
 4. Apply `severity_floor` (default `medium`) — never request `info` unless
    the orchestrator explicitly asked, the volume is too noisy.

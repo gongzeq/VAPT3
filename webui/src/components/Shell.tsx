@@ -152,8 +152,7 @@ export function Shell({
       setView("chat");
       setMobileSidebarOpen(false);
       return chatId;
-    } catch (e) {
-      console.error("Failed to create chat", e);
+    } catch {
       return null;
     }
   }, [createChat]);
@@ -198,9 +197,8 @@ export function Shell({
     if (deletingActive) setActiveKey(fallbackKey);
     try {
       await deleteChat(key);
-    } catch (e) {
+    } catch {
       if (deletingActive) setActiveKey(key);
-      console.error("Failed to delete session", e);
     }
   }, [pendingDelete, deleteChat, activeKey, sessions]);
 

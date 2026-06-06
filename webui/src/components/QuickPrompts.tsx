@@ -61,7 +61,9 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
   return (
     <section className={className}>
       <header className="mb-3 flex items-center gap-2">
-        <Zap className="h-4 w-4 text-primary" />
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-primary/10">
+          <Zap className="h-3.5 w-3.5 text-primary" />
+        </span>
         <h4 className="text-sm font-semibold">
           {t("home.prompts.title", { defaultValue: "快捷指令" })}
         </h4>
@@ -82,14 +84,16 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
             <button
               key={p.key}
               type="button"
-              className="hover-lift group w-full rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-left text-sm hover:border-primary/40 hover:bg-primary/5"
+              className="prompt-accent card-hover-glow group w-full rounded-lg border border-border/60 bg-muted/30 px-3 py-2.5 pl-4 text-left text-sm"
               onClick={() => dispatchComposerPrefill(prefill)}
             >
-              <div className="flex items-center gap-2 font-medium text-foreground">
-                <Icon className="h-3.5 w-3.5 text-primary" />
+              <div className="flex items-center gap-2.5 font-medium text-foreground">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+                  <Icon className="h-3.5 w-3.5 text-primary" />
+                </span>
                 {title}
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground group-hover:text-white/70">
+              <p className="mt-0.5 pl-[2.125rem] text-xs text-muted-foreground group-hover:text-muted-foreground/90">
                 {subtitle}
               </p>
             </button>

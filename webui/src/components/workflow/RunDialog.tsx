@@ -206,7 +206,7 @@ export function RunDialog({
             />
           </label>
           {uploadedFileName && (
-            <span className="text-[10px] text-emerald-400">✓ 已加载 {uploadedFileName}</span>
+            <span className="text-[10px] text-alert-success">✓ 已加载 {uploadedFileName}</span>
           )}
         </div>
 
@@ -217,7 +217,7 @@ export function RunDialog({
                 <span className="text-muted-foreground">
                   {input.label || input.name}
                   {input.required && (
-                    <span className="ml-1 text-rose-400">*</span>
+                    <span className="ml-1 text-destructive">*</span>
                   )}
                   {input.description && (
                     <span className="ml-1 opacity-60">— {input.description}</span>
@@ -260,7 +260,7 @@ export function RunDialog({
           </div>
         )}
         {error && (
-          <p className="text-xs text-rose-300">
+          <p className="text-xs text-destructive">
             {t("workflow.error.run")}: {error}
           </p>
         )}

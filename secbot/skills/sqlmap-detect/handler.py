@@ -120,12 +120,14 @@ def _write_request_file(
     method: str,
     data: str | None,
     cookie: str | None,
-) -> tuple[Path, bool]:
-    """Write a sqlmap ``-r`` request file and return (path, force_ssl).
+) -> tuple[Path, bool, list[str]]:
+    """Write a sqlmap ``-r`` request file and return (path, force_ssl, data_cli).
 
-    User-controlled URL/body/cookie values stay inside the request file rather
-    than argv, preserving the sandbox's forbidden-character protection while
-    still allowing normal form bodies such as ``a=1&b=2``.
+    Query-string parameters are stripped from the URL in the request file
+    and returned as ``--data`` CLI arguments so that sqlmap receives
+    parameter names and values separately from the target path.  Combined
+    with ``-p <name>`` this avoids the "tainted parameter values" warning
+    that sqlmap raises when it detects SQL-injection leftovers in the URL.
     """
 
     parts = urlsplit(url)
@@ -134,9 +136,16 @@ def _write_request_file(
     _reject_header_breaks("data", data)
     _reject_header_breaks("cookie", cookie)
 
+    # Always use clean path — no query string in request file URL.
     target = parts.path or "/"
+
+    # Collect parameter key=value pairs for --data.
+    data_cli: list[str] = []
     if parts.query:
-        target = f"{target}?{parts.query}"
+        # GET query params → pass via --data so sqlmap tests them
+        # as named parameters (combined with -p) without the values
+        # appearing in the request-file URL.
+        data_cli = ["--data", parts.query]
 
     body = data if method == "POST" and data else ""
     body_bytes = body.encode("utf-8")
@@ -159,7 +168,7 @@ def _write_request_file(
 
     request_file = sqlmap_dir / "request.txt"
     request_file.write_text("\r\n".join([*headers, "", body]), encoding="utf-8")
-    return request_file, parts.scheme == "https"
+    return request_file, parts.scheme == "https", data_cli
 
 
 def _parse(raw_log: Path, _exit_code: int) -> dict[str, Any]:
@@ -203,7 +212,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     method: str = args.get("method", "GET")
     data: str | None = args.get("data")
     cookie: str | None = args.get("cookie")
-    level: int = int(args.get("level", 1))
+    level: int = int(args.get("level", 3))
     risk: int = int(args.get("risk", 1))
 
     # Auto-promote to POST when body data is provided without explicit method.
@@ -218,7 +227,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     sqlmap_dir = ctx.scan_dir / "sqlmap" / invocation_id
     sqlmap_dir.mkdir(parents=True, exist_ok=True)
 
-    request_file, force_ssl = _write_request_file(
+    request_file, force_ssl, data_cli = _write_request_file(
         sqlmap_dir=sqlmap_dir,
         url=url,
         method=method,
@@ -229,12 +238,14 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     cli: list[str] = [
         "-r", str(request_file),
         "--batch",
+        "--answers", "continue=y",
         "--disable-coloring",
         "--level", str(level),
         "--risk", str(risk),
         "--output-dir", str(sqlmap_dir),
         "--flush-session",
     ]
+    cli += data_cli
     if parameters:
         cli += ["-p", ",".join(parameters)]
     if force_ssl:

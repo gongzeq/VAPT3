@@ -17,6 +17,7 @@ import re
 import shutil
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from secbot.skills._shared.runner import execute
 from secbot.skills.types import InvalidSkillArg, SkillBinaryMissing, SkillContext, SkillResult
@@ -106,12 +107,26 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     sqlmap_dir = ctx.scan_dir / "sqlmap"
     sqlmap_dir.mkdir(parents=True, exist_ok=True)
 
+    # Strip query params from URL — pass via --data + -p to avoid sqlmap
+    # "tainted parameter values" warning.
+    parts = urlsplit(url)
+    clean_url = parts._replace(query="").geturl()
+
     cli: list[str] = [
-        "-u", url,
+        "-u", clean_url,
         "--batch",
+        "--answers", "continue=y",
         "--disable-coloring",
         "--output-dir", str(sqlmap_dir),
     ]
+    if parts.query:
+        cli += ["--data", parts.query]
+        param_names = [k for k, _v in (
+            p.split("=", 1) if "=" in p else (p, "")
+            for p in parts.query.split("&")
+        ) if k]
+        if param_names:
+            cli += ["-p", ",".join(param_names)]
     if action == "dbs":
         cli.append("--dbs")
     elif action == "tables":
@@ -123,6 +138,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         if columns:
             cli += ["-C", ",".join(columns)]
     if method == "POST" and data:
+        # POST body overrides query-param --data (sqlmap accepts one --data).
+        while "--data" in cli:
+            idx = cli.index("--data")
+            del cli[idx:idx + 2]
         cli += ["--data", data]
     if cookie:
         cli += ["--cookie", cookie]

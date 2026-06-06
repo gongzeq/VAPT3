@@ -62,8 +62,8 @@ export interface UseNotificationsOptions {
  * the floor if a newer fetch has committed.
  *
  * Optimistic updates: read / read-all flip the local row first, then
- * reconcile on the server response. A failed sync logs via the standard
- * ``console.warn`` path; the panel keeps the optimistic state rather
+ * reconcile on the server response. A failed sync is silently ignored;
+ * the panel keeps the optimistic state rather
  * than flashing the previous value — the next refetch (panel re-open)
  * will correct it if the server truly disagreed.
  */
@@ -142,10 +142,8 @@ export function useNotifications(
     onDecrementRef.current?.(1);
     try {
       await markNotificationRead(activeToken, id);
-    } catch (err) {
-      // Keep the optimistic row state but surface the failure via the
-      // console; the next refresh will re-read from the server.
-      console.warn("notifications.markRead failed", err);
+    } catch {
+      // Keep the optimistic row state; the next refresh will re-read from the server.
     }
   }, []);
 
@@ -158,8 +156,8 @@ export function useNotifications(
     onResetRef.current?.();
     try {
       await markAllNotificationsRead(activeToken);
-    } catch (err) {
-      console.warn("notifications.markAllRead failed", err);
+    } catch {
+      // Silent — next panel re-open will re-fetch.
     }
   }, []);
 

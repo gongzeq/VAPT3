@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { BootStatus } from "@/components/ProtectedRoute";
 
+/** @description Props for the login page component. */
 export interface LoginPageProps {
   state: BootStatus;
   onSecret: (secret: string) => void;
@@ -113,12 +114,9 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
             <img
               src="/brand/logo.png"
               alt="logo"
-              className="h-11 w-11 rounded-xl"
-              style={{
-                boxShadow: "0 0 0 4px hsl(var(--primary) / 0.18)",
-              }}
+              className="h-11 w-11 rounded-xl shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]"
             />
-            <span className="brand-zh leading-tight" style={{ fontSize: '26px' }}>智海智盾</span>
+            <span className="brand-zh leading-tight text-[26px]">智海智盾</span>
           </div>
           <p className="text-sm text-white/60">多智能体网络安全协作系统</p>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/85 backdrop-blur">
@@ -146,13 +144,15 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
             ].map(({ icon: Icon, title, sub }) => (
               <div
                 key={title}
-                className="bg-glass hover-lift rounded-xl border border-white/10 p-4"
+                className="bg-glass card-hover-glow rounded-xl border border-white/8 p-4"
               >
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <Icon className="h-4 w-4 text-primary" />
+                <div className="flex items-center gap-2.5 text-sm font-semibold text-white">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary/15">
+                    <Icon className="h-3.5 w-3.5 text-primary" />
+                  </span>
                   {title}
                 </div>
-                <p className="mt-1 text-xs text-white/60">{sub}</p>
+                <p className="mt-1 pl-[2.125rem] text-xs text-white/55">{sub}</p>
               </div>
             ))}
           </div>
@@ -172,10 +172,7 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
         <div className="w-full max-w-md animate-slide-in-right space-y-8">
           {/* 标题 */}
           <div className="space-y-3 text-center">
-            <div
-              className="animate-pulse-glow mx-auto flex h-14 w-14 items-center justify-center rounded-2xl shadow-glow"
-              style={{ backgroundImage: "var(--gradient-primary)" }}
-            >
+            <div className="animate-pulse-glow mx-auto flex h-14 w-14 items-center justify-center rounded-2xl shadow-glow bg-[image:var(--gradient-primary)]">
               <Shield className="h-7 w-7 text-white" />
             </div>
             <h2 className="text-3xl font-bold">欢迎回来</h2>
@@ -187,8 +184,7 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
           {/* 表单卡片 */}
           <form
             onSubmit={handleSubmit}
-            className="border-glow space-y-5 rounded-2xl p-7"
-            style={{ backgroundImage: "var(--gradient-card)" }}
+            className="border-glow space-y-5 rounded-2xl p-7 bg-[image:var(--gradient-card)]"
           >
             {failed && (
               <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
@@ -215,7 +211,7 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
                   disabled={submitting}
                   autoFocus
                   placeholder="请输入共享密钥"
-                  className="w-full rounded-lg border border-border bg-muted/50 py-2.5 pl-9 pr-10 font-mono text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  className="focus-ring-primary w-full rounded-lg border border-border/60 bg-muted/40 py-2.5 pl-9 pr-10 font-mono text-sm"
                 />
                 <button
                   type="button"
@@ -252,8 +248,7 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
             <Button
               type="submit"
               disabled={!value.trim() || submitting}
-              className="hover-lift group w-full gap-2 shadow-elegant"
-              style={{ backgroundImage: "var(--gradient-primary)" }}
+              className="group w-full gap-2 shadow-[0_4px_20px_hsl(var(--primary)/0.35)] transition-all duration-200 hover:shadow-[0_6px_28px_hsl(var(--primary)/0.5)] hover:scale-[1.01] active:scale-[0.99] bg-[image:var(--gradient-primary)]"
             >
               <LogIn className="h-4 w-4" />
               {submitting ? "验证中…" : "登录控制台"}

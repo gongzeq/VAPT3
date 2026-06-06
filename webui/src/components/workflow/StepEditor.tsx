@@ -325,7 +325,7 @@ function IconBtn({
         "rounded-lg border border-border/40 p-1.5 text-muted-foreground transition-colors",
         "disabled:opacity-40 disabled:cursor-not-allowed",
         tone === "danger"
-          ? "hover:border-rose-500/50 hover:text-rose-400"
+          ? "hover:border-destructive/50 hover:text-destructive"
           : "hover:border-primary/50 hover:text-primary",
       )}
     >

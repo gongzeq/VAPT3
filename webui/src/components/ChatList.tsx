@@ -97,10 +97,10 @@ export function ChatList({
                         }
                       }}
                       className={cn(
-                        "group relative w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-colors",
+                        "group relative w-full cursor-pointer rounded-lg px-3 py-2.5 text-left transition-all duration-150",
                         active
-                          ? "border border-primary/30 bg-primary/10"
-                          : "hover:bg-white/5",
+                          ? "sidebar-active-bar border border-primary/20 bg-primary/8"
+                          : "hover:bg-primary/5",
                       )}
                     >
                       <div className="flex items-center justify-between">
