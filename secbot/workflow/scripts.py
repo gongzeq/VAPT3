@@ -844,10 +844,11 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
             pass
 
 
-def _persist(conn: sqlite3.Connection, row: dict) -> bool:
+def _persist(conn: sqlite3.Connection, row: dict) -> int:
+    """Persist a log-analysis row and return the new rowid (0 on failure)."""
     try:
         _ensure_table(conn)
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO log_analysis
                 (workflow_run_id, file_name, log_format, char_count,
@@ -875,10 +876,10 @@ def _persist(conn: sqlite3.Connection, row: dict) -> bool:
             ),
         )
         conn.commit()
-        return True
+        return cursor.lastrowid or 0
     except Exception as exc:
         sys.stderr.write(f"[log-analysis-step3] persist failed: {exc}\n")
-        return False
+        return 0
 
 
 def _emit(payload: dict) -> None:
@@ -1039,9 +1040,10 @@ def main() -> int:
             pass
 
     persisted = False
+    last_id = 0
     try:
         conn = sqlite3.connect(_DB_PATH, timeout=2.0)
-        persisted = _persist(conn, {
+        last_id = _persist(conn, {
             "workflow_run_id": "",
             "file_name": file_name,
             "log_format": log_format,
@@ -1057,6 +1059,7 @@ def main() -> int:
             "analysis_json": json.dumps(analysis_payload, ensure_ascii=False),
             "created_at": created_at,
         })
+        persisted = last_id > 0
         conn.close()
     except Exception as exc:
         sys.stderr.write(f"[log-analysis-step3] db error: {exc}\n")
@@ -1073,6 +1076,7 @@ def main() -> int:
         "file_name": file_name,
         "char_count": char_count,
         "persisted": persisted,
+        "last_id": last_id,
     })
     return 0
 

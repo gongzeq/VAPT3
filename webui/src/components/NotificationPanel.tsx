@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Bell, CheckCheck, Info, Loader2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, FileWarning, Info, Loader2, ShieldAlert } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { relativeTime } from "@/lib/format";
@@ -44,6 +44,8 @@ function iconFor(kind: string): {
       return { Icon: ShieldAlert, tone: "text-severity-high" };
     case "scan_completed":
       return { Icon: CheckCheck, tone: "text-alert-success" };
+    case "log_alert":
+      return { Icon: FileWarning, tone: "text-severity-critical" };
     default:
       return { Icon: Info, tone: "text-muted-foreground" };
   }

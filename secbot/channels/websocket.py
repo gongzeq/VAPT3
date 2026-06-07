@@ -772,6 +772,16 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/dashboard/log-analysis/history":
             return await self._handle_dashboard_log_analysis_history(request)
 
+        # Log-analysis handle action — mark a record as acknowledged.
+        # GET-only (same websockets HTTP-parser constraint as notifications).
+        m = re.match(r"^/api/dashboard/log-analysis/(\d+)/handle$", got)
+        if m:
+            return await self._handle_dashboard_log_analysis_handle(request, int(m.group(1)))
+
+        m = re.match(r"^/api/dashboard/log-analysis/(\d+)/unhandle$", got)
+        if m:
+            return await self._handle_dashboard_log_analysis_unhandle(request, int(m.group(1)))
+
         # Report metadata surface (spec: `.trellis/spec/backend/report-meta.md`).
         # List + single-row detail endpoints read from the ``report_meta`` table
         # populated by the report skill handlers.
@@ -1567,6 +1577,45 @@ class WebSocketChannel(BaseChannel):
                 500, "log-analysis history unavailable"
             )
         return _http_json_response(payload)
+
+    async def _handle_dashboard_log_analysis_handle(
+        self, request: WsRequest, log_id: int
+    ) -> Response:
+        """Mark a log-analysis record as handled (acknowledged).
+
+        Also marks any matching ``log_alert`` notification as read so the
+        bell badge stays in sync with the operator's action.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import log_analysis_dashboard
+
+        result = log_analysis_dashboard.handle(log_id)
+        if not result.get("ok"):
+            return _http_error(500, result.get("error", "handle failed"))
+
+        # Sync: mark matching notification as read (PR2 link).
+        try:
+            from secbot.channels.notifications import get_notification_queue
+            q = get_notification_queue()
+            q.mark_read_by_ref("log_analysis", log_id)
+        except Exception:
+            pass  # notification sync is best-effort
+
+        return _http_json_response(result)
+
+    async def _handle_dashboard_log_analysis_unhandle(
+        self, request: WsRequest, log_id: int
+    ) -> Response:
+        """Undo a previous handle action."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api import log_analysis_dashboard
+
+        result = log_analysis_dashboard.unhandle(log_id)
+        if not result.get("ok"):
+            return _http_error(500, result.get("error", "unhandle failed"))
+        return _http_json_response(result)
 
     # -- Report metadata surface --------------------------------------------
     #

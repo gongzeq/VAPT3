@@ -45,6 +45,7 @@ ALLOWED_TYPES: tuple[str, ...] = (
     "scan_failed",
     "scan_completed",
     "high_risk_confirm",
+    "log_alert",
 )
 
 # Activity event vocabulary — sourced from the PRD §Contracts §4 example.
@@ -150,12 +151,19 @@ class NotificationQueue:
         title: str,
         body: str = "",
         link: Optional[str] = None,
+        ref_type: Optional[str] = None,
+        ref_id: Optional[int] = None,
     ) -> dict[str, Any]:
         """Append a new notification and return the stored row.
 
         ``type`` must be one of :data:`ALLOWED_TYPES` — unknown types are
         still accepted (for forward-compat) but logged once per call so
         integration mistakes surface in the journal.
+
+        ``ref_type`` + ``ref_id`` are optional cross-reference fields used
+        to locate notifications from external actions (e.g. marking a
+        ``log_alert`` notification as read when the operator handles the
+        corresponding log-analysis record).
         """
         if type not in ALLOWED_TYPES:
             logger.warning("notifications.unknown_type type=%s", type)
@@ -167,6 +175,8 @@ class NotificationQueue:
             "read": False,
             "created_at": _utcnow_iso(),
             "link": link,
+            "ref_type": ref_type,
+            "ref_id": ref_id,
         }
         with self._lock:
             self._items.appendleft(item)
@@ -188,6 +198,27 @@ class NotificationQueue:
         with self._lock:
             for entry in self._items:
                 if not entry["read"]:
+                    entry["read"] = True
+                    updated += 1
+        return updated
+
+    def mark_read_by_ref(
+        self, ref_type: str, ref_id: int
+    ) -> int:
+        """Mark every unread entry matching ``ref_type`` + ``ref_id`` as read.
+
+        Used by the log-analysis handle endpoint to sync the notification
+        bell with the operator's acknowledgement.  Returns the count of
+        rows changed.
+        """
+        updated = 0
+        with self._lock:
+            for entry in self._items:
+                if (
+                    entry.get("ref_type") == ref_type
+                    and entry.get("ref_id") == ref_id
+                    and not entry["read"]
+                ):
                     entry["read"] = True
                     updated += 1
         return updated

@@ -48,6 +48,57 @@ from secbot.workflow.types import (
 
 logger = logging.getLogger(__name__)
 
+# suggested_action values that map to "alert" status (mirror
+# secbot.api.log_analysis_dashboard._ACTION_TO_STATUS).
+_ALERT_ACTIONS = frozenset({"告警", "紧急处理"})
+
+
+def _publish_log_alert_if_needed(run: WorkflowRun) -> None:
+    """Inspect a completed log-analysis run and publish a notification.
+
+    Called after ``_execute_steps`` finishes.  Reads the final step's
+    parsed output (step3) to decide whether the result qualifies as an
+    alert.  Best-effort: any failure is logged and swallowed so the
+    workflow run itself is never affected.
+    """
+    try:
+        # Find the last step result (step3) which contains the persisted
+        # analysis output including ``suggested_action`` and ``last_id``.
+        step3_result = run.step_results.get("step3")
+        if step3_result is None or step3_result.status != "success":
+            return
+        output = step3_result.output
+        if not isinstance(output, dict):
+            return
+        parsed = output.get("parsed")
+        if not isinstance(parsed, dict):
+            return
+
+        action = str(parsed.get("suggested_action") or "")
+        if action not in _ALERT_ACTIONS:
+            return
+
+        last_id = int(parsed.get("last_id") or 0)
+        file_name = str(parsed.get("file_name") or "")
+        anomaly_count = int(parsed.get("anomaly_count") or 0)
+
+        from secbot.channels.notifications import get_notification_queue
+
+        q = get_notification_queue()
+        q.publish(
+            type="log_alert",
+            title=f"日志安全告警: {file_name}",
+            body=(
+                f"检测到 {anomaly_count} 条异常，建议操作：{action}"
+            ),
+            link=f"/dashboard/log-analysis?focus={last_id}" if last_id else "/dashboard/log-analysis",
+            ref_type="log_analysis",
+            ref_id=last_id if last_id else None,
+        )
+    except Exception:
+        logger.debug("log-alert notification publish failed", exc_info=True)
+
+
 ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 _WORKFLOW_MSG_PREFIX = "__workflow__:"
@@ -205,6 +256,9 @@ class WorkflowService:
                 await runner._execute_steps(run, wf, ctx)
             finally:
                 self._active_runners.pop(run.id, None)
+            # Post-completion: publish notification for log-analysis alerts.
+            if wf_id == "log-analysis":
+                _publish_log_alert_if_needed(run)
             return run
 
     async def run_async(
@@ -235,6 +289,9 @@ class WorkflowService:
                 self._active_runners[run.id] = runner
                 try:
                     await runner._execute_steps(run, wf, ctx)
+                    # Post-completion: publish notification for log-analysis alerts.
+                    if wf_id == "log-analysis":
+                        _publish_log_alert_if_needed(run)
                 except Exception:
                     logger.exception(
                         "Background workflow run %s failed", run.id

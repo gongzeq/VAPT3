@@ -245,10 +245,10 @@ _LOG_ANALYSIS_LLM_SYSTEM = (
     "才视为[疑似攻击成功]，按实际危害评级(critical/high/medium)。\n"
     "3. 若本片段中所有异常请求均被阻断(无疑似攻击成功条目)，则：\n"
     "   - confidence <= 0.30(表示威胁已被有效防护)\n"
-    "   - suggested_action 必须为[忽略]或[标记关注]，绝不可输出[告警]或[紧急处理]\n"
+    "   - suggested_action 必须为[正常]，绝不可输出[告警]\n"
     "   - 在 reason 中明确说明[所有攻击均已被WAF/安全设备阻断，无攻击成功迹象]\n"
     "4. 仅当存在疑似攻击成功条目时，confidence 才可超过 0.50，"
-    "suggested_action 才可使用[告警]或[紧急处理]。\n"
+    "suggested_action 才可使用[告警]。\n"
     "只输出 JSON，不输出多余文字。"
 )
 
@@ -263,7 +263,7 @@ _LOG_ANALYSIS_LLM_USER = (
     '  "confidence": 0.0-1.0,  // 整体威胁置信度\n'
     '  "reason": "综合分析依据（≤500 字）",\n'
     '  "risk_factors": ["风险因素1", "风险因素2", ...],\n'
-    '  "suggested_action": "忽略|标记关注|告警|紧急处理",\n'
+    '  "suggested_action": "正常|告警",\n'
     '  "anomaly_count": <int>,  // 检测到的异常条数\n'
     '  "anomaly_entries": [\n'
     '    {"desc": "异常描述和原始数据的关键字段值", "severity": "critical|high|medium|low"},\n'

@@ -60,12 +60,17 @@ _DEFAULT_CHUNK_MAX_CHARS = 10000
 _DEFAULT_MAX_CHUNKS = 30
 
 # suggested_action severity ordering (low → high). The merged result
-# reports the most severe action any chunk proposed.
+# reports the most severe action any chunk proposed. New two-value
+# scheme: 正常/告警. Legacy four-value outputs are tolerated via the
+# fallback key (unknown → rank 0, same as 正常).
 _ACTION_RANK = {
+    "正常": 0,
+    "告警": 1,
+    # Legacy values (pre-simplification) — kept so old cached results
+    # still merge correctly without raising.
     "忽略": 0,
-    "标记关注": 1,
-    "告警": 2,
-    "紧急处理": 3,
+    "标记关注": 0,
+    "紧急处理": 1,
 }
 
 

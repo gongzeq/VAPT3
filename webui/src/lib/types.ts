@@ -458,7 +458,8 @@ export type NotificationKind =
   | "critical_vuln"
   | "scan_failed"
   | "scan_completed"
-  | "high_risk_confirm";
+  | "high_risk_confirm"
+  | "log_alert";
 
 export interface Notification {
   id: string;

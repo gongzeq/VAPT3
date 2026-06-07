@@ -55,6 +55,9 @@ export interface LogAnalysisLatest {
   summary: string; // brief text summary
 }
 
+/** Three-state status for a log-analysis record (PR1). */
+export type LogAnalysisStatus = "alert" | "handled" | "normal";
+
 export interface LogAnalysisHistoryItem {
   id: number;
   file_name: string;
@@ -73,6 +76,8 @@ export interface LogAnalysisHistoryItem {
   summary: string;
   char_count: number;
   log_format: string;
+  /** Derived three-state status (alert/handled/normal). */
+  status?: LogAnalysisStatus;
 }
 
 export interface LogAnalysisHistoryPage {
@@ -106,6 +111,35 @@ export async function fetchLogAnalysisHistory(
   const qs = query.toString();
   return request<LogAnalysisHistoryPage>(
     `${base}/api/dashboard/log-analysis/history${qs ? `?${qs}` : ""}`,
+    token,
+  );
+}
+
+/**
+ * Mark a log-analysis record as handled (acknowledged).
+ * Returns the server response with ``ok``, ``log_id``, ``handled_at``.
+ */
+export async function handleLogAnalysis(
+  token: string,
+  logId: number,
+  base: string = "",
+): Promise<{ ok: boolean; log_id: number; handled_at?: string }> {
+  return request(
+    `${base}/api/dashboard/log-analysis/${logId}/handle`,
+    token,
+  );
+}
+
+/**
+ * Undo a previous handle action.
+ */
+export async function unhandleLogAnalysis(
+  token: string,
+  logId: number,
+  base: string = "",
+): Promise<{ ok: boolean; log_id: number }> {
+  return request(
+    `${base}/api/dashboard/log-analysis/${logId}/unhandle`,
     token,
   );
 }

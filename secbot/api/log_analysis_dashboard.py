@@ -20,12 +20,29 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
 _DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "detection_results.db")
 _CONNECT_TIMEOUT_S = 1.5
+
+# ---------------------------------------------------------------------------
+# Status constants
+# ---------------------------------------------------------------------------
+STATUS_ALERT = "alert"
+STATUS_HANDLED = "handled"
+STATUS_NORMAL = "normal"
+
+# Old suggested_action values → new two-value scheme (backward compat).
+# New LLM outputs only "告警" / "正常"; legacy four-value outputs are mapped.
+_ACTION_TO_STATUS: dict[str, str] = {
+    "告警": STATUS_ALERT,
+    "紧急处理": STATUS_ALERT,
+    "正常": STATUS_NORMAL,
+    "忽略": STATUS_NORMAL,
+    "标记关注": STATUS_NORMAL,
+}
 
 
 def db_path() -> str:
@@ -87,6 +104,7 @@ def latest() -> dict[str, Any]:
         if conn is None:
             return empty
         try:
+            _ensure_handled_table(conn)
             row = conn.execute(
                 """
                 SELECT id, file_name, created_at, anomaly_count,
@@ -97,6 +115,7 @@ def latest() -> dict[str, Any]:
                 LIMIT 1
                 """
             ).fetchone()
+            handled_ids = _get_handled_ids(conn)
         except sqlite3.Error:
             return empty
 
@@ -119,9 +138,13 @@ def latest() -> dict[str, Any]:
     total_entries = int(analysis.get("total_entries") or 0) or int(row["anomaly_count"] or 0)
     sev_dist["safe"] = max(0, total_entries - anomaly_total)
 
+    suggested_action = str(analysis.get("suggested_action") or "")
+    row_id = int(row["id"])
+    status = _derive_status(suggested_action, row_id in handled_ids)
+
     return {
         "found": True,
-        "id": int(row["id"]),
+        "id": row_id,
         "file_name": row["file_name"] or "",
         "created_at": row["created_at"] or "",
         "anomaly_count": int(row["anomaly_count"] or 0),
@@ -130,10 +153,11 @@ def latest() -> dict[str, Any]:
         "log_format": row["log_format"] or "",
         "confidence": float(analysis.get("confidence") or 0.0),
         "reason": str(analysis.get("reason") or ""),
-        "suggested_action": str(analysis.get("suggested_action") or ""),
+        "suggested_action": suggested_action,
         "risk_factors": list(analysis.get("risk_factors") or []),
         "severity_distribution": sev_dist,
         "summary": row["summary"] or "",
+        "status": status,
     }
 
 
@@ -164,6 +188,7 @@ def history(
         if conn is None:
             return {"items": [], "total": 0, "page": page, "page_size": page_size}
         try:
+            _ensure_handled_table(conn)
             total = int(
                 conn.execute("SELECT COUNT(*) FROM log_analysis").fetchone()[0] or 0
             )
@@ -194,6 +219,7 @@ def history(
                     """,
                     (page_size, offset),
                 ).fetchall()
+            handled_ids = _get_handled_ids(conn)
         except sqlite3.Error:
             return {"items": [], "total": 0, "page": page, "page_size": page_size}
 
@@ -217,8 +243,12 @@ def history(
             total_entries_val = int(row["anomaly_count"] or 0)
         sev_dist["safe"] = max(0, total_entries_val - anomaly_total)
 
+        row_id = int(row["id"])
+        suggested_action = str(analysis.get("suggested_action") or "")
+        status = _derive_status(suggested_action, row_id in handled_ids)
+
         items.append({
-            "id": int(row["id"]),
+            "id": row_id,
             "file_name": row["file_name"] or "",
             "created_at": row["created_at"] or "",
             "anomaly_count": int(row["anomaly_count"] or 0),
@@ -226,12 +256,13 @@ def history(
             "severity_distribution": sev_dist,
             "confidence": float(analysis.get("confidence") or 0.0),
             "reason": str(analysis.get("reason") or ""),
-            "suggested_action": str(analysis.get("suggested_action") or ""),
+            "suggested_action": suggested_action,
             "risk_factors": list(analysis.get("risk_factors") or []),
             "anomaly_entries": list(analysis.get("anomaly_entries") or []),
             "summary": row["summary"] or "",
             "char_count": int(row["char_count"] or 0),
             "log_format": row["log_format"] or "unknown",
+            "status": status,
         })
 
     return {
@@ -242,9 +273,109 @@ def history(
     }
 
 
+# ---------------------------------------------------------------------------
+# Handled table — separate write path (keeps log_analysis read-only)
+# ---------------------------------------------------------------------------
+
+
+def _ensure_handled_table(conn: sqlite3.Connection) -> None:
+    """Create ``log_analysis_handled`` if it does not already exist.
+
+    The table tracks which log-analysis records have been acknowledged by
+    an operator.  Stored in the same DB file as ``log_analysis`` so that
+    ``LEFT JOIN`` requires no extra connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS log_analysis_handled (
+            log_id INTEGER PRIMARY KEY,
+            handled_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _derive_status(suggested_action: str, is_handled: bool) -> str:
+    """Derive the three-state status from ``suggested_action`` + handled flag.
+
+    Priority: ``handled > alert > normal``.  Unknown ``suggested_action``
+    values default to *normal* so stale data never surfaces as alert.
+    """
+    if is_handled:
+        return STATUS_HANDLED
+    return _ACTION_TO_STATUS.get(suggested_action, STATUS_NORMAL)
+
+
+def _get_handled_ids(conn: sqlite3.Connection) -> set[int]:
+    """Return the set of log IDs that have been marked as handled."""
+    try:
+        rows = conn.execute(
+            "SELECT log_id FROM log_analysis_handled"
+        ).fetchall()
+        return {int(r[0]) for r in rows}
+    except sqlite3.OperationalError:
+        return set()
+
+
+def handle(log_id: int) -> dict[str, Any]:
+    """Mark a log-analysis record as handled.
+
+    Inserts into ``log_analysis_handled`` (idempotent — duplicate inserts
+    are silently ignored via ``INSERT OR IGNORE``).  Returns the stored
+    row including ``handled_at`` timestamp.
+    """
+    handled_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with _connect() as conn:
+        if conn is None:
+            return {"ok": False, "error": "db_unavailable"}
+        try:
+            _ensure_handled_table(conn)
+            conn.execute(
+                "INSERT OR IGNORE INTO log_analysis_handled (log_id, handled_at)"
+                " VALUES (?, ?)",
+                (log_id, handled_at),
+            )
+            conn.commit()
+        except sqlite3.Error as exc:
+            return {"ok": False, "error": str(exc)}
+    return {"ok": True, "log_id": log_id, "handled_at": handled_at}
+
+
+def unhandle(log_id: int) -> dict[str, Any]:
+    """Remove the handled mark from a log-analysis record (undo)."""
+    with _connect() as conn:
+        if conn is None:
+            return {"ok": False, "error": "db_unavailable"}
+        try:
+            _ensure_handled_table(conn)
+            conn.execute(
+                "DELETE FROM log_analysis_handled WHERE log_id = ?",
+                (log_id,),
+            )
+            conn.commit()
+        except sqlite3.Error as exc:
+            return {"ok": False, "error": str(exc)}
+    return {"ok": True, "log_id": log_id}
+
+
+def get_handled_log_ids() -> set[int]:
+    """Return every log_id currently marked as handled (public accessor)."""
+    with _connect() as conn:
+        if conn is None:
+            return set()
+        _ensure_handled_table(conn)
+        return _get_handled_ids(conn)
+
+
 __all__ = (
     "latest",
     "history",
+    "handle",
+    "unhandle",
+    "get_handled_log_ids",
     "db_path",
     "db_exists",
+    "STATUS_ALERT",
+    "STATUS_HANDLED",
+    "STATUS_NORMAL",
 )

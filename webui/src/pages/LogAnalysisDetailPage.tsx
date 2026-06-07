@@ -6,7 +6,7 @@
  * full analysis detail (risk factors, anomaly entries, LLM reasoning).
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -18,13 +18,16 @@ import {
   Hash,
   Activity,
   AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { useClient } from "@/providers/ClientProvider";
 import {
   fetchLogAnalysisHistory,
+  handleLogAnalysis,
   type LogAnalysisHistoryItem,
   type LogAnalysisHistoryPage,
+  type LogAnalysisStatus,
 } from "@/lib/log-analysis-client";
 import { cn } from "@/lib/utils";
 
@@ -75,11 +78,18 @@ function formatCharCount(n: number): string {
   return String(n);
 }
 
-/** Whether the item needs human attention. */
+/** Whether the item needs human attention (uses status field with backward compat). */
 function needsAction(item: LogAnalysisHistoryItem): boolean {
+  if (item.status) return item.status === "alert";
+  // Backward compat: older API without status field
   return (
     item.suggested_action === "紧急处理" || item.suggested_action === "告警"
   );
+}
+
+/** Get the effective status (with backward compat for old API). */
+function getStatus(item: LogAnalysisHistoryItem): LogAnalysisStatus {
+  return item.status ?? (needsAction(item) ? "alert" : "normal");
 }
 
 /** High-risk count = critical + high (LLM-judged successful attacks). */
@@ -103,13 +113,33 @@ function getTotalEntries(item: LogAnalysisHistoryItem): number {
   return item.total_entries || totalAnomalies(item);
 }
 
-/* ── Action status badge ─────────────────────────────────────────────── */
+/* ── Action status badge (three-state) ────────────────────────────────── */
 
-function ActionBadge({ item }: { item: LogAnalysisHistoryItem }) {
-  const action = item.suggested_action;
-  const urgent = needsAction(item);
+const STATUS_BADGE_STYLES: Record<LogAnalysisStatus, string> = {
+  alert:
+    "text-severity-critical bg-severity-critical/10 border-severity-critical/30",
+  handled:
+    "text-emerald-400 bg-emerald-400/10 border-emerald-400/30",
+  normal:
+    "text-severity-low bg-severity-low/10 border-severity-low/30",
+};
 
-  if (!action) {
+const STATUS_LABELS: Record<LogAnalysisStatus, string> = {
+  alert: "告警",
+  handled: "已处理",
+  normal: "正常",
+};
+
+const STATUS_ICONS: Record<LogAnalysisStatus, React.ReactNode> = {
+  alert: <ShieldAlert className="h-3.5 w-3.5" />,
+  handled: <CheckCircle2 className="h-3.5 w-3.5" />,
+  normal: <ShieldCheck className="h-3.5 w-3.5" />,
+};
+
+function StatusBadge({ item }: { item: LogAnalysisHistoryItem }) {
+  const status = getStatus(item);
+
+  if (!item.suggested_action && !item.status) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-white/5 px-3 py-1 text-xs font-medium text-muted-foreground">
         待分析
@@ -121,19 +151,11 @@ function ActionBadge({ item }: { item: LogAnalysisHistoryItem }) {
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold",
-        urgent
-          ? "text-severity-critical bg-severity-critical/10 border-severity-critical/30"
-          : action === "标记关注"
-            ? "text-severity-medium bg-severity-medium/10 border-severity-medium/30"
-            : "text-severity-low bg-severity-low/10 border-severity-low/30",
+        STATUS_BADGE_STYLES[status],
       )}
     >
-      {urgent ? (
-        <ShieldAlert className="h-3.5 w-3.5" />
-      ) : (
-        <ShieldCheck className="h-3.5 w-3.5" />
-      )}
-      {action}
+      {STATUS_ICONS[status]}
+      {STATUS_LABELS[status]}
     </span>
   );
 }
@@ -344,13 +366,38 @@ function SeverityTag({ severity }: { severity: string }) {
 
 /* ── Analysis record card ────────────────────────────────────────────── */
 
-function RecordCard({ item }: { item: LogAnalysisHistoryItem }) {
+function RecordCard({
+  item,
+  onStatusChange,
+}: {
+  item: LogAnalysisHistoryItem;
+  onStatusChange: (logId: number, newStatus: LogAnalysisStatus) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const urgent = needsAction(item);
+  const [handling, setHandling] = useState(false);
+  const { token } = useClient();
+  const status = getStatus(item);
+  const isAlert = status === "alert";
+  const urgent = isAlert;
   const highRisk = highRiskCount(item);
   const total = totalAnomalies(item);
 
   const toggleExpanded = () => setExpanded((v) => !v);
+
+  const handleMarkHandled = async () => {
+    if (handling) return;
+    setHandling(true);
+    // Optimistic update
+    onStatusChange(item.id, "handled");
+    try {
+      await handleLogAnalysis(token, item.id);
+    } catch {
+      // Revert on failure
+      onStatusChange(item.id, "alert");
+    } finally {
+      setHandling(false);
+    }
+  };
 
   return (
     <div
@@ -366,7 +413,7 @@ function RecordCard({ item }: { item: LogAnalysisHistoryItem }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <ActionBadge item={item} />
+              <StatusBadge item={item} />
               <span className="text-xs text-muted-foreground font-mono">
                 #{item.id}
               </span>
@@ -383,6 +430,21 @@ function RecordCard({ item }: { item: LogAnalysisHistoryItem }) {
               )}
             </p>
           </div>
+          {/* Handle button — only show on alert cards */}
+          {isAlert && (
+            <button
+              onClick={handleMarkHandled}
+              disabled={handling}
+              className={cn(
+                "shrink-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all",
+                "border-emerald-400/30 text-emerald-400 hover:bg-emerald-400/10",
+                "disabled:opacity-50 disabled:cursor-not-allowed",
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {handling ? "处理中…" : "处理"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -557,8 +619,24 @@ export function LogAnalysisDetailPage() {
 
   // Aggregate stats for the page header
   const urgentCount = useMemo(
-    () => (history?.items ?? []).filter(needsAction).length,
+    () => (history?.items ?? []).filter((i) => getStatus(i) === "alert").length,
     [history],
+  );
+
+  // Optimistic status update callback for RecordCard
+  const handleStatusChange = useCallback(
+    (logId: number, newStatus: LogAnalysisStatus) => {
+      setHistory((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          items: prev.items.map((item) =>
+            item.id === logId ? { ...item, status: newStatus } : item,
+          ),
+        };
+      });
+    },
+    [],
   );
 
   return (
@@ -682,7 +760,11 @@ export function LogAnalysisDetailPage() {
         {!loading && !error && history && history.items.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {history.items.map((item) => (
-              <RecordCard key={item.id} item={item} />
+              <RecordCard
+                key={item.id}
+                item={item}
+                onStatusChange={handleStatusChange}
+              />
             ))}
           </div>
         )}
