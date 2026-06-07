@@ -17,8 +17,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AgentAvatar } from "@/components/AgentAvatar";
 import {
   STEP_KIND_TONE,
+  STEP_KIND_GRADIENT,
   type RunStatus,
   type StepKind,
   type Workflow,
@@ -107,13 +109,13 @@ export function WorkflowHeaderCard({
             {draft.tags.slice(0, 4).map((tg) => (
               <span
                 key={tg}
-                className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
+                className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs text-primary"
               >
                 #{tg}
               </span>
             ))}
             {kindMix && (
-              <span className="rounded-full border border-cyan-glow/40 bg-cyan-glow/10 px-2 py-0.5 font-mono text-[10px] text-cyan-glow">
+              <span className="rounded-full border border-cyan-glow/40 bg-cyan-glow/10 px-2 py-0.5 font-mono text-xs text-cyan-glow">
                 {kindMix}
               </span>
             )}
@@ -225,7 +227,7 @@ export function WorkflowHeaderCard({
               <Activity className="h-3.5 w-3.5 text-primary" />
               {t("workflow.detail.flowTitle")}
               {kindMix && (
-                <span className="ml-1 font-mono text-[10px] text-muted-foreground/70">
+                <span className="ml-1 font-mono text-xs text-muted-foreground/70">
                   · {kindMix}
                 </span>
               )}
@@ -350,7 +352,7 @@ export function ProgressCell({
         : "text-foreground";
   return (
     <div className="rounded-lg bg-[hsl(var(--muted))]/40 p-3">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 truncate font-mono text-sm", toneCls)} title={value}>
         {value}
       </div>
@@ -370,7 +372,7 @@ export function FlowLegend({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="space-x-3 font-mono text-[10px] text-muted-foreground">
+    <div className="space-x-3 font-mono text-xs text-muted-foreground">
       <span>
         <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-alert-success align-middle" />
         {t("workflow.detail.legendDone")} {completed}
@@ -387,7 +389,9 @@ export function FlowLegend({
   );
 }
 
-/** @description Single node in the workflow flow chart. */
+/** @description Single node in the workflow flow chart.
+ *  Agent steps render via the shared AgentAvatar component (pixel-identical to chat).
+ *  State shown via corner badge overlay — avatar itself stays fully visible. */
 export function FlowNode({
   step,
   index,
@@ -399,60 +403,77 @@ export function FlowNode({
   isLast: boolean;
   state: "done" | "running" | "pending";
 }) {
-  const Icon = KIND_ICON[step.kind];
+  const GenericIcon = KIND_ICON[step.kind];
   const tone = STEP_KIND_TONE[step.kind];
-  const borderCls =
-    state === "done"
-      ? "border-alert-success bg-alert-success/15"
-      : state === "running"
-        ? "border-primary bg-primary/15 flow-node-running animate-pulse-glow"
-        : "border-dashed border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30";
-  const iconCls =
-    state === "done"
-      ? "text-alert-success"
-      : state === "running"
-        ? "text-primary"
-        : "text-muted-foreground";
+  const gradient = STEP_KIND_GRADIENT[step.kind];
+  const isAgent = step.kind === "agent";
+
+  const labelCls = cn(
+    "mt-2 max-w-[96px] truncate text-xs leading-tight",
+    state === "running"
+      ? "font-semibold text-primary"
+      : state === "done"
+        ? "text-foreground"
+        : "text-muted-foreground",
+  );
+  const kindCls = cn(
+    "mt-0.5 font-mono text-xs",
+    state === "running" ? "text-primary" : "text-muted-foreground",
+  );
 
   return (
     <>
       <div className="flex min-w-[84px] shrink-0 flex-col items-center">
-        <div
-          className={cn(
-            "relative flex h-10 w-10 items-center justify-center rounded-full border-2",
-            borderCls,
-          )}
-        >
-          {state === "done" ? (
-            <Check className="h-5 w-5 text-alert-success" />
-          ) : (
-            <Icon className={cn("h-5 w-5", iconCls)} />
-          )}
-          {state === "running" && (
-            <span className="absolute inset-[-6px] animate-ping rounded-full border border-primary/30" />
-          )}
-        </div>
-        <div
-          className={cn(
-            "mt-2 max-w-[96px] truncate text-[11px] leading-tight",
-            state === "running"
-              ? "font-semibold text-primary"
-              : state === "done"
-                ? "text-foreground"
-                : "text-muted-foreground",
-          )}
-          title={step.name || step.ref || step.kind}
-        >
+        {isAgent ? (
+          /* ── Agent step → AgentAvatar + state badge overlay ── */
+          <div className="relative">
+            <AgentAvatar
+              agentName={step.ref}
+              size="lg"
+              className={cn(
+                state === "running" && "animate-pulse-glow",
+              )}
+            />
+            {/* State badge — small circle in bottom-right corner */}
+            {state === "done" && (
+              <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-alert-success shadow-sm">
+                <Check className="h-2.5 w-2.5 text-white" aria-hidden />
+              </span>
+            )}
+            {state === "running" && (
+              <span className="absolute -bottom-1 -right-1 h-3 w-3 animate-pulse rounded-full bg-primary shadow-sm" />
+            )}
+          </div>
+        ) : (
+          /* ── Non-agent step → same rounded-lg spec ── */
+          <div
+            className={cn(
+              "relative flex h-9 w-9 items-center justify-center rounded-[9px] font-bold text-white shadow-sm",
+              state === "pending" && "bg-muted/40 text-muted-foreground",
+              state === "running" && "flow-node-running animate-pulse-glow",
+            )}
+            style={
+              state === "done"
+                ? { background: "hsl(152 70% 45%)" }
+                : state === "pending"
+                  ? {}
+                  : { background: gradient }
+            }
+          >
+            {state === "done" ? (
+              <Check className="h-[18px] w-[18px]" aria-hidden />
+            ) : (
+              <GenericIcon className="h-[18px] w-[18px]" aria-hidden />
+            )}
+            {state === "running" && (
+              <span className="absolute inset-[-5px] animate-ping rounded-[9px] border border-primary/30" />
+            )}
+          </div>
+        )}
+        <div className={labelCls} title={step.name || step.ref || step.kind}>
           {step.name || step.ref || `${step.kind} ${index + 1}`}
         </div>
-        <div
-          className={cn(
-            "mt-0.5 font-mono text-[10px]",
-            state === "running" ? "text-primary" : "text-muted-foreground",
-          )}
-        >
-          {tone.label}
-        </div>
+        <div className={kindCls}>{tone.label}</div>
       </div>
       {!isLast && (
         <div className="flex-1 px-1 pt-5">
@@ -463,7 +484,7 @@ export function FlowNode({
           ) : state === "done" ? (
             <div className="h-0.5 w-full rounded-full bg-alert-success/60" />
           ) : (
-            <div className="h-0 w-full border-t-2 border-dashed border-[hsl(var(--border))]" />
+            <div className="h-0 w-full border-t border-dashed border-[hsl(var(--border))]" />
           )}
         </div>
       )}

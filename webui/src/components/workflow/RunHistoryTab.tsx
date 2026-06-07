@@ -171,7 +171,7 @@ function RunRow({
         <span className="hidden text-xs text-muted-foreground md:inline">
           {t("workflow.runs.startedAt")}: {startedStr}
         </span>
-        <span className="ml-auto rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] text-muted-foreground">
+        <span className="ml-auto rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground">
           {t(`workflow.runs.trigger.${run.trigger}`)}
         </span>
         <span className="font-mono text-xs text-muted-foreground">
@@ -223,18 +223,18 @@ function StepResultRow({
         <code className="font-mono text-xs text-muted-foreground">
           {stepId}
         </code>
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+        <span className="ml-auto font-mono text-xs text-muted-foreground">
           {result.durationMs} ms
         </span>
       </button>
       {open && (
         <div className="mt-2 space-y-2">
           {result.error && (
-            <pre className="max-h-40 overflow-auto rounded border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+            <pre className="max-h-40 overflow-auto rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
               {result.error}
             </pre>
           )}
-          <pre className="max-h-60 overflow-auto rounded border border-border/30 bg-background/60 p-2 text-[11px] text-muted-foreground">
+          <pre className="max-h-60 overflow-auto rounded border border-border/30 bg-background/60 p-2 text-xs text-muted-foreground">
             {safeJson(result.output)}
           </pre>
         </div>
@@ -269,7 +269,7 @@ function RunStatusBadge({ status }: { status: RunStatus }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
         m.cls,
       )}
     >
@@ -292,7 +292,7 @@ function StepStatusChip({ status }: { status: StepResult["status"] }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 text-[10px] uppercase",
+        "rounded-full border px-2 py-0.5 text-xs uppercase",
         tone,
       )}
     >

@@ -479,7 +479,9 @@ export function blankStep(kind: StepKind, id: string): WorkflowStep {
   return base;
 }
 
-/** Short colour hint per kind used by StepCard / Badge. */
+/** Short colour hint per kind used by StepCard / Badge.
+ *  All colours mapped to brand tokens (ocean / cyan-glow / alert-warning)
+ *  so the workflow UI stays visually consistent with the 海蓝 palette. */
 export const STEP_KIND_TONE: Record<
   StepKind,
   { dot: string; badge: string; label: string }
@@ -490,23 +492,32 @@ export const STEP_KIND_TONE: Record<
     label: "tool",
   },
   script: {
-    dot: "bg-purple-500",
+    dot: "bg-cyan-glow",
     badge:
-      "bg-purple-500/10 text-purple-300 border-purple-400/30",
+      "bg-cyan-glow/10 text-cyan-glow border-cyan-glow/30",
     label: "script",
   },
   agent: {
-    dot: "bg-indigo-500",
+    dot: "bg-ocean-500",
     badge:
-      "bg-indigo-500/10 text-indigo-300 border-indigo-400/30",
+      "bg-ocean-500/10 text-ocean-300 border-ocean-500/30",
     label: "agent",
   },
   llm: {
-    dot: "bg-pink-500",
+    dot: "bg-alert-warning",
     badge:
-      "bg-pink-500/10 text-pink-300 border-pink-400/30",
+      "bg-alert-warning/10 text-alert-warning border-alert-warning/30",
     label: "llm",
   },
+};
+
+/** CSS gradient per step kind — matches AgentAvatar gradient style so
+ *  workflow nodes and chat avatars share the same visual language. */
+export const STEP_KIND_GRADIENT: Record<StepKind, string> = {
+  tool:   "linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%))",
+  script: "linear-gradient(135deg, hsl(189 94% 56%), hsl(195 90% 48%))",
+  agent:  "linear-gradient(135deg, hsl(210 92% 48%), hsl(210 80% 32%))",
+  llm:    "linear-gradient(135deg, hsl(38 95% 56%), hsl(30 90% 42%))",
 };
 
 /** Feature flag — `true` (default) enables the builder UI. Flipping

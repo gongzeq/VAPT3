@@ -48,7 +48,7 @@ export function SchemaDocCard({
             </span>
           ) : null}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+        <span className="ml-auto font-mono text-xs text-muted-foreground">
           {meta.name}
         </span>
       </button>
@@ -89,11 +89,11 @@ export function SchemaDocSection({
   const required = new Set(schema?.required ?? []);
   return (
     <div>
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
       {entries.length === 0 ? (
-        <div className="text-[11px] italic text-muted-foreground/70">
+        <div className="text-xs italic text-muted-foreground/70">
           {emptyHint}
         </div>
       ) : (
@@ -104,18 +104,18 @@ export function SchemaDocSection({
               className="rounded-md border border-border/30 bg-background/30 px-2 py-1"
             >
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="font-mono text-[11px] text-primary">{k}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="font-mono text-xs text-primary">{k}</span>
+                <span className="font-mono text-xs text-muted-foreground">
                   {formatType(v)}
                 </span>
                 {required.has(k) && (
-                  <span className="rounded bg-destructive/20 px-1 text-[9px] text-destructive">
+                  <span className="rounded bg-destructive/20 px-1 text-xs text-destructive">
                     required
                   </span>
                 )}
               </div>
               {v.description && (
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   {v.description}
                 </div>
               )}

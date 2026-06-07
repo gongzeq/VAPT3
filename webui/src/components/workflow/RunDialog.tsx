@@ -206,7 +206,7 @@ export function RunDialog({
             />
           </label>
           {uploadedFileName && (
-            <span className="text-[10px] text-alert-success">✓ 已加载 {uploadedFileName}</span>
+            <span className="text-xs text-alert-success">✓ 已加载 {uploadedFileName}</span>
           )}
         </div>
 

@@ -75,7 +75,7 @@ export function TemplateGallery({
                 {tpl.tags.slice(0, 2).map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] text-muted-foreground"
+                    className="rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-xs text-muted-foreground"
                   >
                     {tag}
                   </span>

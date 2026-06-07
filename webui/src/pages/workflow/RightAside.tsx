@@ -198,12 +198,12 @@ export function FailedRunsDialog({
                     <XCircle className="h-4 w-4 shrink-0 text-destructive" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{run.workflowName}</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {fmtDate(run.startedAtMs)}
                         <span className="mx-1.5">·</span>
                         耗时 {fmtDur(run)}
                         <span className="mx-1.5">·</span>
-                        <code className="font-mono text-[10px]">{run.id}</code>
+                        <code className="font-mono text-xs">{run.id}</code>
                       </p>
                     </div>
                     <button
@@ -212,7 +212,7 @@ export function FailedRunsDialog({
                         onOpenChange(false);
                         navigate(`/workflows/${run.workflowId}`);
                       }}
-                      className="shrink-0 rounded-lg border border-border/40 bg-muted/30 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                      className="shrink-0 rounded-lg border border-border/40 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                     >
                       查看工作流
                     </button>

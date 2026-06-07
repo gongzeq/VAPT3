@@ -8,8 +8,9 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { AgentAvatar } from "@/components/AgentAvatar";
 import {
-  STEP_KIND_TONE,
+  STEP_KIND_GRADIENT,
   blankStep,
   nextStepId,
   type AgentMeta,
@@ -90,17 +91,14 @@ export function StepEditor({ steps, onChange, tools, agents, inputs }: StepEdito
           {t("workflow.steps.pickKind")}:
         </span>
         {KIND_ORDER.map((kind) => {
-          const tone = STEP_KIND_TONE[kind];
+          const gradient = STEP_KIND_GRADIENT[kind];
           return (
             <button
               key={kind}
               type="button"
               onClick={() => addStep(kind)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors",
-                tone.badge,
-                "hover:brightness-110",
-              )}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:brightness-110"
+              style={{ background: gradient }}
             >
               <Plus className="h-3.5 w-3.5" />
               {t(kindLabelKey(kind))}
@@ -170,23 +168,24 @@ function StepCard({
   previousSteps,
 }: StepCardProps) {
   const { t } = useTranslation();
-  const tone = STEP_KIND_TONE[step.kind];
+  const gradient = STEP_KIND_GRADIENT[step.kind];
+  const isAgent = step.kind === "agent";
   return (
     <li className="gradient-card rounded-2xl border border-[hsl(var(--border))] p-4">
       <div className="flex flex-wrap items-center gap-2">
+        {isAgent ? (
+          <AgentAvatar agentName={step.ref} size="md" />
+        ) : (
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-xs text-white shadow-sm"
+            style={{ background: gradient }}
+          >
+            {index + 1}
+          </span>
+        )}
         <span
-          className={cn(
-            "flex h-7 w-7 items-center justify-center rounded-full font-mono text-xs text-white",
-            tone.dot,
-          )}
-        >
-          {index + 1}
-        </span>
-        <span
-          className={cn(
-            "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide",
-            tone.badge,
-          )}
+          className="rounded-lg px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white shadow-sm"
+          style={{ background: gradient }}
         >
           {t(kindLabelKey(step.kind))}
         </span>
@@ -242,7 +241,7 @@ function StepCard({
             placeholder={t("workflow.steps.conditionPlaceholder")}
             className={cn(WORKFLOW_FIELD_CLASS, "font-mono")}
           />
-          <span className="text-[11px] text-muted-foreground opacity-70">
+          <span className="text-xs text-muted-foreground opacity-70">
             {t("workflow.steps.conditionHelp")}
           </span>
         </label>

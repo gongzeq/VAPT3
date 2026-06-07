@@ -139,7 +139,7 @@ function PlaceholderHints({
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Info className="h-3 w-3 text-primary" />
         {t("workflow.placeholders.title")}
       </div>
@@ -152,7 +152,7 @@ function PlaceholderHints({
               type="button"
               onClick={() => void copy(chip.value)}
               className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-xs transition-colors",
                 chip.tone === "input"
                   ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
                   : "border-alert-success/40 bg-alert-success/10 text-alert-success hover:bg-alert-success/15",
@@ -162,7 +162,7 @@ function PlaceholderHints({
               <Copy className="h-3 w-3 opacity-70" />
               {chip.label}
               {isCopied && (
-                <span className="ml-1 text-[10px] text-muted-foreground">
+                <span className="ml-1 text-xs text-muted-foreground">
                   {t("workflow.placeholders.copied")}
                 </span>
               )}

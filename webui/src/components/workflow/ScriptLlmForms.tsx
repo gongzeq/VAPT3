@@ -133,7 +133,7 @@ export function LlmArgsForm({ step, onChange }: KindFormProps) {
       <p className="rounded-lg border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         {t("workflow.llm.providerHint")}
       </p>
-      <div className="rounded-lg border border-alert-warning/30 bg-alert-warning/10 px-3 py-2 text-[11px] leading-relaxed text-alert-warning">
+      <div className="rounded-lg border border-alert-warning/30 bg-alert-warning/10 px-3 py-2 text-xs leading-relaxed text-alert-warning">
         {t("workflow.llm.reasoningWarning")}
       </div>
       <label className="flex flex-col gap-1 text-xs">
@@ -172,7 +172,7 @@ export function LlmArgsForm({ step, onChange }: KindFormProps) {
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-muted-foreground">
             {t("workflow.llm.maxTokens")}
-            <span className="ml-1 text-[10px] text-muted-foreground/70">
+            <span className="ml-1 text-xs text-muted-foreground/70">
               {t("workflow.llm.maxTokensDefault", { value: LLM_DEFAULT_MAX_TOKENS })}
             </span>
           </span>
@@ -242,7 +242,7 @@ export function JsonSchemaForm({ schema, value, onChange }: JsonSchemaFormProps)
             <span className="text-muted-foreground">
               {labelText}
               {propSchema.description && (
-                <span className="ml-1 text-[10px] opacity-60">
+                <span className="ml-1 text-xs opacity-60">
                   — {propSchema.description}
                 </span>
               )}

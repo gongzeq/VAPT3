@@ -166,7 +166,7 @@ export function ScheduleTab({ workflow, client, onUpdated }: ScheduleTabProps) {
                     onChange={(e) => setCronExpr(e.target.value)}
                     className={cn(WORKFLOW_FIELD_CLASS, "font-mono")}
                   />
-                  <span className="text-[11px] text-muted-foreground opacity-70">
+                  <span className="text-xs text-muted-foreground opacity-70">
                     {t("workflow.schedule.cronHelp")}
                   </span>
                 </label>

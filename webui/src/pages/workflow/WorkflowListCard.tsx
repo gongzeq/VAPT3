@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { STEP_KIND_TONE, type StepKind, type Workflow, type WorkflowStep } from "@/lib/workflow-client";
+import { AgentAvatar } from "@/components/AgentAvatar";
+import { STEP_KIND_GRADIENT, type StepKind, type Workflow, type WorkflowStep } from "@/lib/workflow-client";
 import type { StatusFilter } from "@/pages/workflow/LeftFilter";
 
 const KIND_ICON: Record<StepKind, React.ComponentType<{ className?: string }>> = {
@@ -56,13 +57,13 @@ export function WorkflowListCard({
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <StatusBadge status={status} />
-            <span className="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+            <span className="rounded-md bg-[hsl(var(--muted))]/60 px-2 py-0.5 font-mono text-xs text-muted-foreground">
               {workflow.id}
             </span>
             {workflow.tags.slice(0, 3).map((tg) => (
               <span
                 key={tg}
-                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-[10px] text-muted-foreground"
+                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 px-2 py-0.5 text-xs text-muted-foreground"
               >
                 #{tg}
               </span>
@@ -91,7 +92,7 @@ export function WorkflowListCard({
       </div>
 
       {workflow.steps.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <MiniFlow steps={workflow.steps} />
         </div>
       )}
@@ -130,7 +131,7 @@ function FactCell({
 }) {
   return (
     <div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div
         className={cn("mt-0.5 truncate text-sm text-foreground", mono && "font-mono", valueCls)}
         title={value}
@@ -145,13 +146,13 @@ function StatusBadge({ status }: { status: StatusFilter }) {
   const { t } = useTranslation();
   if (status === "scheduled") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-[10px] text-primary">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-xs text-primary">
         <Clock className="h-3 w-3" /> {t("workflow.badge.scheduled")}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-alert-success/40 bg-alert-success/10 px-2.5 py-0.5 font-mono text-[10px] text-alert-success">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-alert-success/40 bg-alert-success/10 px-2.5 py-0.5 font-mono text-xs text-alert-success">
       <PlayCircle className="h-3 w-3" />{" "}
       {t("workflow.badge.manual", { defaultValue: "已保存" })}
     </span>
@@ -165,20 +166,29 @@ function MiniFlow({ steps }: { steps: WorkflowStep[] }) {
     <>
       {head.map((step, i) => {
         const Icon = KIND_ICON[step.kind];
-        const tone = STEP_KIND_TONE[step.kind];
+        const gradient = STEP_KIND_GRADIENT[step.kind];
+        const isAgent = step.kind === "agent";
         return (
           <span key={step.id} className="inline-flex items-center gap-1">
             {i > 0 && <ArrowRight className="h-3 w-3 text-muted-foreground" />}
-            <span
-              className={cn(
-                "inline-flex max-w-[120px] items-center gap-1 rounded-md border px-1.5 py-0.5",
-                tone.badge,
-              )}
-              title={step.name || step.ref || step.kind}
-            >
-              <Icon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{step.name || step.ref || step.kind}</span>
-            </span>
+            {isAgent ? (
+              /* Agent step → inline AgentAvatar + label */
+              <span className="inline-flex items-center gap-1" title={step.name || step.ref || step.kind}>
+                <AgentAvatar agentName={step.ref} size="sm" />
+                <span className="max-w-[80px] truncate text-xs text-foreground">
+                  {step.name || step.ref || step.kind}
+                </span>
+              </span>
+            ) : (
+              <span
+                className="inline-flex max-w-[120px] items-center gap-1 rounded-md px-1.5 py-0.5 text-white shadow-sm"
+                style={{ background: gradient }}
+                title={step.name || step.ref || step.kind}
+              >
+                <Icon className="h-3 w-3 shrink-0" />
+                <span className="truncate">{step.name || step.ref || step.kind}</span>
+              </span>
+            )}
           </span>
         );
       })}

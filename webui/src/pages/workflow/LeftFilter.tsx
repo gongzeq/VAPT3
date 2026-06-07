@@ -56,7 +56,7 @@ export function LeftFilter({
       </button>
 
       <div>
-        <p className="px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <p className="px-2 text-xs uppercase tracking-wider text-muted-foreground">
           {t("workflow.filter.statusTitle")}
         </p>
         <ul className="mt-1 space-y-1 text-sm">
@@ -102,7 +102,7 @@ export function LeftFilter({
 
       {allTags.length > 0 && (
         <div>
-          <p className="px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <p className="px-2 text-xs uppercase tracking-wider text-muted-foreground">
             {t("workflow.filter.tagsTitle")}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5 px-1">
