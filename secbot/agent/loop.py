@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 import os
-import re
 import time
 from contextlib import AsyncExitStack, nullcontext, suppress
 from pathlib import Path
@@ -18,7 +16,7 @@ from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.autocompact import AutoCompact
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
 from secbot.agent.context import ContextBuilder
-from secbot.agent.hook import AgentHook, AgentHookContext, CompositeHook
+from secbot.agent.hook import AgentHook, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
 from secbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
 from secbot.agent.skills import BUILTIN_SKILLS_DIR
@@ -49,6 +47,7 @@ from secbot.agent.tools.self import MyTool
 # _register_operational_tools and subagent.py for the matching policy.
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
+from secbot.agent.turn_events import TurnEventHook, _extract_report_media
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
@@ -60,12 +59,6 @@ from secbot.session.manager import Session, SessionManager
 from secbot.utils.document import extract_documents
 from secbot.utils.helpers import image_placeholder_text
 from secbot.utils.helpers import truncate_text as truncate_text_fn
-from secbot.utils.progress_events import (
-    build_tool_event_finish_payloads,
-    build_tool_event_start_payload,
-    invoke_on_progress,
-    on_progress_accepts_tool_events,
-)
 from secbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 from secbot.utils.webui_titles import mark_webui_session, maybe_generate_webui_title_after_turn
 
@@ -77,310 +70,7 @@ if TYPE_CHECKING:
 UNIFIED_SESSION_KEY = "unified:default"
 
 
-class _LoopHook(AgentHook):
-    """Core hook for the main loop."""
-
-    def __init__(
-        self,
-        agent_loop: AgentLoop,
-        on_progress: Callable[..., Awaitable[None]] | None = None,
-        on_stream: Callable[[str], Awaitable[None]] | None = None,
-        on_stream_end: Callable[..., Awaitable[None]] | None = None,
-        *,
-        channel: str = "cli",
-        chat_id: str = "direct",
-        message_id: str | None = None,
-        metadata: dict[str, Any] | None = None,
-        session_key: str | None = None,
-    ) -> None:
-        super().__init__(reraise=True)
-        self._loop = agent_loop
-        self._on_progress = on_progress
-        self._on_stream = on_stream
-        self._on_stream_end = on_stream_end
-        self._channel = channel
-        self._chat_id = chat_id
-        self._message_id = message_id
-        self._metadata = metadata or {}
-        self._session_key = session_key
-        self._stream_buf = ""
-        # Track tool-call start timestamps so ``after_iteration`` can compute a
-        # duration_ms for the ``activity_event`` WS broadcast. Keyed on
-        # ``call_id`` so concurrent tool calls in the same iteration don't
-        # overwrite each other. Only populated when the originating channel
-        # is ``"websocket"`` since that's the sole consumer today.
-        self._tool_call_started_at: dict[str, float] = {}
-
-    def wants_streaming(self) -> bool:
-        return self._on_stream is not None
-
-    async def on_stream(self, context: AgentHookContext, delta: str) -> None:
-        from secbot.utils.helpers import strip_think
-
-        prev_clean = strip_think(self._stream_buf)
-        self._stream_buf += delta
-        new_clean = strip_think(self._stream_buf)
-        incremental = new_clean[len(prev_clean) :]
-        if incremental and self._on_stream:
-            await self._on_stream(incremental)
-
-    async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
-        if self._on_stream_end:
-            await self._on_stream_end(resuming=resuming)
-        self._stream_buf = ""
-
-    async def before_iteration(self, context: AgentHookContext) -> None:
-        self._loop._current_iteration = context.iteration
-        logger.debug(
-            "Starting agent loop iteration {} for session {}",
-            context.iteration,
-            self._session_key,
-        )
-
-    @staticmethod
-    def _extract_thought(response: Any) -> str | None:
-        """Derive the thought-card text from an LLM response.
-
-        仅返回**不会出现在 assistant 气泡里**的内容，避免思维链与
-        正文重复。参见 ``before_execute_tools`` 的注释。
-        """
-        if response is None:
-            return None
-        reasoning = getattr(response, "reasoning_content", None)
-        if isinstance(reasoning, str) and reasoning.strip():
-            return reasoning.strip()
-        content = getattr(response, "content", None)
-        if isinstance(content, str):
-            import re as _re
-
-            # Capture the FIRST complete <think>...</think> block (or
-            # <thought>...</thought>); trailing/unclosed blocks are
-            # ignored — helpers.strip_think already filters them from the
-            # bubble, so we avoid leaking partial fragments here.
-            m = _re.search(r"<think>([\s\S]*?)</think>", content)
-            if m is None:
-                m = _re.search(r"<thought>([\s\S]*?)</thought>", content)
-            if m is not None:
-                inner = m.group(1).strip()
-                if inner:
-                    return inner
-        return None
-
-    async def _broadcast_agent_thought(self, thought: str) -> None:
-        """Emit a ``thought`` agent_event frame for the chat surface."""
-        if self._channel != "websocket":
-            return
-        from secbot.channels.websocket import WebSocketChannel
-
-        channel = WebSocketChannel.get_active_instance()
-        if channel is None:
-            return
-        try:
-            await channel.broadcast_agent_event(
-                chat_id=self._chat_id,
-                type="thought",
-                payload={"agent": "orchestrator", "content": thought},
-            )
-        except Exception:
-            logger.debug("agent_event (thought) broadcast failed", exc_info=True)
-
-    async def before_execute_tools(self, context: AgentHookContext) -> None:
-        if self._on_progress:
-            # Legacy progress trace：非流式渠道需要在调用工具前把 assistant
-            # 文本（已 strip <think>）作为 progress 推一次，这样 CLI / 非
-            # WS 渠道才能在气泡里看到上下文。streaming 渠道已通过 delta
-            # 投递，跳过避免重复。
-            if not self._on_stream and not context.streamed_content:
-                visible = self._loop._strip_think(
-                    context.response.content if context.response else None
-                )
-                if visible:
-                    await self._on_progress(visible)
-            # Thought 来源（仅走 agent_event，不污染 progress 流）：
-            #   1. ``response.reasoning_content`` — 推理模型（o1 /
-            #      DeepSeek-R1 / Claude thinking）的独立推理字段，永远不
-            #      会进入 assistant bubble，可安全作为思维链卡片内容。
-            #   2. ``response.content`` 中 ``<think>...</think>`` 块的内部 —
-            #      部分开源模型把思考嵌入 content；此时真正的 assistant
-            #      文本是 strip_think 后的剩余部分（已作为 bubble 显示），
-            #      而 think 内部才是思维链。
-            # 不再把 ``strip_think(content)`` 作为 thought 广播——那就是
-            # assistant bubble 自身的文本，会导致思维链卡片与 assistant
-            # 气泡内容完全相同（用户报告的“思维链和输出的内容一样”
-            # 的根因）。
-            thought = self._extract_thought(context.response)
-            if thought:
-                await self._broadcast_agent_thought(thought)
-            tool_hint = self._loop._strip_think(self._loop._tool_hint(context.tool_calls))
-            tool_events = [build_tool_event_start_payload(tc) for tc in context.tool_calls]
-            await invoke_on_progress(
-                self._on_progress,
-                tool_hint,
-                tool_hint=True,
-                tool_events=tool_events,
-            )
-        for tc in context.tool_calls:
-            args_str = json.dumps(tc.arguments, ensure_ascii=False)
-            logger.info("Tool call: {}({})", tc.name, args_str[:200])
-        self._loop._set_tool_context(
-            self._channel,
-            self._chat_id,
-            self._message_id,
-            self._metadata,
-            session_key=self._session_key,
-        )
-        # Broadcast ``activity_event`` frames so the Dashboard activity stream
-        # (PRD §WS, 05-10-p2-notification-activity) mirrors tool invocations in
-        # near real-time. Fires only for turns originating from the WS channel
-        # — CLI / chat channels never have a subscriber and the broadcast
-        # would be wasted work. Broadcast is best-effort; any failure is
-        # logged and swallowed so tool execution is not blocked.
-        if self._channel == "websocket" and context.tool_calls:
-            await self._broadcast_activity_tool_calls(context.tool_calls)
-
-    async def _broadcast_activity_tool_calls(self, tool_calls: list[Any]) -> None:
-        """Emit one ``tool_call`` activity_event per tool call + stamp start time."""
-        # Late import: ``secbot.channels.websocket`` pulls in ``websockets`` and
-        # can't be imported at module load (circular via agent/loop).
-        from secbot.channels.websocket import WebSocketChannel
-
-        channel = WebSocketChannel.get_active_instance()
-        if channel is None:
-            return
-        now = time.monotonic()
-        for tc in tool_calls:
-            call_id = str(getattr(tc, "id", "") or "")
-            if call_id:
-                self._tool_call_started_at[call_id] = now
-            name = getattr(tc, "name", "") or "tool"
-            args = getattr(tc, "arguments", {}) or {}
-            step = self._format_activity_step(name, args)
-            try:
-                await channel.broadcast_activity_event(
-                    category="tool_call",
-                    agent=name,
-                    step=step,
-                    chat_id=self._chat_id,
-                )
-            except Exception:
-                logger.debug("activity_event (start) broadcast failed", exc_info=True)
-
-    @staticmethod
-    def _format_activity_step(name: str, arguments: dict[str, Any]) -> str:
-        """Render ``→ 调用 tool: name(k=v, ...)`` — matches PRD L89 example."""
-        if not isinstance(arguments, dict) or not arguments:
-            return f"→ 调用 tool: {name}()"
-        parts: list[str] = []
-        for k, v in arguments.items():
-            try:
-                rendered = json.dumps(v, ensure_ascii=False)
-            except Exception:
-                rendered = str(v)
-            if len(rendered) > 80:
-                rendered = rendered[:77] + "..."
-            parts.append(f"{k}={rendered}")
-        return f"→ 调用 tool: {name}({', '.join(parts)})"
-
-    async def _broadcast_activity_tool_results(self, context: AgentHookContext) -> None:
-        """Emit one ``tool_result`` activity_event per finished tool call."""
-        from secbot.channels.websocket import WebSocketChannel
-
-        channel = WebSocketChannel.get_active_instance()
-        if channel is None:
-            return
-        now = time.monotonic()
-        count = min(
-            len(context.tool_calls), len(context.tool_events)
-        )
-        for idx in range(count):
-            tc = context.tool_calls[idx]
-            event = context.tool_events[idx] if isinstance(context.tool_events[idx], dict) else {}
-            status = event.get("status")
-            # Report success + error in the same category; downstream consumers
-            # can inspect ``step`` / ``agent`` if they need to distinguish.
-            call_id = str(getattr(tc, "id", "") or "")
-            started_at = self._tool_call_started_at.pop(call_id, None) if call_id else None
-            duration_ms: int | None = (
-                int((now - started_at) * 1000) if started_at is not None else None
-            )
-            name = getattr(tc, "name", "") or "tool"
-            suffix = "ok" if status == "ok" else (status or "error")
-            step = f"← {name} → {suffix}"
-            try:
-                await channel.broadcast_activity_event(
-                    category="tool_result",
-                    agent=name,
-                    step=step,
-                    chat_id=self._chat_id,
-                    duration_ms=duration_ms,
-                )
-            except Exception:
-                logger.debug("activity_event (finish) broadcast failed", exc_info=True)
-
-    async def after_iteration(self, context: AgentHookContext) -> None:
-        if (
-            self._on_progress
-            and context.tool_calls
-            and context.tool_events
-            and on_progress_accepts_tool_events(self._on_progress)
-        ):
-            tool_events = build_tool_event_finish_payloads(context)
-            if tool_events:
-                await invoke_on_progress(
-                    self._on_progress,
-                    "",
-                    tool_hint=False,
-                    tool_events=tool_events,
-                )
-        # Emit ``tool_result`` activity_event frames paired with the start
-        # broadcasts in ``before_execute_tools``. We recompute the finish
-        # payloads here (cheap) so this branch is independent of the
-        # ``on_progress`` observer above and still fires for turns that don't
-        # register a progress callback.
-        if self._channel == "websocket" and context.tool_calls and context.tool_events:
-            await self._broadcast_activity_tool_results(context)
-        u = context.usage or {}
-        logger.debug(
-            "LLM usage: prompt={} completion={} cached={}",
-            u.get("prompt_tokens", 0),
-            u.get("completion_tokens", 0),
-            u.get("cached_tokens", 0),
-        )
-
-    def finalize_content(self, context: AgentHookContext, content: str | None) -> str | None:
-        return self._loop._strip_think(content)
-
-
-def _extract_report_media(
-    all_msgs: list[dict[str, Any]], final_content: str
-) -> list[str]:
-    """Scan tool results and final content for report file paths.
-
-    Looks for ``report_path`` entries in JSON tool results and for
-    ``.html`` file paths mentioned in the assistant's final reply.
-    Only returns paths that actually exist on disk.
-    """
-    paths: set[str] = set()
-
-    # 1. Extract from tool result JSONs
-    for m in all_msgs:
-        if m.get("role") != "tool":
-            continue
-        content = m.get("content", "")
-        if not isinstance(content, str):
-            continue
-        for match in re.finditer(r'"report_path"\s*:\s*"([^"]+)"', content):
-            p = match.group(1)
-            if p and p != "null" and os.path.isfile(p):
-                paths.add(p)
-
-    # 2. Fallback: extract absolute .html paths from final content
-    for match in re.finditer(r"[\w/\\._-]+\.html", final_content):
-        p = match.group(0)
-        if os.path.isabs(p) and os.path.isfile(p):
-            paths.add(p)
-
-    return sorted(paths)
+_LoopHook = TurnEventHook
 
 
 class AgentLoop:
