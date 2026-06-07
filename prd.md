@@ -43,68 +43,49 @@
   "display_name": "资产探测智能体",
   "description": "对指定网段进行存活主机探测，输出IP列表和基础信息",
   "capabilities": ["存活扫描", "网段探测", "资产发现"],
-  "input_schema": {"type": "object", "properties": {"target": {"type": "string", "description": "目标网段，如192.168.1.0/24"}}},
-  "output_schema": {"type": "array", "items": {"type": "object", "properties": {"ip": "string"}}},
-  "trigger_keywords": ["扫描", "探测", "发现资产", "网段"]
+  "input_hints": {"type": "object", "properties": {"target": {"type": "string", "description": "目标网段，如192.168.1.0/24"}}},
+  "endpoint_bound": false
 }
 ```
 
-这些描述会注入主智能体的系统提示中，让它“知道”自己有哪些兵可用。
+这些描述会注入主智能体的系统提示中，让它"知道"自己有哪些兵可用。
+
+> **架构演进说明（2026-05）**：早期设计中每个专家智能体注册为独立的 function tool（如 `asset_discovery(target)`、`port_scan(ips)`），现已统一收敛为 **`create_agent(name, task, target)` 单一入口**。orchestrator 不再通过结构化参数调用各专家，而是自行编写完整的任务指令文本（`task`），由框架按 `name` 路由到对应专家智能体。详见 `.trellis/tasks/05-18-subagent-prompt-minimal-create-agent/prd.md`。
 
 2. 主智能体（Orchestrator）提示词设计
 
-主智能体本身是一个 LLM Agent，它不直接执行安全操作，而是生成一个 JSON 格式的执行计划。示例提示词框架：
-
-```
-你是一个网络安全调度专家。你可以使用以下专家智能体完成任务：
-{智能体能力清单}
-
-当用户提出需求时，请按以下步骤思考：
-1. 分析需求，拆解为多个子任务。
-2. 根据子任务，从可用的专家智能体中选取合适者，安排执行顺序，并确定每个步骤的输入来源。
-3. 输出一个 JSON 执行计划，格式为：
-{
-  "plan": [
-    {
-      "step_id": 1,
-      "agent": "asset_discovery",
-      "input": {"target": "从用户输入提取"},
-      "depends_on": []
-    },
-    ...
-  ]
-}
-注意：如果一个步骤的输出是另一个步骤的输入，请用 "$step_X.output" 表示。
-```
-
-当用户输入 “扫描192.168.1.0/24网段的高危漏洞” 时，主智能体输出的计划可能是：
+主智能体本身是一个 LLM Agent，它不直接执行安全操作，而是通过唯一的 `create_agent` 工具调度专家智能体。工具 schema：
 
 ```json
 {
-  "plan": [
-    {
-      "step_id": 1,
-      "agent": "asset_discovery",
-      "input": {"target": "192.168.1.0/24"},
-      "depends_on": []
-    },
-    {
-      "step_id": 2,
-      "agent": "port_scan",
-      "input": {"ips": "$step_1.output.ips"},
-      "depends_on": [1]
-    },
-    {
-      "step_id": 3,
-      "agent": "vuln_scan_high_risk",
-      "input": {"services": "$step_2.output.services"},
-      "depends_on": [2]
+  "type": "function",
+  "function": {
+    "name": "create_agent",
+    "description": "创建并调度一个专家智能体执行指定任务",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "description": "专家智能体名称（必须在注册表中）"},
+        "task": {"type": "string", "description": "orchestrator 编写的完整任务指令（含目标、已知信息、动作要求）"},
+        "target": {"type": "string", "description": "路由/审计用目标标识"}
+      },
+      "required": ["name", "task", "target"]
     }
-  ]
+  }
 }
 ```
 
-这种设计让流程完全由注册的智能体能力动态决定，新增一个智能体只需在注册表中加一条记录，主智能体即可在未来的规划中自动使用它。
+当用户输入 "扫描192.168.1.0/24网段的高危漏洞" 时，主智能体依次调用：
+
+```
+create_agent(name="asset_discovery", task="对 192.168.1.0/24 执行存活探测，返回 JSON 格式 IP 列表", target="192.168.1.0/24")
+→ 获取 IP 列表后
+create_agent(name="port_scan", task="对以下 IP 执行常用端口扫描：192.168.1.1, 192.168.1.100。返回开放端口及服务指纹", target="192.168.1.0/24")
+→ 获取端口/服务后
+create_agent(name="vuln_scan", task="基于以下服务信息进行高危漏洞扫描：...", target="192.168.1.0/24")
+```
+
+这种设计让 orchestrator 拥有对任务指令的完全控制权，不再受限于各专家预定义的 input_schema，同时由注册表提供能力发现与路由校验。
 
 ---
 
@@ -138,11 +119,9 @@
 
 四、工作流引擎（调度执行器）
 
-实现一个类似nanobot的编排智能体，利用 LLM 的 function calling 或 tool_choice 机制来动态路由至已配置的子智能体：用户输入被送入编排器，编排器通过分析意图，直接从可用智能体列表中选择最匹配的一个或多个，按顺序调用。每次调用子智能体后，将结果带回对话上下文，继续决策下一步。：
+编排器通过 `create_agent(name, task, target)` 统一入口调度专家智能体，利用 LLM 的 function calling 机制实现动态路由：用户输入被送入编排器，编排器通过分析意图，自行编写任务指令并通过 `create_agent` 调度对应专家。每次调用子智能体后，将结果带回对话上下文，继续决策下一步。每个"智能体"就是一个带提示词和工具的独立模块，配置内容包括：它的注册元数据（能力关键词、描述）、系统提示词、绑定的工具集。
 
-每个“智能体”就是一个带提示词和工具的独立模块，配置内容包括：它的能力和触发关键词、输入/输出 Schema、系统提示词、绑定的工具集。
-
-数据流是自然接力：上下一个子智能体的输入，直接源自上一个的输出，编排器只需做格式转换和字段映射。
+数据流是自然接力：编排器从上一步结果中提取关键信息，写入下一步的 `task` 指令文本中，无需结构化变量引用。
 
 ---
 
@@ -172,9 +151,9 @@
 
 仅需三步：
 
-1. 编写一个智能体类/配置，定义提示词、输入输出 schema，绑定hydra或自写爆破工具。
-2. 在注册表中加入此智能体的元数据，并添加能力关键词：“弱口令、暴力破解、密码检测”。
-3. 启动系统。当用户说“扫描完漏洞后顺带检查一下弱口令”，主智能体就会在计划中自动插入这一步，它可以选择依赖“端口扫描”的结果（获取开了22/3306等服务的主机列表），非常解耦。
+1. 编写一个智能体配置（YAML），定义提示词、能力描述，绑定 hydra 或自写爆破工具。
+2. 在注册表中加入此智能体的元数据（含 `capabilities` 关键词），并声明 `endpoint_bound` 属性。
+3. 启动系统。当用户说"扫描完漏洞后顺带检查一下弱口令"，主智能体就会通过 `create_agent` 自动插入这一步，在 `task` 中引用端口扫描的结果（获取开了 22/3306 等服务的主机列表），非常解耦。
 
 ---
 
@@ -195,11 +174,10 @@
 name: asset_discovery
 display_name: 资产探测智能体
 description: 对指定网段进行 ping 扫描，返回存活主机列表
-triggers: ["扫描网段", "资产发现", "发现主机", "探测存活"]
-input_schema:
+capabilities: ["存活扫描", "网段探测", "资产发现"]
+endpoint_bound: false
+input_hints:  # 仅作参考文档，不再用于 LLM 工具入参 schema
   target: string  # 如 192.168.1.0/24
-output_schema:
-  ips: list[string]
 system_prompt: |
   你是一个资产探测专家。请根据输入的 target 网段，使用 nmap_ping_scan 工具执行扫描。
   只返回原始 JSON 结果，不要添加任何解释。
@@ -214,41 +192,28 @@ tools:
 
 2. 编排器（主智能体）工作流程
 
-编排器本身也是一个使用 LLM 的对话入口，但它被设置了“工具列表”：每个子智能体都被包装成一个顶层工具（Tool/Function），工具的描述直接来自上面的 YAML。
+编排器本身也是一个使用 LLM 的对话入口，它唯一的调度工具是 `create_agent`：orchestrator 根据注册表中的专家能力清单分析意图，自行编写完整的任务指令文本，通过 `create_agent(name, task, target)` 调度对应专家。每次调用后，将子智能体返回结果带回对话上下文，继续决策下一步。
 
-在 OpenAI 兼容的 API 下，编排器的 tools 定义可以是：
+在 OpenAI 兼容的 API 下，编排器的 tools 定义：
 
 ```json
 [
   {
     "type": "function",
     "function": {
-      "name": "asset_discovery",
-      "description": "资产探测智能体：对指定网段进行 ping 扫描，返回存活主机列表",
+      "name": "create_agent",
+      "description": "创建并调度一个专家智能体执行指定任务。name 必须在注册表中，task 为完整任务指令，target 为路由/审计标识。",
       "parameters": {
         "type": "object",
         "properties": {
-          "target": {"type": "string", "description": "目标网段，如 192.168.1.0/24"}
+          "name": {"type": "string", "description": "专家智能体名称，如 asset_discovery / port_scan / vuln_scan"},
+          "task": {"type": "string", "description": "完整的任务指令文本（含目标、已知信息、动作要求）"},
+          "target": {"type": "string", "description": "路由/审计用目标标识"}
         },
-        "required": ["target"]
-      }
-    }
-  },
-  {
-    "type": "function",
-    "function": {
-      "name": "port_scan",
-      "description": "端口扫描智能体：对提供的 IP 列表进行常用端口扫描，返回开放端口及服务",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "ips": {"type": "array", "items": {"type": "string"}, "description": "IP 地址列表"}
-        },
-        "required": ["ips"]
+        "required": ["name", "task", "target"]
       }
     }
   }
-  ... // 漏洞扫描、弱口令等
 ]
 ```
 
@@ -257,28 +222,28 @@ tools:
 ```
 用户：扫描 192.168.1.0/24 的高危漏洞
 ↓
-编排器 LLM 首轮（带着工具列表）：
-  分析意图 → 决定先调用 asset_discovery({target: "192.168.1.0/24"})
+编排器 LLM 首轮（带着 create_agent 工具）：
+  分析意图 → 决定先调用 create_agent(name="asset_discovery", task="对 192.168.1.0/24 执行存活探测...", target="192.168.1.0/24")
 ↓
 系统：执行 asset_discovery 子智能体，得到 {"ips":["192.168.1.1","192.168.1.100"]}
 ↓
 将函数调用结果作为工具消息返回给编排器 LLM
 ↓
 编排器 LLM 第二轮：
-  分析结果 → 调用 port_scan({ips: [...]})
+  分析结果 → 调用 create_agent(name="port_scan", task="对 192.168.1.1, 192.168.1.100 执行端口扫描...", target="192.168.1.0/24")
 ↓
 系统：执行 port_scan，得到开放端口和服务列表
 ↓
 编排器 LLM 第三轮：
-  调用 vuln_scan({services: [...]})
+  调用 create_agent(name="vuln_scan", task="基于以下服务信息执行高危漏洞扫描...", target="192.168.1.0/24")
 ↓
 最后编排器汇总所有步骤结果，格式化回复用户。
 ```
 
 关键的几点：
 
-· 编排器只需要一个标准的 LLM 对话循环，加上工具调用分发器，无需预先定义流程图。
-· 下一步的决策完全由 LLM 根据当前状态和你提供的工具描述实时作出，天然支持多轮、中断和异常处理。
+· 编排器只需要一个标准的 LLM 对话循环，加上 `create_agent` 这一个调度工具，无需预先定义流程图。
+· 下一步的决策完全由 LLM 根据当前状态和注册表能力描述实时作出，天然支持多轮、中断和异常处理。
 · 如果用户需求模糊，编排器可以反问澄清（比如没有提供目标网段时），同样通过对话完成。
 
 · 编排器的每一轮决策都要给用户回复一个摘要信息，不能把思维链全部输出，可以额外调用小模型进行总结。
@@ -294,7 +259,7 @@ tools:
 
 4. 上下文传递与依赖处理
 
-编排器 LLM 在生成工具调用时，会自然地根据工具的参数要求看到上一步产出的字段（如 ips），它只需要引用这些字段即可。这是因为 LLM 能看到整个对话历史，包括之前工具返回的结果。所以你不需要显式写 $step_1.output.ips 这种变量，LLM 会从上下文里自动提取。
+编排器 LLM 在调用 `create_agent` 时，会在 `task` 指令文本中自然地引用上一步产出的关键信息（如 IP 列表、端口/服务列表）。LLM 能看到整个对话历史（包括之前工具返回的结果），因此只需在 `task` 文本中直接写入需要传递的数据，无需显式的 `$step_X.output` 变量引用。子智能体的系统提示采用极简骨架（仅含 hard rules 和 workspace 路径），角色描述和业务指令完全由 orchestrator 在 `task` 中承载。
 
 四、可能需要的增强
 
