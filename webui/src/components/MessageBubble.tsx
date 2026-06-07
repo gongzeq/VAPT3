@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AgentAvatar, AgentMeta } from "@/components/AgentAvatar";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { MarkdownText } from "@/components/MarkdownText";
+import { TurnUsageBadge } from "@/components/TokenUsageBadge";
 import { isHiddenFrontendToolName } from "@/lib/tool-visibility";
 import { cn } from "@/lib/utils";
 import { AgentEventCard, isVisibleAgentEvent } from "@/components/message/AgentEventCard";
@@ -100,8 +101,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             </p>
           ) : null}
         </div>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-bold">
-          SH
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-sm"
+          style={{ background: "linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%))" }}
+        >
+          <User className="h-4 w-4" aria-hidden />
         </div>
       </div>
     );
@@ -164,6 +168,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                     <Copy className="h-4 w-4" aria-hidden />
                   )}
                 </button>
+                {message.turnUsage ? (
+                  <TurnUsageBadge usage={message.turnUsage} />
+                ) : null}
               </div>
             ) : null}
           </>

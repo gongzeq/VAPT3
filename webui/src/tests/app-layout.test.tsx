@@ -287,7 +287,7 @@ describe("App layout", () => {
     const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
     fireEvent.click(within(sidebar).getByRole("button", { name: "New chat" }));
     expect(createChatSpy).not.toHaveBeenCalled();
-    expect(screen.getByText("智海智盾")).toBeInTheDocument();
+    expect(screen.getByText("粤海智盾")).toBeInTheDocument();
 
     // Navbar settings link
     expect(screen.getByText("设置")).toBeInTheDocument();

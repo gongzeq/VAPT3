@@ -207,16 +207,26 @@
     -webkit-text-fill-color: transparent;
     color: transparent;
   }
-  /* Chinese brand name styled to match the VAPT logotype.
-     Uses the ocean-blue primary with bold weight and CJK-optimised spacing. */
+  /* 粤海智盾 — 科技感品牌标识样式
+     海蓝渐变 + 动态辉光 + 横向光扫，切合智能体主题 */
+  @keyframes brand-glow-pulse {
+    0%, 100% { filter: drop-shadow(0 0 6px hsl(var(--ocean-500) / 0.45)); }
+    50%       { filter: drop-shadow(0 0 16px hsl(var(--ocean-300) / 0.75)); }
+  }
   .brand-zh {
     font-weight: 700;
-    letter-spacing: 0.12em;
-    background-image: linear-gradient(135deg, hsl(var(--ocean-300)), hsl(var(--primary)));
+    letter-spacing: 0.16em;
+    background-image: linear-gradient(135deg, hsl(var(--ocean-300)), hsl(var(--ocean-500)), hsl(var(--primary)));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     color: transparent;
+    filter: drop-shadow(0 0 8px hsl(var(--ocean-500) / 0.5));
+    animation: brand-glow-pulse 3.5s ease-in-out infinite;
+  }
+  /* 大尺寸（登录页/首页）增强辉光层叠 */
+  .brand-zh-hero {
+    display: inline-block;
   }
   .bg-glass {
     background-color: hsl(var(--card) / 0.7);

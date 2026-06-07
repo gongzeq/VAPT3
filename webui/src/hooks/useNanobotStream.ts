@@ -12,6 +12,7 @@ import {
 import { randomId } from "@/lib/utils";
 import type {
   AgentEventPayload,
+  CumulativeUsage,
   InboundEvent,
   OutboundMedia,
   ToolCallStatus,
@@ -208,6 +209,8 @@ export function useNanobotStream(
   /** Clear the current ``streamError`` (e.g. after the user dismisses the
    * notification or starts a fresh action). */
   dismissStreamError: () => void;
+  /** Cumulative token usage across all completed turns in the current chat. */
+  cumulativeUsage: CumulativeUsage;
 } {
   const { client } = useClient();
   const [messages, setMessages] = useState<UIMessage[]>(initialMessages);
@@ -224,6 +227,12 @@ export function useNanobotStream(
   // would resurrect the Stop button on idle chats.
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<StreamError | null>(null);
+  const [cumulativeUsage, setCumulativeUsage] = useState<CumulativeUsage>({
+    promptTokens: 0,
+    completionTokens: 0,
+    cachedTokens: 0,
+    turnCount: 0,
+  });
   const buffer = useRef<StreamBuffer | null>(null);
   /** Most recent agent that emitted an ``agent_event`` or ``message``. Used
    * to tag plain assistant turns so they inherit the correct avatar colour. */
@@ -265,6 +274,7 @@ export function useNanobotStream(
     if (chatChanged) {
       setIsStreaming(false);
       setStreamError(null);
+      setCumulativeUsage({ promptTokens: 0, completionTokens: 0, cachedTokens: 0, turnCount: 0 });
       buffer.current = null;
       currentAgentRef.current = "orchestrator";
       if (streamEndTimerRef.current !== null) {
@@ -360,9 +370,30 @@ export function useNanobotStream(
         // If the LLM recovered after a retry, dismiss the disruption banner.
         setStreamError((prev) => prev?.kind === "llm_retry" ? null : prev);
         setIsStreaming(false);
-        setMessages((prev) =>
-          prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
-        );
+
+        // Attach per-turn usage to the last assistant message and accumulate.
+        const usage = ev.usage;
+        setMessages((prev) => {
+          const updated = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m));
+          if (usage) {
+            // Find the last assistant message and attach turnUsage to it.
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].role === "assistant" && updated[i].kind !== "trace") {
+                updated[i] = { ...updated[i], turnUsage: usage };
+                break;
+              }
+            }
+          }
+          return updated;
+        });
+        if (usage) {
+          setCumulativeUsage((prev) => ({
+            promptTokens: prev.promptTokens + (usage.prompt_tokens || 0),
+            completionTokens: prev.completionTokens + (usage.completion_tokens || 0),
+            cachedTokens: prev.cachedTokens + (usage.cached_tokens || 0),
+            turnCount: prev.turnCount + 1,
+          }));
+        }
         onTurnEnd?.();
         return;
       }
@@ -616,5 +647,6 @@ export function useNanobotStream(
     setMessages,
     streamError,
     dismissStreamError,
+    cumulativeUsage,
   };
 }

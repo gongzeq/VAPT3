@@ -494,7 +494,7 @@ describe("ThreadShell", () => {
     });
 
     expect(screen.queryByText("live assistant reply")).not.toBeInTheDocument();
-    expect(screen.getByText("智海智盾")).toBeInTheDocument();
+    expect(screen.getByText("粤海智盾")).toBeInTheDocument();
 
     await act(async () => {
       rerender(

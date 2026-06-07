@@ -1,3 +1,19 @@
+/** Per-turn token usage from the LLM provider. */
+export interface TurnUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens?: number;
+  cached_tokens?: number;
+}
+
+/** Cumulative token usage across all turns in a conversation. */
+export interface CumulativeUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  turnCount: number;
+}
+
 export type Role = "user" | "assistant" | "tool" | "system";
 
 /** "trace" rows are intermediate agent breadcrumbs (tool-call hints,
@@ -232,6 +248,9 @@ export interface UIMessage {
    * preceding assistant message from the same agent so the UI can render
    * them inside the bubble rather than as detached cards. */
   toolCalls?: AgentEventPayload[];
+  /** Per-turn LLM token usage, attached to the last assistant message of
+   * the turn when the backend reports it via ``turn_end``. */
+  turnUsage?: TurnUsage;
 }
 
 export interface ChatSummary {
@@ -373,7 +392,13 @@ export type InboundEvent =
       chat_id: string;
       stream_id?: string;
     }
-  | { event: "turn_end"; chat_id: string }
+  | {
+      event: "turn_end";
+      chat_id: string;
+      /** Per-turn token usage reported by the backend. Absent when the
+       * turn was aborted (e.g. /stop) or the backend didn't track usage. */
+      usage?: TurnUsage;
+    }
   | { event: "session_updated"; chat_id: string }
   | {
       event: "agent_event";

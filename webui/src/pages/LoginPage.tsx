@@ -37,7 +37,7 @@ function resolveNext(search: string): string {
 }
 
 /**
- * /login — 智海智盾登录页。严格对齐 prototypes/01-login.html 双栏设计：
+ * /login — 粤海智盾登录页。严格对齐 prototypes/01-login.html 双栏设计：
  *   - 左栏（lg+）：banner 装饰 + 网格叠加 + 品牌标语 + 4 特性卡；底部空位
  *     （prototype 明确注释「公司名称已移除」）。
  *   - 右栏：居中单卡片，gradient-card + border-glow，shield-glow 图标徽章，
@@ -85,16 +85,17 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
 
   return (
     <main className="grid min-h-screen overflow-hidden lg:grid-cols-[1.3fr_1fr]">
-      {/* ── 左栏：banner 装饰 + 平台介绍 ─────────────────────────── */}
+      {/* ── 左栏：纯 CSS 海蓝科技背景 + 平台介绍 ─────────────────── */}
       <section
-        className="relative hidden flex-col justify-between p-12 lg:flex"
+        className="relative hidden flex-col justify-between overflow-hidden p-12 lg:flex"
         style={{
+          backgroundColor: "hsl(222 47% 6%)",
           backgroundImage: [
-            "linear-gradient(135deg, hsl(222 47% 6% / 0.85) 0%, hsl(210 100% 18% / 0.55) 60%, hsl(210 100% 30% / 0.35) 100%)",
-            "url('/brand/banner.jpg')",
+            "radial-gradient(120% 90% at 12% -10%, hsl(210 100% 30% / 0.50) 0%, transparent 55%)",
+            "radial-gradient(100% 80% at 88% 110%, hsl(189 94% 56% / 0.22) 0%, transparent 52%)",
+            "radial-gradient(90% 70% at 50% 130%, hsl(210 92% 38% / 0.42) 0%, transparent 60%)",
+            "linear-gradient(135deg, hsl(222 47% 6%) 0%, hsl(214 58% 9%) 55%, hsl(210 70% 12%) 100%)",
           ].join(", "),
-          backgroundSize: "cover",
-          backgroundPosition: "center",
         }}
       >
         {/* 网格叠加 */}
@@ -105,7 +106,23 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
             backgroundImage:
               "linear-gradient(hsl(210 100% 56% / 0.08) 1px, transparent 1px), linear-gradient(90deg, hsl(210 100% 56% / 0.08) 1px, transparent 1px)",
             backgroundSize: "40px 40px",
+            maskImage:
+              "radial-gradient(120% 100% at 30% 20%, black 30%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(120% 100% at 30% 20%, black 30%, transparent 80%)",
           }}
+        />
+
+        {/* 柔光球点缀 — 科技感氛围层 */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, hsl(210 100% 56% / 0.35), transparent 70%)" }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-28 right-[-10%] h-80 w-80 rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, hsl(189 94% 56% / 0.22), transparent 70%)" }}
         />
 
         {/* 顶部品牌 */}
@@ -116,7 +133,7 @@ export function LoginPage({ state, onSecret }: LoginPageProps) {
               alt="logo"
               className="h-11 w-11 rounded-xl shadow-[0_0_0_4px_hsl(var(--primary)/0.18)]"
             />
-            <span className="brand-zh leading-tight text-[26px]">智海智盾</span>
+            <span className="brand-zh brand-zh-hero leading-tight text-[26px]">粤海智盾</span>
           </div>
           <p className="text-sm text-white/60">多智能体网络安全协作系统</p>
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/85 backdrop-blur">
