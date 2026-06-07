@@ -22,6 +22,7 @@ from secbot.cmdb.repo import (
 from secbot.report.builder import ReportRenderError, build_report_model
 from secbot.report.render import render_html, render_markdown
 from secbot.skills.types import SkillContext
+from secbot.agent.tools.skill import bind_skill_context
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[2] / "secbot" / "skills"
 
@@ -206,7 +207,9 @@ def _ctx(tmp_path: Path) -> SkillContext:
 async def test_report_html_skill_writes_file(cmdb_engine, tmp_path: Path):
     scan_id = await _seed()
     mod = _load("report-html")
-    res = await mod.run({"scan_id": scan_id}, _ctx(tmp_path))
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir)
+    res = await mod.run({}, ctx)
     assert res.summary["status"] == "ok"
     out = Path(res.summary["report_path"])
     assert out.exists()
@@ -223,7 +226,9 @@ async def test_report_html_skill_empty_scan(cmdb_engine, tmp_path: Path):
     async with cmdb_db.get_session() as session:
         scan = await create_scan(session, "local", target="10.10.10.10")
     mod = _load("report-html")
-    res = await mod.run({"scan_id": scan.id}, _ctx(tmp_path))
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id=scan.id, scan_dir=ctx.scan_dir)
+    res = await mod.run({}, ctx)
     assert res.summary["status"] == "empty"
     assert res.summary["report_path"] is None
     assert res.summary["asset_count"] == 0

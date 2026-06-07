@@ -23,7 +23,7 @@ from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileToo
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
-from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, discover_skill_tools
+from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, current_scan_id, discover_skill_tools
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
@@ -589,8 +589,14 @@ class SubagentManager:
             # Crucially, preserve the ``confirm`` callback so critical skills
             # inside the subagent still surface the WebUI approval dialog.
             parent_confirm = current_skill_confirm()
+            # Inherit the parent loop's scan_id so ALL CMDB writes within a
+            # scan session (orchestrator + all subagents) share one scan
+            # record.  This is essential for report-html which queries by
+            # scan_id.  The scan_dir stays per-subagent (task_id) so raw logs
+            # are isolated.
+            parent_scan_id = current_scan_id()
             bind_skill_context(
-                scan_id=task_id,
+                scan_id=parent_scan_id,
                 scan_dir=self.workspace / ".secbot" / "scans" / task_id,
                 confirm=parent_confirm,
             )

@@ -19,9 +19,6 @@ legacy_input_schema:
   type: object
   required: []
   properties:
-    scan_id:
-      type: string
-      description: ULID of the scan to report on (VAPT mode only)
     title:
       type: string
       description: Optional report title

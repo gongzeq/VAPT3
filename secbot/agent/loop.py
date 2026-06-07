@@ -659,6 +659,16 @@ class AgentLoop:
         self.tools.register(
             MessageTool(send_callback=self.bus.publish_outbound, workspace=self.workspace)
         )
+        # Read-only file access restricted to .secbot/ internals
+        # (tool-results, scans, etc.).  The orchestrator needs this to
+        # inspect persisted sub-agent result files that exceed the inline
+        # tool-result size limit.
+        self.tools.register(
+            ReadFileTool(
+                workspace=self.workspace,
+                allowed_dir=self.workspace / ".secbot",
+            )
+        )
 
     def _register_operational_tools(self) -> None:
         """Register the full operational tool surface for non-orchestrator loops."""
@@ -1001,6 +1011,31 @@ class AgentLoop:
 
             raw_items = _drain_available()
 
+            # When sub-agents are running, ``asset_discovered`` wake-up
+            # notifications are noise – they consume injection cycles that
+            # should be reserved for the actual ``subagent_result``.  Discard
+            # them while sub-agents are active and keep waiting for the real
+            # completion signal.
+            def _discard_asset_notifications(
+                items: list[InboundMessage],
+            ) -> list[InboundMessage]:
+                """Drop asset_discovered messages when sub-agents are active."""
+                if session is None:
+                    return items
+                if self.subagents.get_running_count_by_session(session.key) <= 0:
+                    return items
+                kept = [m for m in items if _event_name(m) != "asset_discovered"]
+                dropped = len(items) - len(kept)
+                if dropped:
+                    logger.info(
+                        "Dropped {} asset_discovered notification(s) while "
+                        "sub-agent(s) running",
+                        dropped,
+                    )
+                return kept
+
+            raw_items = _discard_asset_notifications(raw_items)
+
             # Block if nothing drained but sub-agents spawned in this dispatch
             # are still running. Keeps the runner loop alive so subsequent
             # completions are injected promptly. Once a completion is present,
@@ -1010,14 +1045,27 @@ class AgentLoop:
                     and session is not None
                     and self.subagents.get_running_count_by_session(session.key) > 0):
                 try:
-                    raw_items.append(await asyncio.wait_for(pending_queue.get(), timeout=300))
+                    while True:
+                        item = await asyncio.wait_for(
+                            pending_queue.get(), timeout=300,
+                        )
+                        if _event_name(item) == "asset_discovered":
+                            logger.debug(
+                                "Discarded asset_discovered notification "
+                                "while waiting for sub-agent completion",
+                            )
+                            continue
+                        raw_items.append(item)
+                        break
                 except asyncio.TimeoutError:
                     logger.warning(
                         "Timeout waiting for sub-agent completion in session {}",
                         session.key,
                     )
                     return []
-                raw_items.extend(_drain_available())
+                # Drain additional items and discard asset notifications
+                extra = _discard_asset_notifications(_drain_available())
+                raw_items.extend(extra)
 
             return [_to_user_message(item) for item in _select_pending(raw_items)]
 
@@ -1188,9 +1236,10 @@ class AgentLoop:
                     self._pending_queues[effective_key].put_nowait(pending_msg)
                 except asyncio.QueueFull:
                     logger.warning(
-                        "Pending queue full for session {}, falling back to queued task",
+                        "Pending queue full for session {}, re-publishing to bus",
                         effective_key,
                     )
+                    await self.bus.publish_inbound(pending_msg)
                 else:
                     logger.info(
                         "Routed follow-up message to pending queue for session {}",
@@ -1271,9 +1320,12 @@ class AgentLoop:
                         # Signal that the turn is fully complete (all tools executed,
                         # final text streamed).  This lets WS clients know when to
                         # definitively stop the loading indicator.
+                        turn_meta = {**msg.metadata, "_turn_end": True}
+                        if self._last_usage:
+                            turn_meta["_usage"] = self._last_usage
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
-                            content="", metadata={**msg.metadata, "_turn_end": True},
+                            content="", metadata=turn_meta,
                         ))
                         if msg.metadata.get("webui") is True:
                             async def _generate_title_and_notify() -> None:

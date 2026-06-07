@@ -906,9 +906,34 @@ def main() -> int:
         file_name = "unknown.log"
 
     # ── step1 metrics (available in path mode) ──
-    step1_valid = isinstance(step1, dict)
+    step1_valid = isinstance(step1, dict) and bool(step1)
     log_format = str(step1.get("log_format") or "unknown") if step1_valid else "unknown"
     char_count = int(step1.get("char_count") or 0) if step1_valid else 0
+
+    # ── Upload-mode fallback ──
+    # When step1 is skipped (upload mode), derive format from file_name
+    # extension and compute char_count from the actual log_content length
+    # passed via the stdin template.
+    if not step1_valid or log_format == "unknown" or char_count == 0:
+        upload_content = str(data.get("log_content") or "")
+        if upload_content:
+            char_count = len(upload_content)
+        lower_name = file_name.lower()
+        if log_format in ("unknown", "uploaded_text"):
+            if lower_name.endswith((".xlsx", ".xlsm", ".xls")):
+                log_format = "xlsx"
+            elif lower_name.endswith(".csv"):
+                log_format = "csv"
+            elif lower_name.endswith((".tsv", ".tab")):
+                log_format = "tsv"
+            elif lower_name.endswith(".json"):
+                log_format = "json"
+            elif lower_name.endswith(".xml"):
+                log_format = "xml"
+            elif lower_name.endswith((".log", ".txt")):
+                log_format = "txt"
+            elif upload_content:
+                log_format = "txt"
 
     # ── step2 = LLM judgement ──
     step2 = data.get("step2") or {}

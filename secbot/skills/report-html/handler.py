@@ -18,7 +18,12 @@ from secbot.skills.types import SkillContext, SkillResult
 
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
-    scan_id: str = args["scan_id"]
+    # scan_id is always inherited from the parent agent loop via
+    # bind_skill_context (set in loop.py / subagent.py).  This guarantees
+    # the report queries the same CMDB scan record that earlier stages
+    # (crawl, vuln_detec, vuln_scan) wrote to via asset_push auto-flush.
+    from secbot.agent.tools.skill import current_scan_id
+    scan_id: str = current_scan_id()
     actor_id: str = args.get("actor_id", DEFAULT_ACTOR)
     report_title: str = args.get("title") or f"Scan {scan_id} report"
     report_type: str = args.get("type", "custom")

@@ -299,6 +299,7 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
         "create_agent",
         "read_assets",
         "read_blackboard",
+        "read_file",
         "request_approval",
         "write_plan",
         "message",

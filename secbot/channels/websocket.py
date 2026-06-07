@@ -2806,7 +2806,8 @@ class WebSocketChannel(BaseChannel):
             return
         # Signal that the agent has fully finished processing the current turn.
         if msg.metadata.get("_turn_end"):
-            await self.send_turn_end(msg.chat_id)
+            usage = msg.metadata.get("_usage")
+            await self.send_turn_end(msg.chat_id, usage=usage)
             return
         if msg.metadata.get("_session_updated"):
             await self.send_session_updated(msg.chat_id)
@@ -2871,7 +2872,7 @@ class WebSocketChannel(BaseChannel):
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" stream ")
 
-    async def send_turn_end(self, chat_id: str) -> None:
+    async def send_turn_end(self, chat_id: str, *, usage: dict[str, int] | None = None) -> None:
         """Signal that the agent has fully finished processing the current turn."""
         # Clear the active-turn marker regardless of whether there are still
         # subscribers attached: the turn really did end on the backend, and a
@@ -2881,6 +2882,8 @@ class WebSocketChannel(BaseChannel):
         if not conns:
             return
         body: dict[str, Any] = {"event": "turn_end", "chat_id": chat_id}
+        if usage:
+            body["usage"] = usage
         raw = json.dumps(body, ensure_ascii=False)
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" turn_end ")

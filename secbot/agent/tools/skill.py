@@ -92,6 +92,15 @@ def current_skill_confirm() -> Callable[[Mapping[str, Any]], Awaitable[bool]] | 
     return _confirm_var.get()
 
 
+def current_scan_id() -> str:
+    """Return the currently-bound ``scan_id`` (defaults to ``"adhoc"``).
+
+    Used by subagents to inherit the parent loop's scan_id so all CMDB
+    writes in a scan session share one scan record.
+    """
+    return _scan_id_var.get()
+
+
 def _current_scan_dir(default_workspace: Path) -> Path:
     scan_dir = _scan_dir_var.get()
     if scan_dir is not None:

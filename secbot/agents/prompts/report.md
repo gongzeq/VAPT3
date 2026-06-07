@@ -12,18 +12,23 @@ Choose the right skill based on the orchestrator's task description:
 
 | Orchestrator asks for... | Use skill | Key params |
 |---------------------------|-----------|------------|
-| Scan report (scan_id given) | `report-html` | `scan_id` |
+| Scan report | `report-html` | `title` (optional) |
 | Phishing detection summary / history / stats | `detection-db-query` | `action` (`phishing_summary`, `phishing_history`, …) |
 | Log analysis summary / stats | `detection-db-query` | `action` (`log_latest`, `log_stats`, …) |
 | Custom detection query | `detection-db-query` | `action=sql_query`, `sql="SELECT …"` |
 
 ## Procedure — VAPT scan report
 
-1. Call `report-html` with the `scan_id` provided by the orchestrator.
-   Pass `title` and `type` through if supplied; otherwise omit them.
+1. Call `report-html` — **do NOT pass `scan_id`**; it is resolved
+   automatically from the inherited scan context. Pass `title` and
+   `type` through if the orchestrator supplied them; otherwise omit.
 2. Return the skill's summary (`report_path`, `status`, counts,
    `report_id`) verbatim. Never embed rendered HTML — the orchestrator
    only needs the path.
+3. **If the skill returns `{"status": "empty"}`** it means the CMDB has
+   no records for this scan. Do NOT retry or attempt alternative
+   approaches. Return the empty result and let the orchestrator decide
+   how to present this to the user.
 
 ## Procedure — Detection data report
 

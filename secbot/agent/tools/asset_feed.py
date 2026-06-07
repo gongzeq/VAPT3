@@ -5,24 +5,248 @@ asset discoveries** (URL / port / service / credential / vuln / tech).
 ``asset_push`` writes one entry per discovery and wakes the orchestrator
 via the message bus; ``read_assets`` reads with cursor-based pagination.
 See :mod:`secbot.agent.asset_feed` for the underlying registry.
+
+Auto-flush: when ``kind`` is ``vuln``, ``credential``, or ``tech``,
+``AssetPushTool`` also persists the discovery to the CMDB so that
+``report-html`` can render a complete report without a separate flush
+step.  See `.trellis/tasks/06-06-fix-report-pipeline/prd.md`.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlparse
 
 from secbot.agent.asset_feed import KNOWN_ASSET_KINDS, AssetFeed
 from secbot.agent.tools.base import Tool
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 
+_logger = logging.getLogger(__name__)
+
 AssetFeedSource = AssetFeed | Callable[[], AssetFeed]
+
+# Kinds that are automatically flushed to the CMDB.
+_CMDB_FLUSH_KINDS: frozenset[str] = frozenset({"vuln", "credential", "tech"})
+
+# Map free-form vuln type strings to the CMDB-valid category vocabulary.
+# See :data:`secbot.cmdb.models.VALID_VULN_CATEGORIES`.
+_VALID_CATEGORIES = frozenset({
+    "injection", "auth", "xss", "misconfig",
+    "exposure", "weak_password", "cve", "other",
+})
+_CATEGORY_MAP: dict[str, str] = {
+    "sqli": "injection",
+    "sql_injection": "injection",
+    "nosql_injection": "injection",
+    "command_injection": "injection",
+    "rce": "injection",
+    "ssti": "injection",
+    "xxe": "injection",
+    "lfi": "exposure",
+    "rfi": "exposure",
+    "directory_traversal": "exposure",
+    "path_traversal": "exposure",
+    "info_leak": "exposure",
+    "info_disclosure": "exposure",
+    "sensitive_data": "exposure",
+    "file_upload": "exposure",
+    "file_inclusion": "exposure",
+    "ssrf": "misconfig",
+    "open_redirect": "misconfig",
+    "csrf": "xss",
+    "reflected_xss": "xss",
+    "stored_xss": "xss",
+    "dom_xss": "xss",
+    "brute_force": "weak_password",
+    "default_credentials": "weak_password",
+    "weak_password": "weak_password",
+    "broken_auth": "auth",
+    "auth_bypass": "auth",
+    "id": "auth",
+    "insecure_deserialization": "other",
+    "deserialization": "other",
+}
 
 
 def _resolve(source: AssetFeedSource) -> AssetFeed:
     return source() if callable(source) else source
+
+
+# ---------------------------------------------------------------------------
+# Asset payload → CMDB write-instruction converters
+# ---------------------------------------------------------------------------
+
+
+def _host_from_url(url: str) -> str:
+    """Extract ``host[:port]`` from *url*, falling back to the raw string."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or url
+        if parsed.port and parsed.port not in (80, 443):
+            return f"{host}:{parsed.port}"
+        return host
+    except Exception:
+        return url
+
+
+def _normalise_category(raw: str) -> str:
+    """Map a free-form vuln type to a CMDB-valid category."""
+    if raw in _VALID_CATEGORIES:
+        return raw
+    return _CATEGORY_MAP.get(raw.lower().replace(" ", "_"), "other")
+
+
+def _vuln_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert a ``kind=vuln`` asset payload to a CMDB vulnerability write."""
+    url = payload.get("url", "")
+    target = (
+        payload.get("target")
+        or (_host_from_url(url) if url else None)
+        or payload.get("host", "")
+    )
+    if not target:
+        return None
+    return {
+        "table": "vulnerabilities",
+        "op": "upsert",
+        "data": {
+            "target": target,
+            "severity": payload.get("severity", "info"),
+            "category": _normalise_category(payload.get("type") or payload.get("category", "other")),
+            "title": payload.get("title") or f"{payload.get('type', 'vuln')} on {url or target}",
+            "evidence": payload.get("evidence", ""),
+            "cve_id": payload.get("cve_id"),
+        },
+    }
+
+
+def _credential_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert a ``kind=credential`` asset payload to a CMDB vulnerability write."""
+    host = payload.get("host") or payload.get("target", "")
+    if not host:
+        return None
+    port = payload.get("port")
+    target = f"{host}:{port}" if port else host
+    return {
+        "table": "vulnerabilities",
+        "op": "upsert",
+        "data": {
+            "target": target,
+            "severity": "critical",
+            "category": "credential_disclosure",
+            "title": payload.get("title") or f"Credential leak: {payload.get('username', '?')}@{target}",
+            "evidence": (
+                f"username={payload.get('username', '')} "
+                f"password={payload.get('password', '')} "
+                f"db={payload.get('db', '')} "
+                f"type={payload.get('type', '')} "
+                f"{payload.get('note', '')}"
+            ).strip(),
+        },
+    }
+
+
+def _tech_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert a ``kind=tech`` asset payload to a CMDB asset write."""
+    url = payload.get("url", "")
+    target = (
+        payload.get("target")
+        or (_host_from_url(url) if url else None)
+        or ""
+    )
+    if not target:
+        return None
+    return {
+        "table": "assets",
+        "op": "upsert",
+        "data": {
+            "target": target,
+            "tags": {
+                k: v for k, v in {
+                    "server": payload.get("server"),
+                    "platform": payload.get("platform"),
+                    "os": payload.get("os"),
+                    "php": payload.get("php"),
+                    "mysql": payload.get("mysql"),
+                }.items() if v
+            },
+            "os_guess": payload.get("os"),
+        },
+    }
+
+
+_KIND_CONVERTERS: dict[str, Callable[[dict[str, Any]], dict[str, Any] | None]] = {
+    "vuln": _vuln_to_cmdb_write,
+    "credential": _credential_to_cmdb_write,
+    "tech": _tech_to_cmdb_write,
+}
+
+
+async def _flush_asset_to_cmdb(
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    agent_name: str,
+) -> bool:
+    """Best-effort persist a single asset discovery to the CMDB.
+
+    Reads ``scan_id`` from the SkillContext ContextVar so it stays
+    consistent with the rest of the scan pipeline.  Returns ``True`` on
+    success, ``False`` on any failure (logged as warning).
+    """
+    if kind not in _CMDB_FLUSH_KINDS:
+        return False
+
+    converter = _KIND_CONVERTERS.get(kind)
+    if converter is None:
+        return False
+
+    write = converter(payload)
+    if write is None:
+        _logger.debug("asset_push cmdb flush: converter returned None for kind=%s", kind)
+        return False
+
+    try:
+        from secbot.agent.tools.skill import _scan_id_var
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+        from secbot.cmdb.repo import create_scan, get_scan
+        from secbot.cmdb.writes import apply_cmdb_writes
+
+        scan_id = _scan_id_var.get()
+        async with get_session() as session:
+            # Ensure the scan record exists before writing assets/vulns —
+            # the FK constraint (asset.scan_id → scan.id) will reject the
+            # insert otherwise.
+            scan = await get_scan(session, DEFAULT_ACTOR, scan_id)
+            if scan is None:
+                # Derive a human-readable target from the payload.
+                target = (
+                    payload.get("target")
+                    or payload.get("host")
+                    or payload.get("url", "")
+                    or scan_id
+                )
+                await create_scan(
+                    session, DEFAULT_ACTOR, target=target, scan_id=scan_id
+                )
+            await apply_cmdb_writes(
+                session,
+                DEFAULT_ACTOR,
+                scan_id,
+                [write],
+                discovered_by=agent_name,
+            )
+        return True
+    except Exception:
+        _logger.warning(
+            "asset_push cmdb flush failed for kind=%s", kind, exc_info=True
+        )
+        return False
 
 
 class AssetPushTool(Tool):
@@ -118,11 +342,19 @@ class AssetPushTool(Tool):
         # the entry is still persisted and ``read_assets`` works.
         await self._notify_bus(entry_id=entry.id, kind=kind)
 
+        # Auto-flush vuln / credential / tech discoveries to the CMDB so
+        # that ``report-html`` can render a complete report without a
+        # separate flush step.  Best-effort: never fail the push.
+        flushed = await _flush_asset_to_cmdb(
+            kind, payload, agent_name=self._agent_name
+        )
+
         kinds_hint = (
             "" if kind in KNOWN_ASSET_KINDS
             else f" (note: kind '{kind}' is non-standard)"
         )
-        return f"asset pushed (id={entry.id}, kind={kind}){kinds_hint}"
+        cmdb_hint = " +cmdb" if flushed else ""
+        return f"asset pushed (id={entry.id}, kind={kind}){cmdb_hint}{kinds_hint}"
 
     async def _notify_bus(self, *, entry_id: int, kind: str) -> None:
         if self._bus is None or self._origin is None:

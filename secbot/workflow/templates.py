@@ -234,10 +234,21 @@ def _phishing_email_template() -> dict[str, Any]:
 
 _LOG_ANALYSIS_LLM_SYSTEM = (
     "你是一个专业的安全日志分析专家。分析用户提供的设备安全日志完整内容，"
-    "逐条识别攻击行为、异常流量、可疑访问、暴力破解等安全威胁。"
-    "凡是已被安全设备成功拦截/阻断/拒绝的请求，即使其本身是恶意请求，"
-    "也视为防护已生效，不应计入威胁日志（不纳入"
-    "anomaly_entries、anomaly_count 与 severity_distribution 统计）。"
+    "逐条识别攻击行为、异常流量、可疑访问、暴力破解等安全威胁。\n\n"
+    "【核心判定规则 — 区分[疑似攻击成功]与[已被防护阻断]】\n"
+    "1. 已被安全设备(WAF/IPS/防火墙等)成功拦截、阻断、拒绝，"
+    "返回 403/406/503，或标记为 blocked/denied/dropped 的请求，"
+    "一律视为[防护已生效、攻击未成功]，归入 low severity，"
+    "不纳入 anomaly_entries/anomaly_count/severity_distribution 的高危统计。\n"
+    "2. 只有日志中明确显示攻击载荷已被服务器接受并执行(如 HTTP 200 + "
+    "响应体含敏感数据泄露、SQL 报错、命令执行回显、写入成功等)，"
+    "才视为[疑似攻击成功]，按实际危害评级(critical/high/medium)。\n"
+    "3. 若本片段中所有异常请求均被阻断(无疑似攻击成功条目)，则：\n"
+    "   - confidence <= 0.30(表示威胁已被有效防护)\n"
+    "   - suggested_action 必须为[忽略]或[标记关注]，绝不可输出[告警]或[紧急处理]\n"
+    "   - 在 reason 中明确说明[所有攻击均已被WAF/安全设备阻断，无攻击成功迹象]\n"
+    "4. 仅当存在疑似攻击成功条目时，confidence 才可超过 0.50，"
+    "suggested_action 才可使用[告警]或[紧急处理]。\n"
     "只输出 JSON，不输出多余文字。"
 )
 
@@ -353,6 +364,7 @@ def _log_analysis_template() -> dict[str, Any]:
                     "code": LOG_ANALYSIS_STEP3_CODE,
                     "stdin": (
                         '{"file_name": "${inputs.log_file_name}",'
+                        ' "log_content": "${inputs.log_content}",'
                         ' "step1": ${steps.step1.result.parsed},'
                         ' "step2": ${steps.step2.result.parsed}}'
                     ),
