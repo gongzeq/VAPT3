@@ -154,20 +154,25 @@ def render_markdown(model: ReportModel) -> str:
 
 
 def render_html(model: ReportModel) -> str:
-    """Render an HTML document suitable for WeasyPrint PDF conversion.
+    """Render the canonical HTML report.
 
-    Inlines the severity color tokens so the printed PDF matches the WebUI.
+    Adopts the ``123.html`` design language: a neutral slate palette, card
+    based layout, mini-labels and rounded badges. All styling is inlined
+    (no CDN, no JS dependency beyond the print button) so the file opens
+    offline and renders identically through WeasyPrint PDF conversion.
     """
     css = """
     * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: #0F172A;
-      background: #F8FAFC;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #0f172a;
+      background: #fafaf9;
       margin: 0;
       padding: 0;
       line-height: 1.6;
     }
+    .mini-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
+    .seam-line { border-top: 2px dashed #94a3b8; }
     .toolbar {
       position: sticky;
       top: 0;
@@ -176,129 +181,196 @@ def render_html(model: ReportModel) -> str:
       align-items: center;
       justify-content: space-between;
       padding: 12px 24px;
-      background: linear-gradient(90deg, #0F172A 0%, #1E293B 100%);
+      background: linear-gradient(135deg, #0f172a, #1e293b);
       border-bottom: 1px solid #334155;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
-    .toolbar-title {
-      color: #F8FAFC;
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-    }
-    .toolbar-actions { display: flex; gap: 10px; }
+    .toolbar-title { color: #f8fafc; font-size: 14px; font-weight: 600; letter-spacing: 0.3px; }
     .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: 6px;
-      border: 1px solid #475569;
-      background: #1E293B;
-      color: #E2E8F0;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-decoration: none;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px;
+      border: 1px solid #475569; background: #1e293b; color: #e2e8f0;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: all 0.2s ease; text-decoration: none;
     }
-    .btn:hover { background: #334155; border-color: #64748B; }
+    .btn:hover { background: #334155; border-color: #64748b; }
     .btn svg { width: 14px; height: 14px; fill: currentColor; }
-    .container {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
-    h1, h2, h3 { color: #1E3A8A; margin-top: 1.5em; margin-bottom: 0.6em; }
-    h1 { font-size: 28px; margin-top: 0; border-bottom: 2px solid #E2E8F0; padding-bottom: 12px; }
-    h2 { font-size: 20px; }
-    h3 { font-size: 16px; color: #334155; }
-    table { border-collapse: collapse; margin-bottom: 1.5rem; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    th, td { border: 1px solid #E2E8F0; padding: 10px 14px; font-size: 13px; }
-    th { background: #F1F5F9; font-weight: 600; text-align: left; }
-    .badge { padding: 3px 10px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 500; display: inline-block; }
-    .sev-critical { background: #991B1B; }
-    .sev-high { background: #DC2626; }
-    .sev-medium { background: #D97706; }
-    .sev-low { background: #2563EB; }
+    .container { max-width: 1024px; margin: 0 auto; padding: 40px 24px; }
+    .report-header { margin-bottom: 28px; }
+    .report-header h1 { font-size: 34px; font-weight: 600; letter-spacing: -0.5px; margin: 6px 0 4px; color: #0f172a; }
+    .report-header .subtitle { color: #475569; font-size: 14px; margin: 0; }
+    .meta-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: 18px; }
+    .meta-item { border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 14px; }
+    .meta-item .meta-value { font-size: 13px; color: #0f172a; margin-top: 2px; word-break: break-all; }
+    .kpi-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 22px; }
+    .kpi-card { border: 1px solid #e2e8f0; background: #fff; border-radius: 12px; padding: 18px 18px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .kpi-card .kpi-num { font-size: 30px; font-weight: 600; line-height: 1; display: block; margin-top: 8px; color: #0f172a; }
+    .kpi-card.danger { border-color: #ef4444; background: #fef2f2; }
+    .kpi-card.danger .kpi-num { color: #b91c1c; }
+    .card { border: 1px solid #e2e8f0; background: #fff; border-radius: 14px; padding: 22px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); margin-bottom: 22px; }
+    .card > h2 { font-size: 20px; font-weight: 600; margin: 6px 0 16px; color: #0f172a; }
+    .sev-bar { display: flex; width: 100%; height: 14px; border-radius: 999px; overflow: hidden; background: #f1f5f9; }
+    .sev-bar > span { display: block; height: 100%; }
+    .sev-legend { display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 16px; }
+    .sev-legend .item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; }
+    .sev-legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+    .sev-legend .cnt { font-weight: 600; color: #0f172a; }
+    .empty-pill { display: inline-block; padding: 6px 14px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 13px; }
+    .asset-card .asset-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+    .asset-card .asset-name { font-size: 18px; font-weight: 600; color: #0f172a; }
+    .asset-card .asset-sub { font-size: 12px; color: #64748b; }
+    .asset-card .asset-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: #475569; margin: 8px 0 18px; }
+    .asset-card .asset-meta code { font-size: 12px; }
+    .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #64748b; font-weight: 600; margin: 18px 0 10px; }
+    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 9px 14px; font-size: 13px; text-align: left; }
+    tr:last-child td { border-bottom: none; }
+    th { background: #f8fafc; font-weight: 600; color: #475569; }
+    .badge { padding: 3px 11px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 500; display: inline-block; line-height: 1.5; }
+    .sev-critical { background: #991b1b; }
+    .sev-high { background: #dc2626; }
+    .sev-medium { background: #d97706; }
+    .sev-low { background: #2563eb; }
     .sev-info { background: #475569; }
-    ul { padding-left: 20px; }
-    code { background: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #334155; }
-    .finding-card { background: #fff; border-radius: 8px; border: 1px solid #E2E8F0; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-    .finding-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-    .finding-title { font-weight: 600; font-size: 14px; color: #0F172A; }
-    .finding-meta { font-size: 12px; color: #64748B; }
-    .finding-section { margin-top: 10px; }
-    .finding-section-title { font-weight: 600; font-size: 12px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 5px; font-size: 12px; color: #334155; word-break: break-word; }
+    .finding-card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 16px 20px; margin-bottom: 14px; }
+    .finding-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .finding-title { font-weight: 600; font-size: 15px; color: #0f172a; }
+    .finding-meta { font-size: 12px; color: #64748b; }
+    .finding-section { margin-top: 12px; }
+    .finding-section-title { font-weight: 600; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
     .finding-detail { font-size: 13px; color: #334155; white-space: pre-wrap; word-break: break-word; }
     .finding-steps { padding-left: 18px; margin: 4px 0 0 0; }
     .finding-steps li { font-size: 13px; color: #334155; margin-bottom: 3px; }
     .finding-refs { font-size: 12px; }
-    .finding-refs a { color: #2563EB; text-decoration: none; }
+    .finding-refs a { color: #2563eb; text-decoration: none; }
     .finding-refs a:hover { text-decoration: underline; }
-    pre.evidence { background: #1E293B; color: #E2E8F0; padding: 12px 16px; border-radius: 6px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+    pre.evidence { background: #0f172a; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; margin: 0; }
     @media print {
       .toolbar { display: none !important; }
       body { background: #fff; }
-      .container { padding: 16px; }
+      .container { padding: 0; max-width: none; }
+      .card, .kpi-card, .finding-card, .asset-card { box-shadow: none; break-inside: avoid; }
     }
     """
+
+    # --- severity aggregation for the visual summary -------------------
+    sev_counts = {sev: model.summary.severity_counts.get(sev, 0) for sev in SEVERITY_ORDER}
+    sev_total = sum(sev_counts.values())
+    sev_color = {
+        "critical": "#991b1b",
+        "high": "#dc2626",
+        "medium": "#d97706",
+        "low": "#2563eb",
+        "info": "#475569",
+    }
+    critical_count = sev_counts.get("critical", 0)
+    high_count = sev_counts.get("high", 0)
+
     lines: list[str] = [
         "<!DOCTYPE html>",
         '<html lang="zh-CN"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
         "<title>安全扫描报告</title>",
         f"<style>{css}</style></head><body>",
         '<div class="toolbar">',
-        '  <span class="toolbar-title">🔒 安全扫描报告</span>',
-        '  <div class="toolbar-actions">',
-        '    <button class="btn" onclick="window.print()" title="打印报告">',
-        '      <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>',
-        '      打印报告',
-        "    </button>",
-        "  </div>",
+        '  <span class="toolbar-title">安全扫描报告</span>',
+        '  <button class="btn" onclick="window.print()" title="打印 / 导出 PDF">',
+        '    <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>',
+        '    打印 / 导出 PDF',
+        "  </button>",
         "</div>",
-        '<div class="container">',
-        "<h1>安全扫描报告</h1>",
-        "<ul>",
-        f"<li><strong>扫描 ID:</strong> <code>{model.scan_id}</code></li>",
-        f"<li><strong>目标:</strong> {model.target}</li>",
-        f"<li><strong>开始时间:</strong> {_fmt_dt(model.started_at)}</li>",
-        f"<li><strong>结束时间:</strong> {_fmt_dt(model.finished_at)}</li>",
-        "</ul>",
-        "<h2>摘要</h2>",
-        "<table><thead><tr><th>严重级别</th><th>数量</th></tr></thead><tbody>",
+        '<main class="container">',
+        '  <header class="report-header">',
+        '    <p class="mini-label">Security scan report</p>',
+        "    <h1>安全扫描报告</h1>",
+        f'    <p class="subtitle">目标 {_esc(model.target)}</p>',
+        '    <div class="meta-grid">',
+        '      <div class="meta-item"><p class="mini-label">扫描 ID</p>'
+        f'<div class="meta-value"><code>{_esc(model.scan_id)}</code></div></div>',
+        '      <div class="meta-item"><p class="mini-label">目标</p>'
+        f'<div class="meta-value">{_esc(model.target)}</div></div>',
+        '      <div class="meta-item"><p class="mini-label">开始时间</p>'
+        f'<div class="meta-value">{_esc(_fmt_dt(model.started_at))}</div></div>',
+        '      <div class="meta-item"><p class="mini-label">结束时间</p>'
+        f'<div class="meta-value">{_esc(_fmt_dt(model.finished_at))}</div></div>',
+        "    </div>",
+        "  </header>",
     ]
-    for sev in SEVERITY_ORDER:
-        count = model.summary.severity_counts.get(sev, 0)
-        lines.append(
-            f"<tr><td><span class=\"badge sev-{sev}\">{_SEV_LABELS.get(sev, sev)}</span></td>"
-            f"<td>{count}</td></tr>"
-        )
-    lines.append("</tbody></table>")
 
+    # --- KPI cards ----------------------------------------------------
+    lines.append('<section class="kpi-grid">')
+    kpis = [
+        ("资产", model.summary.asset_count, False),
+        ("服务", model.summary.service_count, False),
+        ("漏洞发现", model.summary.finding_count, False),
+        ("严重 / 高危", critical_count + high_count, (critical_count + high_count) > 0),
+    ]
+    for label, value, danger in kpis:
+        cls = "kpi-card danger" if danger else "kpi-card"
+        lines.append(
+            f'<div class="{cls}"><p class="mini-label">{label}</p>'
+            f'<span class="kpi-num">{value}</span></div>'
+        )
+    lines.append("</section>")
+
+    # --- severity distribution (pure CSS) -----------------------------
+    lines.append('<section class="card">')
+    lines.append('<p class="mini-label">风险分布</p>')
+    if sev_total > 0:
+        lines.append('<div class="sev-bar">')
+        for sev in SEVERITY_ORDER:
+            cnt = sev_counts[sev]
+            if cnt <= 0:
+                continue
+            pct = cnt / sev_total * 100
+            lines.append(
+                f'<span style="width:{pct:.2f}%;background:{sev_color[sev]}" '
+                f'title="{_SEV_LABELS.get(sev, sev)}: {cnt}"></span>'
+            )
+        lines.append("</div>")
+        lines.append('<div class="sev-legend">')
+        for sev in SEVERITY_ORDER:
+            cnt = sev_counts[sev]
+            lines.append(
+                '<span class="item">'
+                f'<span class="dot" style="background:{sev_color[sev]}"></span>'
+                f'{_SEV_LABELS.get(sev, sev)} <span class="cnt">{cnt}</span></span>'
+            )
+        lines.append("</div>")
+    else:
+        lines.append('<div class="empty-pill">本次扫描未发现漏洞</div>')
+    lines.append("</section>")
+
+    # --- per-asset detail cards ---------------------------------------
     for a in model.assets:
         label = a.hostname or a.ip or a.target
-        lines.append(f"<h3>{label}</h3>")
-        lines.append("<ul>")
-        lines.append(f"<li>目标: <code>{a.target}</code></li>")
+        lines.append('<article class="card asset-card">')
+        lines.append('<div class="asset-head">')
+        lines.append(f'<span class="asset-name">{_esc(label)}</span>')
+        if a.findings:
+            lines.append(f'<span class="asset-sub">{len(a.findings)} 项发现</span>')
+        lines.append("</div>")
+        lines.append('<div class="asset-meta">')
+        lines.append(f'<span>目标 <code>{_esc(a.target)}</code></span>')
         if a.ip:
-            lines.append(f"<li>IP: <code>{a.ip}</code></li>")
+            lines.append(f'<span>IP <code>{_esc(a.ip)}</code></span>')
         if a.os_guess:
-            lines.append(f"<li>操作系统推测: {a.os_guess}</li>")
-        lines.append("</ul>")
+            lines.append(f'<span>操作系统 {_esc(a.os_guess)}</span>')
+        lines.append("</div>")
         if a.services:
-            lines.append("<h4>开放服务</h4>")
+            lines.append('<p class="section-label">开放服务</p>')
             lines.append("<table><thead><tr><th>端口</th><th>协议</th>"
                          "<th>服务</th><th>产品</th><th>版本</th></tr></thead><tbody>")
             for s in a.services:
                 lines.append(
-                    f"<tr><td>{s.port}</td><td>{s.protocol}</td>"
-                    f"<td>{s.service or '—'}</td><td>{s.product or '—'}</td>"
-                    f"<td>{s.version or '—'}</td></tr>"
+                    f"<tr><td>{s.port}</td><td>{_esc(s.protocol)}</td>"
+                    f"<td>{_esc(s.service) if s.service else '—'}</td>"
+                    f"<td>{_esc(s.product) if s.product else '—'}</td>"
+                    f"<td>{_esc(s.version) if s.version else '—'}</td></tr>"
                 )
             lines.append("</tbody></table>")
         if a.findings:
-            lines.append("<h4>漏洞详情</h4>")
+            lines.append('<p class="section-label">漏洞详情</p>')
             for f in a.findings:
                 sev_label = _SEV_LABELS.get(f.severity, f.severity)
                 lines.append('<div class="finding-card">')
@@ -359,7 +431,8 @@ def render_html(model: ReportModel) -> str:
                     lines.append('</div>')
                     lines.append('</div>')
                 lines.append('</div>')
-    lines.append("</div></body></html>")
+        lines.append("</article>")
+    lines.append("</main></body></html>")
     return "\n".join(lines)
 
 
