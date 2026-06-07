@@ -34,6 +34,7 @@ export interface SeverityDistribution {
   high: number;
   medium: number;
   low: number;
+  safe: number;
 }
 
 /** Payload from ``GET /api/dashboard/log-analysis/latest``. */
@@ -43,6 +44,9 @@ export interface LogAnalysisLatest {
   file_name: string;
   created_at: string;
   anomaly_count: number;
+  total_entries: number;
+  char_count: number;
+  log_format: string;
   confidence: number; // 0..1
   reason: string;
   suggested_action: string;
@@ -56,6 +60,7 @@ export interface LogAnalysisHistoryItem {
   file_name: string;
   created_at: string;
   anomaly_count: number;
+  total_entries: number;
   severity_distribution: SeverityDistribution;
   confidence: number;
   reason: string;

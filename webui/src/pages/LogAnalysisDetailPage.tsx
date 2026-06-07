@@ -37,6 +37,7 @@ const SEV_COLORS: Record<string, string> = {
   high: "#ef4444",
   medium: "#eab308",
   low: "#22c55e",
+  safe: "#10b981",
 };
 
 const SEV_LABELS: Record<string, string> = {
@@ -44,6 +45,7 @@ const SEV_LABELS: Record<string, string> = {
   high: "高危",
   medium: "中危",
   low: "低危",
+  safe: "无危险",
 };
 
 const SEV_STYLES: Record<string, string> = {
@@ -53,6 +55,7 @@ const SEV_STYLES: Record<string, string> = {
   medium:
     "text-severity-medium bg-severity-medium/10 border-severity-medium/30",
   low: "text-severity-low bg-severity-low/10 border-severity-low/30",
+  safe: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30",
 };
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -93,6 +96,11 @@ function totalAnomalies(item: LogAnalysisHistoryItem): number {
   return (
     (d?.critical ?? 0) + (d?.high ?? 0) + (d?.medium ?? 0) + (d?.low ?? 0)
   );
+}
+
+/** Total entries = anomaly + safe (from backend total_entries). */
+function getTotalEntries(item: LogAnalysisHistoryItem): number {
+  return item.total_entries || totalAnomalies(item);
 }
 
 /* ── Action status badge ─────────────────────────────────────────────── */
@@ -140,27 +148,30 @@ function ItemDonutChart({
   onClick?: () => void;
 }) {
   /* ── derived values ── */
-  const total = totalAnomalies(item);
+  const totalEntries = getTotalEntries(item);
   const highRisk = highRiskCount(item);
-  const pct = total > 0 ? ((highRisk / total) * 100).toFixed(0) : "0";
+  const pct = totalEntries > 0 ? ((highRisk / totalEntries) * 100).toFixed(0) : "0";
   const critOnly = item.severity_distribution?.critical ?? 0;
+  const hasAnyAnomaly = totalAnomalies(item) > 0;
   const centerColor =
     Number(pct) > 50 ? "#dc2626" : Number(pct) > 20 ? "#ef4444" : "#22c55e";
 
   /* ── dynamic font size based on text length ── */
-  const centerText = total > 0 ? `${highRisk}/${total}` : "0/0";
+  const centerText = totalEntries > 0 ? `${highRisk}/${totalEntries}` : "0/0";
   const centerFontSize =
     centerText.length <= 5 ? 20 :
     centerText.length <= 7 ? 17 :
     centerText.length <= 9 ? 14 :
     centerText.length <= 12 ? 12 : 10;
 
-  /* ── SVG donut segments ── */
+  /* ── SVG donut segments (include safe as independent segment) ── */
   const R = 72;
   const C = 2 * Math.PI * R; // circumference
-  const entries = (
-    Object.entries(item.severity_distribution) as [string, number][]
-  ).filter(([, v]) => v > 0);
+  const dist = item.severity_distribution;
+  const orderedKeys = ["critical", "high", "medium", "low", "safe"];
+  const entries = orderedKeys
+    .filter((k) => (dist?.[k as keyof typeof dist] ?? 0) > 0)
+    .map((k) => [k, dist[k as keyof typeof dist] as number] as [string, number]);
   const segTotal = entries.reduce((s, [, v]) => s + v, 0);
 
   let acc = 0;
@@ -255,8 +266,7 @@ function ItemDonutChart({
             {tip.text}
           </div>
         )}
-        {/* Dead-centre text — guaranteed aligned because SVG viewBox
-             centre (100,100) == container centre via absolute inset-0 */}
+        {/* Dead-centre text */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
           <span
             className="font-mono font-bold leading-tight"
@@ -265,16 +275,13 @@ function ItemDonutChart({
             {centerText}
           </span>
           <span className="text-xs leading-tight" style={{ color: "#94a3b8" }}>
-            {critOnly > 0 ? "严重+高危" : "需处理"}
+            {critOnly > 0 ? "严重+高危" : hasAnyAnomaly ? "需处理" : "已检测"}
           </span>
         </div>
       </div>
       {/* Legend below chart */}
       <div className="flex items-center justify-center gap-3 -mt-1 flex-wrap px-1 pb-1">
-        {(
-          Object.entries(item.severity_distribution) as [string, number][]
-        )
-          .filter(([, v]) => v > 0)
+        {entries
           .map(([k, v]) => (
             <span
               key={k}
@@ -418,8 +425,8 @@ function RecordCard({ item }: { item: LogAnalysisHistoryItem }) {
             />
             <MetricChip
               icon={<Hash className="h-4 w-4" />}
-              label="异常总数"
-              value={String(item.anomaly_count)}
+              label="已检测总条目"
+              value={String(getTotalEntries(item))}
             />
           </div>
         </div>

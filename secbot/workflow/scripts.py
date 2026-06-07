@@ -763,6 +763,7 @@ def main() -> int:
     # JSON wrapper adds ~15 % overhead; 50 000 chars is a safe ceiling.
     max_chars = 50000
     char_count = len(content)
+    total_entries = sum(1 for line in content.splitlines() if line.strip())
     if char_count > max_chars:
         content = content[:max_chars]
 
@@ -771,6 +772,7 @@ def main() -> int:
         "file_name": file_name,
         "log_format": fmt,
         "char_count": char_count,
+        "total_entries": total_entries,
     }, ensure_ascii=False))
     return 0
 
@@ -834,6 +836,7 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         ("medium_count", "INTEGER"),
         ("low_count", "INTEGER"),
         ("char_count", "INTEGER"),
+        ("total_entries", "INTEGER"),
     ]:
         try:
             conn.execute(f"ALTER TABLE log_analysis ADD COLUMN {col} {typ}")
@@ -850,8 +853,9 @@ def _persist(conn: sqlite3.Connection, row: dict) -> bool:
                 (workflow_run_id, file_name, log_format, char_count,
                  analysis_timestamp, anomaly_count,
                  critical_count, high_count, medium_count, low_count,
+                 total_entries,
                  summary, analysis_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("workflow_run_id"),
@@ -864,6 +868,7 @@ def _persist(conn: sqlite3.Connection, row: dict) -> bool:
                 int(row.get("high_count") or 0),
                 int(row.get("medium_count") or 0),
                 int(row.get("low_count") or 0),
+                int(row.get("total_entries") or 0),
                 row.get("summary"),
                 row.get("analysis_json"),
                 row.get("created_at"),
@@ -909,14 +914,15 @@ def main() -> int:
     step1_valid = isinstance(step1, dict) and bool(step1)
     log_format = str(step1.get("log_format") or "unknown") if step1_valid else "unknown"
     char_count = int(step1.get("char_count") or 0) if step1_valid else 0
+    total_entries = int(step1.get("total_entries") or 0) if step1_valid else 0
 
     # ── Upload-mode fallback ──
     # When step1 is skipped (upload mode), derive format from file_name
     # extension and compute char_count from the actual log_content length
     # passed via the stdin template.
+    upload_content = str(data.get("log_content") or "")
     if not step1_valid or log_format == "unknown" or char_count == 0:
-        upload_content = str(data.get("log_content") or "")
-        if upload_content:
+        if upload_content and char_count == 0:
             char_count = len(upload_content)
         lower_name = file_name.lower()
         if log_format in ("unknown", "uploaded_text"):
@@ -934,6 +940,12 @@ def main() -> int:
                 log_format = "txt"
             elif upload_content:
                 log_format = "txt"
+
+    # Compute total_entries if not yet available (upload mode)
+    if total_entries == 0:
+        content_for_count = upload_content or (step1.get("log_content", "") if step1_valid else "")
+        if content_for_count:
+            total_entries = sum(1 for line in content_for_count.splitlines() if line.strip())
 
     # ── step2 = LLM judgement ──
     step2 = data.get("step2") or {}
@@ -979,6 +991,7 @@ def main() -> int:
         f"文件名：{file_name}",
         f"格式：{log_format}",
         f"内容大小：{char_count} 字符",
+        f"已检测总条目：{total_entries}",
         f"分析时间：{created_at}",
         "",
         f"【LLM 分析结论】",
@@ -1013,6 +1026,7 @@ def main() -> int:
         "risk_factors": llm_risk_factors,
         "anomaly_entries": anomaly_entries[:50],
         "anomaly_count": anomaly_count,
+        "total_entries": total_entries,
         "severity_distribution": sev_counts,
     }
 
@@ -1038,6 +1052,7 @@ def main() -> int:
             "high_count": sev_counts["high"],
             "medium_count": sev_counts["medium"],
             "low_count": sev_counts["low"],
+            "total_entries": total_entries,
             "summary": report[:500],
             "analysis_json": json.dumps(analysis_payload, ensure_ascii=False),
             "created_at": created_at,

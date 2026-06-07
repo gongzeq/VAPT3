@@ -127,10 +127,10 @@ export function LogAnalysisSummaryCard() {
             ) : (
               <>
                 <p className="text-3xl font-bold tracking-tight font-mono text-alert-success">
-                  {hasData ? latest?.anomaly_count ?? "—" : "—"}
+                  {hasData ? latest?.total_entries ?? "—" : "—"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  最近检测异常数
+                  已检测总条目
                 </p>
               </>
             )}
