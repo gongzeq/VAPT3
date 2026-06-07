@@ -9,7 +9,7 @@ import { TurnUsageBadge } from "@/components/TokenUsageBadge";
 import { isHiddenFrontendToolName } from "@/lib/tool-visibility";
 import { cn } from "@/lib/utils";
 import { AgentEventCard, isVisibleAgentEvent } from "@/components/message/AgentEventCard";
-import { ToolCallCard } from "@/components/message/ToolCallCard";
+import { ToolCallGroup } from "@/components/message/ToolCallGroup";
 import type { UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
@@ -140,12 +140,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               {!empty ? <MarkdownText>{message.content}</MarkdownText> : null}
               {message.isStreaming && !empty ? <StreamCursor /> : null}
             </div>
-            {/* Render tool calls outside the text block */}
+            {/* Aggregate every command from this subagent into one
+                collapsed-by-default bubble instead of N detached cards. */}
             {visibleToolCalls.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {visibleToolCalls.map((tc, i) => (
-                  <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
-                ))}
+              <div className="mt-3">
+                <ToolCallGroup calls={visibleToolCalls} />
               </div>
             ) : null}
             {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}

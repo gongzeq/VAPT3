@@ -88,24 +88,60 @@ export function AgentEventCard({ payload, agentName, animClass }: AgentEventCard
         </div>
       );
     }
-    case "subagent_spawned":
+    case "subagent_spawned": {
+      const hasDetail = Boolean(payload.task_description || payload.task_id);
       return (
         <div
           className={cn(
-            "flex gap-2 rounded-lg border border-border/30 bg-muted/25 px-3 py-2.5 border-l-[3px] border-l-primary/50",
+            "rounded-lg border border-border/30 bg-muted/25 border-l-[3px] border-l-primary/50",
             animClass,
           )}
         >
-          <Bot className="h-4 w-4 shrink-0 text-primary mt-0.5" aria-hidden />
-          <div className="text-xs text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className={cn(
+              "group flex w-full items-center gap-2 px-3 py-2.5",
+              "text-xs transition-all duration-150 hover:bg-primary/6",
+              hasDetail && "cursor-pointer",
+            )}
+            aria-expanded={open}
+          >
+            <Bot className="h-4 w-4 shrink-0 text-primary" aria-hidden />
             <span className="font-medium text-foreground">{lifecycleAgentName}</span>
-            <span className="ml-1 text-primary/80">已启动</span>
-            {payload.task_description ? (
-              <p className="mt-1 line-clamp-2 text-xs leading-relaxed">{payload.task_description}</p>
-            ) : null}
-          </div>
+            <span className="text-primary/80">已启动</span>
+            {hasDetail && (
+              <ChevronRight
+                aria-hidden
+                className={cn(
+                  "ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+                  open && "rotate-90",
+                )}
+              />
+            )}
+          </button>
+          {open && hasDetail && (
+            <div
+              className={cn(
+                "border-t border-border/20 px-3 py-2 space-y-1",
+                "animate-in fade-in-0 slide-in-from-top-1 duration-200",
+              )}
+            >
+              {payload.task_description ? (
+                <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                  {payload.task_description}
+                </p>
+              ) : null}
+              {payload.task_id ? (
+                <p className="font-mono text-xs text-muted-foreground/60">
+                  Task ID: {payload.task_id}
+                </p>
+              ) : null}
+            </div>
+          )}
         </div>
       );
+    }
     case "orchestrator_plan":
       return (
         <div
@@ -143,40 +179,69 @@ export function AgentEventCard({ payload, agentName, animClass }: AgentEventCard
     case "subagent_status":
       // 子智能体中间状态（工具调用过程）不在前端展示
       return null;
-    case "subagent_done":
+    case "subagent_done": {
+      const doneOk = payload.status === "ok";
+      const hasResult = Boolean(payload.result);
       return (
         <div
           className={cn(
-            "flex gap-2 rounded-lg border px-3 py-2.5 border-l-[3px]",
+            "rounded-lg border border-l-[3px]",
             animClass,
-            payload.status === "ok"
+            doneOk
               ? "border-alert-success/20 bg-alert-success/5 border-l-alert-success/60"
               : "border-destructive/20 bg-destructive/5 border-l-destructive/60",
           )}
         >
-          <Bot
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
             className={cn(
-              "h-4 w-4 shrink-0",
-              payload.status === "ok" ? "text-alert-success" : "text-destructive",
+              "group flex w-full items-center gap-2 px-3 py-2.5",
+              "text-xs transition-all duration-150 hover:bg-primary/6",
+              hasResult && "cursor-pointer",
             )}
-            aria-hidden
-          />
-          <div className="text-xs text-muted-foreground">
+            aria-expanded={open}
+          >
+            <Bot
+              className={cn(
+                "h-4 w-4 shrink-0",
+                doneOk ? "text-alert-success" : "text-destructive",
+              )}
+              aria-hidden
+            />
             <span className="font-medium text-foreground">{lifecycleAgentName}</span>
             <span
               className={cn(
-                "ml-1",
-                payload.status === "ok" ? "text-alert-success" : "text-destructive",
+                doneOk ? "text-alert-success" : "text-destructive",
               )}
             >
-              {payload.status === "ok" ? "已完成" : "失败"}
+              {doneOk ? "已完成" : "失败"}
             </span>
-            {payload.result ? (
-              <p className="mt-0.5 line-clamp-3 text-xs">{payload.result}</p>
-            ) : null}
-          </div>
+            {hasResult && (
+              <ChevronRight
+                aria-hidden
+                className={cn(
+                  "ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+                  open && "rotate-90",
+                )}
+              />
+            )}
+          </button>
+          {open && hasResult && (
+            <div
+              className={cn(
+                "border-t border-border/20 px-3 py-2",
+                "animate-in fade-in-0 slide-in-from-top-1 duration-200",
+              )}
+            >
+              <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                {payload.result}
+              </p>
+            </div>
+          )}
         </div>
       );
+    }
     case "tool_call":
       if (isHiddenFrontendToolName(payload.tool_name)) return null;
       return <ToolCallCard payload={payload} animClass={animClass} />;

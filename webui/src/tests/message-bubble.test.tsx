@@ -80,6 +80,8 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
+    // 命令默认折叠在分组气泡内，需先展开才能看到具体工具调用。
+    fireEvent.click(screen.getByRole("button", { name: /执行命令/ }));
     expect(screen.getByText("scan_port")).toBeInTheDocument();
     expect(screen.getByText("运行中")).toBeInTheDocument();
     expect(screen.queryByLabelText(/assistant is typing/i)).not.toBeInTheDocument();
@@ -105,6 +107,8 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
+    // 先展开 subagent 命令分组，再展开单条工具调用查看参数。
+    fireEvent.click(screen.getByRole("button", { name: /执行命令/ }));
     fireEvent.click(screen.getByRole("button", { name: /sqlmap-detect/i }));
     // URL 同时出现在按钮摘要 span 和展开详情 pre 中，用 getAllByText 匹配
     expect(screen.getAllByText(/target\.test\/sqli\.php/).length).toBeGreaterThan(0);
@@ -209,6 +213,8 @@ describe("MessageBubble", () => {
     if (!title) throw new Error("Missing subagent lifecycle title");
     expect(title).toHaveClass("text-foreground");
     expect(screen.queryByText("The subagent response was accidentally placed here.")).not.toBeInTheDocument();
+    // subagent_done 默认折叠结果，需先展开
+    fireEvent.click(screen.getByRole("button", { name: /已完成/ }));
     expect(screen.getByText("Actual result body")).not.toHaveClass("text-foreground");
   });
 
