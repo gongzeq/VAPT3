@@ -159,6 +159,7 @@ def history(
                 """
                 SELECT id, file_name, created_at, anomaly_count,
                        critical_count, high_count, medium_count, low_count,
+                       char_count, log_format,
                        summary, analysis_json
                 FROM log_analysis
                 ORDER BY id DESC
@@ -193,6 +194,8 @@ def history(
             "risk_factors": list(analysis.get("risk_factors") or []),
             "anomaly_entries": list(analysis.get("anomaly_entries") or []),
             "summary": row["summary"] or "",
+            "char_count": int(row["char_count"] or 0),
+            "log_format": row["log_format"] or "unknown",
         })
 
     return {

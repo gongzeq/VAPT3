@@ -66,6 +66,8 @@ export interface LogAnalysisHistoryItem {
     severity: "critical" | "high" | "medium" | "low";
   }>;
   summary: string;
+  char_count: number;
+  log_format: string;
 }
 
 export interface LogAnalysisHistoryPage {
