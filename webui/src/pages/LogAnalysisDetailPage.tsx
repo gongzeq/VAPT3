@@ -19,7 +19,6 @@ import {
   Activity,
   AlertTriangle,
 } from "lucide-react";
-import ReactECharts from "echarts-for-react";
 import { Navbar } from "@/components/Navbar";
 import { useClient } from "@/providers/ClientProvider";
 import {
@@ -34,10 +33,10 @@ const PAGE_SIZE = 12;
 /* ── colour & label maps ────────────────────────────────────────────── */
 
 const SEV_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#f59e0b",
-  low: "#10b981",
+  critical: "#dc2626",
+  high: "#ef4444",
+  medium: "#eab308",
+  low: "#22c55e",
 };
 
 const SEV_LABELS: Record<string, string> = {
@@ -140,86 +139,40 @@ function ItemDonutChart({
   item: LogAnalysisHistoryItem;
   onClick?: () => void;
 }) {
-  const option = useMemo(() => {
-    const total = totalAnomalies(item);
-    const highRisk = highRiskCount(item);
-    const pct = total > 0 ? ((highRisk / total) * 100).toFixed(0) : "0";
+  /* ── derived values ── */
+  const total = totalAnomalies(item);
+  const highRisk = highRiskCount(item);
+  const pct = total > 0 ? ((highRisk / total) * 100).toFixed(0) : "0";
+  const critOnly = item.severity_distribution?.critical ?? 0;
+  const centerColor =
+    Number(pct) > 50 ? "#dc2626" : Number(pct) > 20 ? "#ef4444" : "#22c55e";
 
-    const pieData = (
-      Object.entries(item.severity_distribution) as [string, number][]
-    )
-      .filter(([, v]) => v > 0)
-      .map(([k, v]) => ({
-        value: v,
-        name: SEV_LABELS[k] || k,
-        itemStyle: { color: SEV_COLORS[k] || "#64748b" },
-      }));
+  /* ── dynamic font size based on text length ── */
+  const centerText = total > 0 ? `${highRisk}/${total}` : "0/0";
+  const centerFontSize =
+    centerText.length <= 5 ? 20 :
+    centerText.length <= 7 ? 17 :
+    centerText.length <= 9 ? 14 :
+    centerText.length <= 12 ? 12 : 10;
 
-    // Empty state — single grey ring
-    if (pieData.length === 0) {
-      pieData.push({
-        value: 1,
-        name: "无异常",
-        itemStyle: { color: "#1e293b" },
-      });
-    }
+  /* ── SVG donut segments ── */
+  const R = 72;
+  const C = 2 * Math.PI * R; // circumference
+  const entries = (
+    Object.entries(item.severity_distribution) as [string, number][]
+  ).filter(([, v]) => v > 0);
+  const segTotal = entries.reduce((s, [, v]) => s + v, 0);
 
-    return {
-      backgroundColor: "transparent",
-      tooltip: {
-        trigger: "item" as const,
-        backgroundColor: "rgba(15,23,42,0.95)",
-        borderColor: "rgba(30,144,255,0.4)",
-        textStyle: { color: "#e2e8f0", fontSize: 12 },
-        formatter: (p: { name: string; value: number; percent: number }) =>
-          `${p.name}: ${p.value} 条 (${p.percent.toFixed(1)}%)`,
-      },
-      graphic: [
-        {
-          type: "text",
-          left: "center",
-          top: "36%",
-          style: {
-            text: total > 0 ? `${pct}%` : "0%",
-            textAlign: "center",
-            fill:
-              Number(pct) > 50
-                ? "#ef4444"
-                : Number(pct) > 20
-                  ? "#f59e0b"
-                  : "#10b981",
-            fontSize: 22,
-            fontWeight: 700,
-            fontFamily: "ui-monospace, monospace",
-          },
-        },
-        {
-          type: "text",
-          left: "center",
-          top: "52%",
-          style: {
-            text: "高危占比",
-            textAlign: "center",
-            fill: "#94a3b8",
-            fontSize: 12,
-          },
-        },
-      ],
-      series: [
-        {
-          type: "pie" as const,
-          radius: ["54%", "80%"],
-          center: ["50%", "48%"],
-          avoidLabelOverlap: false,
-          itemStyle: { borderColor: "#0f172a", borderWidth: 2 },
-          label: { show: false },
-          labelLine: { show: false },
-          emphasis: { scale: true, scaleSize: 4 },
-          data: pieData,
-        },
-      ],
-    };
-  }, [item]);
+  let acc = 0;
+  const segments = entries.map(([k, v]) => {
+    const dash = segTotal > 0 ? (v / segTotal) * C : 0;
+    const offset = acc;
+    acc += dash;
+    return { key: k, dash, gap: C - dash, offset, color: SEV_COLORS[k] || "#64748b" };
+  });
+
+  // Tooltip state
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
 
   return (
     <div
@@ -235,11 +188,87 @@ function ItemDonutChart({
         }
       }}
     >
-      <ReactECharts
-        option={option}
-        opts={{ renderer: "svg" }}
-        className="h-[140px] w-full pointer-events-none"
-      />
+      {/* SVG donut + centred text overlay */}
+      <div className="relative h-[210px] w-full">
+        <svg
+          viewBox="0 0 220 220"
+          className="absolute inset-0 h-full w-full"
+          style={{ overflow: "visible" }}
+        >
+          {segments.length === 0 ? (
+            <circle
+              cx={110}
+              cy={110}
+              r={R}
+              fill="none"
+              stroke="#1e293b"
+              strokeWidth={22}
+            />
+          ) : (
+            segments.map((seg) => (
+              <circle
+                key={seg.key}
+                cx={110}
+                cy={110}
+                r={R}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={22}
+                strokeDasharray={`${seg.dash} ${seg.gap}`}
+                strokeDashoffset={-seg.offset}
+                strokeLinecap="butt"
+                transform="rotate(-90 110 110)"
+                className="transition-opacity hover:opacity-80"
+                onMouseEnter={(e) => {
+                  const val = entries.find(([k]) => k === seg.key)?.[1] ?? 0;
+                  const p = segTotal > 0 ? ((val / segTotal) * 100).toFixed(1) : "0";
+                  const rect = e.currentTarget.closest("svg")!.getBoundingClientRect();
+                  setTip({
+                    text: `${SEV_LABELS[seg.key] || seg.key}: ${val} 条 (${p}%)`,
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                  });
+                }}
+                onMouseMove={(e) => {
+                  if (!tip) return;
+                  const rect = e.currentTarget.closest("svg")!.getBoundingClientRect();
+                  setTip({ ...tip, x: e.clientX - rect.left, y: e.clientY - rect.top });
+                }}
+                onMouseLeave={() => setTip(null)}
+              />
+            ))
+          )}
+        </svg>
+        {/* Tooltip */}
+        {tip && (
+          <div
+            className="absolute z-50 rounded px-2 py-1 text-xs whitespace-nowrap pointer-events-none"
+            style={{
+              left: tip.x + 8,
+              top: tip.y - 28,
+              backgroundColor: "rgba(15,23,42,0.95)",
+              borderColor: "rgba(30,144,255,0.4)",
+              border: "1px solid",
+              color: "#e2e8f0",
+            }}
+          >
+            {tip.text}
+          </div>
+        )}
+        {/* Dead-centre text — guaranteed aligned because SVG viewBox
+             centre (100,100) == container centre via absolute inset-0 */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+          <span
+            className="font-mono font-bold leading-tight"
+            style={{ fontSize: centerFontSize, color: centerColor }}
+          >
+            {centerText}
+          </span>
+          <span className="text-xs leading-tight" style={{ color: "#94a3b8" }}>
+            {critOnly > 0 ? "严重+高危" : "需处理"}
+          </span>
+        </div>
+      </div>
       {/* Legend below chart */}
       <div className="flex items-center justify-center gap-3 -mt-1 flex-wrap px-1 pb-1">
         {(
