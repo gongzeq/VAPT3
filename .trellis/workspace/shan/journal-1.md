@@ -708,3 +708,36 @@ Added crawl_web expert agent and katana-crawl-web skill, verified targeted backe
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 日志告警三态状态机与处理流转
+
+**Date**: 2026-06-07
+**Task**: 日志告警三态状态机与处理流转
+**Branch**: `main`
+
+### Summary
+
+实现日志分析记录三态状态管理(alert/handled/normal)：后端独立handled表+状态派生API、WS路由handle/unhandle端点、通知队列log_alert类型+mark_read_by_ref联动、前端StatusBadge三态渲染+乐观更新处理按钮、LLM词表四值简化为两值(保留旧值兼容)。29个新测试+全量回归通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46ef1165f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
