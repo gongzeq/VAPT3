@@ -118,6 +118,50 @@ export async function listSessions(
   }));
 }
 
+/** Extended session list with scan metadata, findings, tokens, and duration.
+ *
+ * Maps the backend ``GET /api/sessions`` response (snake_case) to the
+ * frontend ``SessionRow`` type (camelCase). Falls back to sensible defaults
+ * when extended fields are absent (older backend versions). */
+export async function fetchSessionRows(
+  token: string,
+  base: string = "",
+): Promise<import("./types").SessionRow[]> {
+  type BackendRow = {
+    key: string;
+    created_at: string | null;
+    updated_at: string | null;
+    title?: string;
+    preview?: string;
+    archived?: boolean;
+    scan_type?: string | null;
+    target?: string | null;
+    status?: string;
+    findings?: { critical: number; high: number; medium: number; low: number; total: number };
+    tokens?: { input: number; output: number; cached: number };
+    duration_ms?: number | null;
+  };
+  const body = await request<{ sessions: BackendRow[] }>(
+    `${base}/api/sessions`,
+    token,
+  );
+  return body.sessions.map((s) => ({
+    key: s.key,
+    ...splitKey(s.key),
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+    title: s.title ?? "",
+    preview: s.preview ?? "",
+    target: s.target ?? null,
+    scanType: (s.scan_type as import("./types").ScanType | null | undefined) ?? null,
+    status: (s.status as import("./types").SessionStatus | undefined) ?? "finished",
+    findings: s.findings ?? { critical: 0, high: 0, medium: 0, low: 0, total: 0 },
+    tokens: s.tokens ?? { input: 0, output: 0, cached: 0 },
+    durationMs: s.duration_ms ?? null,
+    reports: [],
+  }));
+}
+
 /** Signed image URL attached to a historical user message. The server
  * emits these in place of raw on-disk paths so the client can render
  * previews without learning where media lives on disk. Each URL is a
