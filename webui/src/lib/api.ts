@@ -1,6 +1,8 @@
 import type {
   ActivityEventListResponse,
   AgentRegistryRow,
+  AssetAutoManagementState,
+  AssetRiskTopologyResponse,
   AssetSnapshotResponse,
   BlackboardEntry,
   ChatSummary,
@@ -154,6 +156,32 @@ export async function fetchSessionMessages(
 }> {
   return request(
     `${base}/api/sessions/${encodeURIComponent(key)}/messages`,
+    token,
+  );
+}
+
+export async function fetchAssetAutoManagement(
+  token: string,
+  key: string,
+  base: string = "",
+): Promise<AssetAutoManagementState> {
+  return request<AssetAutoManagementState>(
+    `${base}/api/sessions/${encodeURIComponent(key)}/asset-auto-management`,
+    token,
+  );
+}
+
+export async function setAssetAutoManagement(
+  token: string,
+  key: string,
+  enabled: boolean,
+  base: string = "",
+): Promise<AssetAutoManagementState> {
+  const query = new URLSearchParams({
+    enabled: enabled ? "1" : "0",
+  });
+  return request<AssetAutoManagementState>(
+    `${base}/api/sessions/${encodeURIComponent(key)}/asset-auto-management?${query}`,
     token,
   );
 }
@@ -557,4 +585,40 @@ export async function fetchAssetFeed(
     latest_id: body.latest_id ?? 0,
     counts: body.counts ?? {},
   };
+}
+
+export interface FetchAssetRiskTopologyOptions {
+  businessSystem?: string;
+  subnet?: string;
+  assetType?: string;
+  vulnerabilityIdentity?: string;
+  candidateStatus?: string;
+  recentScan?: string;
+  focusId?: string;
+}
+
+export async function fetchAssetRiskTopology(
+  token: string,
+  options: FetchAssetRiskTopologyOptions = {},
+  base: string = "",
+): Promise<AssetRiskTopologyResponse> {
+  const query = new URLSearchParams();
+  if (options.businessSystem) {
+    query.set("business_system", options.businessSystem);
+  }
+  if (options.subnet) query.set("subnet", options.subnet);
+  if (options.assetType) query.set("asset_type", options.assetType);
+  if (options.vulnerabilityIdentity) {
+    query.set("vulnerability_identity", options.vulnerabilityIdentity);
+  }
+  if (options.candidateStatus) {
+    query.set("candidate_status", options.candidateStatus);
+  }
+  if (options.recentScan) query.set("recent_scan", options.recentScan);
+  if (options.focusId) query.set("focus_id", options.focusId);
+  const qs = query.toString();
+  return request<AssetRiskTopologyResponse>(
+    `${base}/api/dashboard/asset-risk-topology${qs ? `?${qs}` : ""}`,
+    token,
+  );
 }

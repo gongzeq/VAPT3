@@ -165,6 +165,38 @@ export interface AssetSnapshotResponse {
   counts: Record<string, number>;
 }
 
+/** Session-scoped Managed Asset ingestion state. */
+export interface AssetAutoManagementState {
+  key: string;
+  asset_auto_management: boolean;
+}
+
+export type AssetRiskTopologyNodeType = "asset" | "service" | "vulnerability";
+
+/** Node returned by ``GET /api/dashboard/asset-risk-topology``. */
+export interface AssetRiskTopologyNode {
+  id: string;
+  type: AssetRiskTopologyNodeType;
+  label: string;
+  data: Record<string, unknown>;
+}
+
+/** Edge returned by ``GET /api/dashboard/asset-risk-topology``. */
+export interface AssetRiskTopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+}
+
+/** Derived CMDB graph for asset/service/vulnerability risk relationships. */
+export interface AssetRiskTopologyResponse {
+  nodes: AssetRiskTopologyNode[];
+  edges: AssetRiskTopologyEdge[];
+  focus_id: string | null;
+  filters: Record<string, string | null>;
+}
+
 /** Expert-agent registry row enriched with optional runtime fields, returned
  * by ``GET /api/agents`` (with or without ``?include_status=true``). The
  * runtime fields are only present when the query flag is set; consumers

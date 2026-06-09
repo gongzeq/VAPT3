@@ -4,6 +4,7 @@ import ReactECharts from "echarts-for-react";
 import { Activity, ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { ActivityEventStream } from "@/components/ActivityEventStream";
+import { AssetRiskTopology } from "@/components/dashboard/AssetRiskTopology";
 import { PhishingSummaryCard } from "@/components/PhishingSummaryCard";
 import { LogAnalysisSummaryCard } from "@/components/LogAnalysisSummaryCard";
 import { cn } from "@/lib/utils";
@@ -229,6 +230,8 @@ export function DashboardPage() {
             </div>
           </div>
         </section>
+
+        <AssetRiskTopology />
 
         {/* Live Activity Stream (PR3) — sits at the bottom of the dashboard
             so operators can peek at what agents are doing right now without

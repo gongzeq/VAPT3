@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Database } from "lucide-react";
 
 import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
@@ -7,9 +8,14 @@ import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { CumulativeUsageBar } from "@/components/TokenUsageBadge";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
 import { QuickPrompts } from "@/components/QuickPrompts";
+import { Switch } from "@/components/ui/switch";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
-import { listSlashCommands } from "@/lib/api";
+import {
+  fetchAssetAutoManagement,
+  listSlashCommands,
+  setAssetAutoManagement,
+} from "@/lib/api";
 import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
 import { useClient } from "@/providers/ClientProvider";
 
@@ -65,6 +71,8 @@ export function ThreadShell({
   const { messages: historical, loading } = useSessionHistory(historyKey);
   const { client, modelName, token } = useClient();
   const [booting, setBooting] = useState(false);
+  const [assetAutoManagement, setAssetAutoManagementState] = useState(false);
+  const [assetAutoManagementBusy, setAssetAutoManagementBusy] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const pendingFirstRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
@@ -152,6 +160,26 @@ export function ThreadShell({
   }, [chatId, send]);
 
   useEffect(() => {
+    if (!historyKey) {
+      setAssetAutoManagementState(false);
+      return;
+    }
+    let cancelled = false;
+    fetchAssetAutoManagement(token, historyKey)
+      .then((state) => {
+        if (!cancelled) {
+          setAssetAutoManagementState(Boolean(state.asset_auto_management));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAssetAutoManagementState(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyKey, token]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -180,6 +208,26 @@ export function ThreadShell({
     [booting, onCreateChat],
   );
 
+  const handleAssetAutoManagementChange = useCallback(
+    (enabled: boolean) => {
+      if (!historyKey || assetAutoManagementBusy) return;
+      const previous = assetAutoManagement;
+      setAssetAutoManagementState(enabled);
+      setAssetAutoManagementBusy(true);
+      setAssetAutoManagement(token, historyKey, enabled)
+        .then((state) => {
+          setAssetAutoManagementState(Boolean(state.asset_auto_management));
+        })
+        .catch(() => {
+          setAssetAutoManagementState(previous);
+        })
+        .finally(() => {
+          setAssetAutoManagementBusy(false);
+        });
+    },
+    [assetAutoManagement, assetAutoManagementBusy, historyKey, token],
+  );
+
 
   const composer = (
     <>
@@ -190,6 +238,23 @@ export function ThreadShell({
         />
       ) : null}
       <CumulativeUsageBar usage={cumulativeUsage} />
+      {session ? (
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between rounded-lg border border-border/70 bg-card/55 px-3 py-2 text-sm">
+          <div className="flex min-w-0 items-center gap-2">
+            <Database className="h-4 w-4 shrink-0 text-primary" />
+            <span className="truncate text-foreground">纳管资产</span>
+            <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+              {assetAutoManagement ? "开启" : "关闭"}
+            </span>
+          </div>
+          <Switch
+            checked={assetAutoManagement}
+            disabled={assetAutoManagementBusy}
+            onCheckedChange={handleAssetAutoManagementChange}
+            aria-label="纳管资产"
+          />
+        </div>
+      ) : null}
       {pendingAsk ? (
         <AskUserPrompt
           question={pendingAsk.question}

@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   deleteSession,
+  fetchAssetRiskTopology,
+  fetchAssetAutoManagement,
   fetchSessionMessages,
   listSessions,
   listSlashCommands,
   setApiTokenRefreshListener,
+  setAssetAutoManagement,
   updateSettings,
 } from "@/lib/api";
 
@@ -36,6 +39,45 @@ describe("webui API helpers", () => {
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/sessions/websocket%3Achat-1/delete",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("reads and updates session asset auto-management state", async () => {
+    await fetchAssetAutoManagement("tok", "websocket:chat-1");
+    await setAssetAutoManagement("tok", "websocket:chat-1", true);
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/sessions/websocket%3Achat-1/asset-auto-management",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/websocket%3Achat-1/asset-auto-management?enabled=1",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    );
+  });
+
+  it("serializes asset risk topology filters", async () => {
+    await fetchAssetRiskTopology("tok", {
+      businessSystem: "CRM",
+      subnet: "10.0.0.0/24",
+      assetType: "业务",
+      vulnerabilityIdentity: "CVE:CVE-2026-0001",
+      candidateStatus: "candidate",
+      recentScan: "scan-1",
+      focusId: "asset:1",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/dashboard/asset-risk-topology?business_system=CRM&subnet=10.0.0.0%2F24&asset_type=%E4%B8%9A%E5%8A%A1&vulnerability_identity=CVE%3ACVE-2026-0001&candidate_status=candidate&recent_scan=scan-1&focus_id=asset%3A1",
       expect.objectContaining({
         headers: { Authorization: "Bearer tok" },
       }),
