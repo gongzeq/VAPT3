@@ -19,6 +19,7 @@ These guidelines bind every PR that touches `webui/src/**`. They define **non-ne
 | [WebUI Design](./webui-design.md) | Navigational hub: view hierarchy, assistant-ui integration, sub-spec map | Active |
 | [Theme Tokens](./theme-tokens.md) | CSS variables, primary = 海蓝 `#1E90FF`, severity palette | Active |
 | [Component Patterns](./component-patterns.md) | MessageBubble 三件套, tool-call rendering, destructive AlertDialog | Active |
+| [Architecture](./architecture.md) | Route map, component tree, hooks, API clients, types, i18n, patterns | Active |
 | [Visualization Libraries](./visualization-libraries.md) | Chart/diagram library whitelist (react-flow + recharts only) | Active |
 
 ### Cross-Layer Contracts (consumed by `webui/`)

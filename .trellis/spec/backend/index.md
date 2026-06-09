@@ -44,6 +44,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Prompts Config](./prompts-config.md) | `GET /api/prompts` YAML source + hot reload rules | Active |
 | [Scan Lifecycle](./scan-lifecycle.md) | Scan state machine, bus events, cancellation semantics | Active |
 | [WebSocket Protocol](./websocket-protocol.md) | Wire envelope, server↔client event catalog, versioning | Active |
+| [REST API Contract](./rest-api-contract.md) | Complete REST API surface: sessions, settings, dashboard, agents, workflows, WS protocol summary | Active |
 | [Removed IM Channels](./removed-im-channels.md) | Anti-rollback manifest for the 13 deleted IM channels + bridge | Active |
 
 ---
