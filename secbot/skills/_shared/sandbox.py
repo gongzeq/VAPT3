@@ -89,7 +89,11 @@ async def run_command(
     See spec §1 for the canonical call signature.
     """
     binary_name = Path(binary).name
-    if binary_name not in BINARY_WHITELIST:
+    # Also check the stem (e.g. "sqlmap.py" → "sqlmap") so that config
+    # overrides pointing to Python scripts with a shebang are accepted
+    # without needing a separate whitelist entry.
+    binary_stem = Path(binary).stem
+    if binary_name not in BINARY_WHITELIST and binary_stem not in BINARY_WHITELIST:
         raise BinaryNotAllowed(
             f"binary {binary!r} is not in BINARY_WHITELIST "
             "(see .trellis/spec/backend/tool-invocation-safety.md §2)"

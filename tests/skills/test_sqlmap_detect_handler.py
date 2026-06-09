@@ -69,8 +69,8 @@ async def test_sqlmap_detect_request_file_preserves_get_query(make_ctx, monkeypa
     argv = captured["args"]
     assert isinstance(argv, list)
     assert "--force-ssl" in argv
+    assert "--data" not in argv
     assert argv[argv.index("-p") + 1] == "q,sort"
-    assert "https://target.test/search.php?q=abc&sort=id" not in argv
     request_path = Path(argv[argv.index("-r") + 1])
     request_text = request_path.read_text(encoding="utf-8")
     assert "GET /search.php?q=abc&sort=id HTTP/1.1" in request_text

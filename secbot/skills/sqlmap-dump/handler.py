@@ -41,7 +41,7 @@ def _resolve_sqlmap_binary(cli: list[str]) -> tuple[str, list[str]]:
                 f"Configured sqlmap override not found: {override}. "
                 "Check tools.skillBinaries.sqlmap in your config."
             )
-        return "python3", [override] + cli
+        return override, cli
     if shutil.which("sqlmap"):
         return "sqlmap", cli
     raise SkillBinaryMissing(

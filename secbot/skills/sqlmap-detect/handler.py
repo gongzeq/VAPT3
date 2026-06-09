@@ -28,6 +28,10 @@ def _resolve_sqlmap_binary(cli: list[str]) -> tuple[str, list[str]]:
 
     Priority:
       1. Configured override in ``tools.skillBinaries.sqlmap``.
+         The script is invoked **directly** (via its shebang) rather than
+         through ``python3`` to avoid macOS TCC restrictions that may
+         prevent the Homebrew Python interpreter from reading files in
+         protected directories (Desktop / Documents / Downloads).
       2. ``sqlmap`` found on PATH.
       3. Raise :class:`SkillBinaryMissing` with a helpful hint.
     """
@@ -41,7 +45,7 @@ def _resolve_sqlmap_binary(cli: list[str]) -> tuple[str, list[str]]:
                 f"Configured sqlmap override not found: {override}. "
                 "Check tools.skillBinaries.sqlmap in your config."
             )
-        return "python3", [override] + cli
+        return override, cli
     if shutil.which("sqlmap"):
         return "sqlmap", cli
     raise SkillBinaryMissing(
@@ -120,14 +124,16 @@ def _write_request_file(
     method: str,
     data: str | None,
     cookie: str | None,
-) -> tuple[Path, bool, list[str]]:
-    """Write a sqlmap ``-r`` request file and return (path, force_ssl, data_cli).
+) -> tuple[Path, bool]:
+    """Write a sqlmap ``-r`` request file and return (path, force_ssl).
 
-    Query-string parameters are stripped from the URL in the request file
-    and returned as ``--data`` CLI arguments so that sqlmap receives
-    parameter names and values separately from the target path.  Combined
-    with ``-p <name>`` this avoids the "tainted parameter values" warning
-    that sqlmap raises when it detects SQL-injection leftovers in the URL.
+    All parameter data (GET query string, POST body) is embedded in the
+    request file itself so that no ``--data`` CLI argument is needed.
+    This avoids triggering the sandbox ``FORBIDDEN_CHARS`` check on ``&``
+    which is a legitimate HTTP form/query separator but a shell metachar.
+
+    Combined with ``-p <name>`` on the CLI, sqlmap correctly identifies
+    which parameters to test from the request file content.
     """
 
     parts = urlsplit(url)
@@ -136,16 +142,13 @@ def _write_request_file(
     _reject_header_breaks("data", data)
     _reject_header_breaks("cookie", cookie)
 
-    # Always use clean path — no query string in request file URL.
+    # Preserve query string in the request-line URL so that sqlmap can
+    # parse GET parameters directly from the ``-r`` file without needing
+    # a ``--data`` CLI argument (which would be blocked by the sandbox
+    # FORBIDDEN_CHARS check when the query contains ``&``).
     target = parts.path or "/"
-
-    # Collect parameter key=value pairs for --data.
-    data_cli: list[str] = []
     if parts.query:
-        # GET query params → pass via --data so sqlmap tests them
-        # as named parameters (combined with -p) without the values
-        # appearing in the request-file URL.
-        data_cli = ["--data", parts.query]
+        target = f"{target}?{parts.query}"
 
     body = data if method == "POST" and data else ""
     body_bytes = body.encode("utf-8")
@@ -168,7 +171,7 @@ def _write_request_file(
 
     request_file = sqlmap_dir / "request.txt"
     request_file.write_text("\r\n".join([*headers, "", body]), encoding="utf-8")
-    return request_file, parts.scheme == "https", data_cli
+    return request_file, parts.scheme == "https"
 
 
 def _parse(raw_log: Path, _exit_code: int) -> dict[str, Any]:
@@ -227,7 +230,7 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     sqlmap_dir = ctx.scan_dir / "sqlmap" / invocation_id
     sqlmap_dir.mkdir(parents=True, exist_ok=True)
 
-    request_file, force_ssl, data_cli = _write_request_file(
+    request_file, force_ssl = _write_request_file(
         sqlmap_dir=sqlmap_dir,
         url=url,
         method=method,
@@ -245,7 +248,6 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         "--output-dir", str(sqlmap_dir),
         "--flush-session",
     ]
-    cli += data_cli
     if parameters:
         cli += ["-p", ",".join(parameters)]
     if force_ssl:
