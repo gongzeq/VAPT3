@@ -1,0 +1,18 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec entry point and active domain-contract map."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Check orchestrator, expert, skill, and CMDB boundary compliance."}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Verify managed asset, service, vulnerability, candidate, actor scoping, migration, and write contracts."}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "Verify dashboard metrics, asset distribution, asset cluster, candidate exclusion, and API response contracts."}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Verify scan state, persistence, cancellation, and bus event behavior."}
+{"file": ".trellis/spec/backend/report-pipeline.md", "reason": "Verify formal reports count confirmed findings only and preserve report model contracts."}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Verify event and envelope compatibility for frontend updates."}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Verify explicit candidate verification and active-scan risk gating."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify stable JSON API errors and sanitized backend failures."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Apply backend quality, persistence, async, and security review constraints."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Apply frontend hard rules for webui changes."}
+{"file": ".trellis/spec/frontend/coding-standards.md", "reason": "Verify TypeScript, component, hook, data fetching, and frontend test constraints."}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Verify WebUI view hierarchy and dashboard/assets surface ownership."}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Verify destructive/approval UI and tool-result rendering constraints."}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "Verify color token, severity, and no raw color rules for topology rendering."}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Verify topology and chart dependency whitelist compliance."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check for avoidable duplication and missed reuse."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check data-flow contracts across scan, CMDB, API, and UI layers."}
