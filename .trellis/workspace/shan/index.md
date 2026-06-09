@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-06-07
+- **Total Sessions**: 15
+- **Last Active**: 2026-06-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~743 | Active |
+| `journal-1.md` | ~778 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-06-09 | 纳管资产、风险拓扑与候选漏洞 | `4b8387dfc`, `2620ceec5`, `26399cfea` | `main` |
 | 14 | 2026-06-07 | 日志告警三态状态机与处理流转 | `46ef1165f` | `main` |
 | 13 | 2026-05-17 | Finish crawl_web Katana crawler | `ee61e391e`, `61033ce9e`, `706508508` | `main` |
 | 12 | 2026-05-17 | bb-realtime-notify: split blackboard from per-asset feed + real-time WS panel | `8395677fe`, `874b8d5ec`, `7ee690136`, `d283c2969` | `main` |

@@ -741,3 +741,38 @@ Added crawl_web expert agent and katana-crawl-web skill, verified targeted backe
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 纳管资产、风险拓扑与候选漏洞
+
+**Date**: 2026-06-09
+**Task**: 纳管资产、风险拓扑与候选漏洞
+**Branch**: `main`
+
+### Summary
+
+Implemented session-scoped Asset Auto-Management, CMDB-backed managed asset dedupe and vulnerability candidates, React Flow asset risk topology, and updated backend/frontend specs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b8387dfc` | (see git log) |
+| `2620ceec5` | (see git log) |
+| `26399cfea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
