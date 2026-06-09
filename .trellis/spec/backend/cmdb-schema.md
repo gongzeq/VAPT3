@@ -42,14 +42,67 @@ The `tags` JSON column doubles as a lightweight classification store. To keep da
 
 | Key | Type | Values | Source |
 |-----|------|--------|--------|
-| `system` | string | Business system name, e.g. `"CRM"`, `"ERP"`, `"官网"`, `"OA"`, `"支付"`, `"大数据"`, `"BI"`, `"内部工具"`. May be `null` when unknown. | `asset_discovery` classifies based on target hostname/domain rules or user-supplied scope. |
-| `type` | string | One of `"web_app" / "api" / "database" / "server" / "network" / "other"`. | `asset_discovery` sets based on open-port heuristics; `other` as fallback. |
+| `system` | string | Business system name, e.g. `"CRM"`, `"ERP"`, `"官网"`, `"OA"`, `"支付"`, `"大数据"`, `"BI"`, `"内部工具"`. May be `null` when unknown. | User-supplied scope, naming rules, or manual tag edits. Unknown values are grouped as `"其他"` in dashboard aggregation. |
+| `type` | string | One of `"业务" / "智能体" / "OA" / "中间件" / "支撑" / "内网" / "其他"`. | `asset_discovery` sets the primary business classification from target, scope, service, and product heuristics; `"其他"` as fallback. |
 
 **Rules**
 
-- Aggregation queries (see [dashboard-aggregation.md](./dashboard-aggregation.md)) read via `json_extract(tags, '$.system')` / `'$.type'`. Assets without these keys are excluded from `asset-cluster` and counted as `other` in `asset-distribution`.
+- Aggregation queries (see [dashboard-aggregation.md](./dashboard-aggregation.md)) read via `json_extract(tags, '$.system')` / `'$.type'`. Assets without `system` are grouped as `"其他"` in `asset-cluster`; assets without `type` are counted as `"其他"` in `asset-distribution`.
 - Reserved keys MUST NOT be used for free-form labels; use additional keys (e.g. `tags.labels`) for that.
-- Changing the accepted vocabulary requires updating this spec + dashboard-aggregation.md; the backend returns display names (e.g. `"Web 应用"`) directly so the frontend does not need a separate mapping table.
+- User-edited `system` / `type` values MUST take precedence over automatic scan classification. Re-scans may fill missing values but MUST NOT overwrite a user-edited tag.
+- Changing the accepted vocabulary requires updating this spec + dashboard-aggregation.md; the backend returns display names directly so the frontend does not need a separate mapping table.
+
+#### 2.1.2 Managed Asset ingestion gate
+
+Scan discoveries are transient unless the current Session explicitly enables Asset Auto-Management.
+
+##### 1. Scope / Trigger
+
+- Trigger: a skill result or `asset_push` discovery wants to write `asset` / `service` / `vulnerability` rows from scan output.
+- Scope: scan-discovery writes only. Direct repository calls from tests, migrations, or admin maintenance may still call repo helpers explicitly.
+
+##### 2. Signatures
+
+- Session metadata key: `asset_auto_management: boolean`.
+- WebUI route: `GET /api/sessions/{encoded_session_key}/asset-auto-management`.
+- Update form: same route with `?enabled=1|0` (`true/false/yes/no/on/off` accepted).
+- Runtime context: `bind_skill_context(..., asset_auto_management_enabled=<bool>)`.
+
+##### 3. Contracts
+
+- Default is `false` for every channel and every fresh Session.
+- Backend gating is authoritative. The frontend switch is only a control surface; writes MUST check the runtime context before CMDB persistence.
+- Parent agents and subagents inherit the same gate for a turn.
+- Disabled sessions still return tool results and keep transient asset-feed entries; only CMDB side effects are skipped.
+
+##### 4. Validation & Error Matrix
+
+| Input | Result |
+|-------|--------|
+| Missing metadata key | treat as `false` |
+| Non-WebUI session key on WebUI route | `404` |
+| Invalid encoded session key | `400` |
+| Invalid `enabled` value | `400` |
+| Session manager unavailable | `503` |
+
+##### 5. Good/Base/Bad Cases
+
+- Good: WebUI session toggles `enabled=1`; subsequent skill `cmdb_writes` persist assets/services.
+- Base: user runs a test scan with no toggle; scan discoveries appear in the live feed but CMDB remains unchanged.
+- Bad: non-WebSocket or subagent execution bypasses the switch and writes Managed Assets by default.
+
+##### 6. Tests Required
+
+- Session route defaults off and persists update state.
+- Skill `cmdb_writes` are returned but not persisted when disabled.
+- Enabled context persists expected CMDB rows.
+- Subagent context inherits the parent setting.
+
+##### 7. Wrong vs Correct
+
+Wrong: default `asset_auto_management_enabled=True` outside WebSocket because there is no visible switch.
+
+Correct: default `false` everywhere; only `SessionManager.get_asset_auto_management(session_key)` may enable scan-discovery CMDB writes.
 
 ### 2.2 `service`
 
@@ -73,7 +126,7 @@ Unique: `(asset_id, port, protocol)`.
 
 ### 2.3 `vulnerability`
 
-Represents a finding from `vuln_scan` / `weak_password` / `pentest`.
+Represents a confirmed finding from `vuln_scan` / `weak_password` / `pentest`.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -112,6 +165,74 @@ A single flat enum, shared with `/api/dashboard/vuln-distribution`:
 - `VALID_VULN_CATEGORIES` in `secbot/cmdb/models.py` MUST exactly match this list.
 - Discovery skills decide the category at insertion time; post-hoc reclassification requires an update migration.
 - New categories require an ADR + update to this spec + dashboard-aggregation.md.
+
+### 2.3.2 `vulnerability_candidate`
+
+Represents a passive version/database match that may affect an asset before active verification. Candidates are persistent so asset detail and the Asset Risk Topology can show "待验证" risk, but they are not confirmed findings.
+
+#### 1. Scope / Trigger
+
+- Trigger: a Service fingerprint (`service.product` + `service.version`) matches a vulnerability database entry (CVE, CNVD, or title/category fallback).
+- Passive matching MUST NOT start a vulnerability scan, PoC, nuclei template, fscan vuln check, brute force, or other external verification.
+
+#### 2. Signatures
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | autoincrement |
+| `asset_id` | INTEGER NOT NULL | FK → `asset.id` |
+| `service_id` | INTEGER | FK → `service.id`, nullable for asset-level candidates |
+| `identity_key` | TEXT NOT NULL | Stable grouping key; prefer `CVE:<id>`, then `CNVD:<id>`, else `TITLE:<category>:<normalized title>` |
+| `cve_id` | TEXT | nullable |
+| `cnvd_id` | TEXT | nullable |
+| `category` | TEXT NOT NULL | Same vocabulary as `vulnerability.category` |
+| `title` | TEXT NOT NULL | human-readable |
+| `source` | TEXT NOT NULL | vulnerability database or matcher name |
+| `evidence` | JSON | matched product/version, version constraint, references |
+| `status` | TEXT NOT NULL | `candidate` / `verified` / `dismissed` |
+| `last_verification_error` | TEXT | nullable; failed verification attempts do not dismiss the candidate |
+| `actor_id` | TEXT NOT NULL DEFAULT `'local'` | |
+| `created_at` | DATETIME NOT NULL | UTC |
+| `updated_at` | DATETIME NOT NULL | UTC |
+
+Unique: `(actor_id, asset_id, service_id, identity_key)`.
+
+#### 3. Contracts
+
+- `status='candidate'`: default passive match state.
+- `status='verified'`: active verification succeeded; the system MUST also create or link a confirmed `vulnerability` row.
+- `status='dismissed'`: user dismissal or verification proved the candidate not applicable; hidden from default risk views but still available in asset detail/history.
+- Dashboard confirmed vulnerability endpoints MUST NOT count `vulnerability_candidate` rows.
+- Asset Risk Topology may show candidates, but must visually distinguish them from confirmed vulnerabilities.
+
+#### 4. Validation & Error Matrix
+
+| Input | Result |
+|-------|--------|
+| Unknown `status` | reject with validation error before DB write |
+| Unknown `category` | reject using `VALID_VULN_CATEGORIES` |
+| Repeated candidate for same `(actor_id, asset_id, service_id, identity_key)` | upsert; refresh `evidence` and `updated_at` |
+| Verification command fails or times out | keep `status='candidate'`, set `last_verification_error` |
+| Candidate verified | upsert confirmed `vulnerability`; set candidate `status='verified'` |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: `nginx 1.18.0` on one service matches `CVE-...`; insert one candidate keyed by the CVE.
+- Base: no CVE/CNVD exists; key by normalized `category + title`.
+- Bad: repeated scans create duplicate candidates or inflate dashboard confirmed vulnerability counts.
+
+#### 6. Tests Required
+
+- Candidate insert/upsert preserves uniqueness by `(actor_id, asset_id, service_id, identity_key)`.
+- Dashboard vulnerability summary/trend/distribution ignore candidates.
+- Verification failure leaves status as `candidate`.
+- Verification success creates/updates a confirmed `vulnerability` row and marks candidate `verified`.
+
+#### 7. Wrong vs Correct
+
+Wrong: treat a version match as a confirmed vulnerability and include it in `/api/dashboard/vuln-distribution`.
+
+Correct: persist it as `vulnerability_candidate(status='candidate')`, show it as "待验证", and only count it after explicit verification succeeds.
 
 ### 2.4 `scan`
 

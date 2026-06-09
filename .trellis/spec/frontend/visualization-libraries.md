@@ -9,7 +9,7 @@
 
 | Use case | Library | Reason |
 |----------|---------|--------|
-| Asset / network topology | `react-flow` | First-class React, custom node/edge as React components, fits secbot's 3-layer "asset → service → vuln" graph. |
+| Asset / network topology | `react-flow` (`reactflow` npm package, v11 import path) | First-class React, custom node/edge as React components, fits secbot's 3-layer "asset → service → vuln" graph. |
 | Severity / KPI charts | `recharts` | Native fit for shadcn chart blocks (which wrap recharts), small bundle, dashboard-ready. |
 | Plan-step timeline | Hand-rolled `<ol>` + Tailwind | The plan-step list is a vertical "step + status + sub-tree" view, not a true time axis. shadcn `Steps` block is the reference pattern. |
 | Progress bar | shadcn `<Progress>` | Use `indeterminate` mode while streaming, switch to determinate on completion. |
@@ -33,7 +33,7 @@ The following are **not allowed** and will be flagged in PR review. Adding them 
 ## 3. Bundle Discipline
 
 - The whitelist MUST be enforced via `package.json` direct deps. CI should fail when a banned package shows up in `webui/package.json` direct dependencies (not transitive).
-- Pin versions exactly (no `^` / `~`) for `react-flow` and `recharts` in `package.json` until a routine upgrade PR.
+- Pin versions exactly (no `^` / `~`) for `reactflow` and `recharts` in `package.json` until a routine upgrade PR.
 - Tree-shake-friendly imports only: `import { LineChart } from 'recharts'`, never `import * as Recharts from 'recharts'`.
 
 ---

@@ -13,6 +13,7 @@ Shared rules:
 
 - **Read-only.** Dashboard handlers MUST NOT insert/update any CMDB row.
 - **`actor_id` scoped.** Every query filters by the caller's `actor_id` (currently always `'local'`).
+- **Confirmed vulnerabilities only.** Vulnerability KPIs, trends, and distributions read `vulnerability` rows only; `vulnerability_candidate` rows are excluded until verified.
 - **Timezone.** All time bucketing uses the server's local timezone (configured as UTC+8 for secbot). Date strings in responses are `YYYY-MM-DD`.
 - **Pre-fill.** Trend endpoints return a dense series (no gaps); dates with zero rows are still emitted with `count=0`.
 - **No caching (v1).** Results are recomputed per request. If latency becomes a concern, introduce a 5–10s in-process LRU cache keyed by `(actor_id, endpoint, query)` — not per-row DB caching.
@@ -98,17 +99,18 @@ Rules:
 
 ### 2.4 `GET /api/dashboard/asset-distribution`
 
-Grouping: `json_extract(asset.tags, '$.type')`. Buckets fixed in the order below; missing/NULL values fall into `other`.
+Grouping: `json_extract(asset.tags, '$.type')`. Buckets fixed in the order below; missing/NULL values fall into `"其他"`.
 
 ```json
 {
   "buckets": [
-    { "type": "web_app",  "name": "Web 应用",  "count": 412 },
-    { "type": "api",      "name": "API 端点",  "count": 268 },
-    { "type": "database", "name": "数据库",    "count": 124 },
-    { "type": "server",   "name": "服务器",    "count": 198 },
-    { "type": "network",  "name": "网络设备",  "count": 86  },
-    { "type": "other",    "name": "其他",      "count": 116 }
+    { "type": "业务",     "name": "业务",     "count": 412 },
+    { "type": "智能体",   "name": "智能体",   "count": 268 },
+    { "type": "OA",       "name": "OA",       "count": 124 },
+    { "type": "中间件",   "name": "中间件",   "count": 198 },
+    { "type": "支撑",     "name": "支撑",     "count": 86  },
+    { "type": "内网",     "name": "内网",     "count": 72  },
+    { "type": "其他",     "name": "其他",     "count": 44  }
   ]
 }
 ```
@@ -127,10 +129,90 @@ Grouping: `json_extract(asset.tags, '$.system')` × related vulnerability severi
 ```
 
 Rules:
-- Assets with `tags.system IS NULL` are excluded; a `logger.warning` records the skipped count per request.
+- Assets with `tags.system IS NULL` are grouped under `"其他"`. They MUST NOT be excluded.
 - Only `high / medium / low` are reported (not critical / info) to match the stacked-bar widget.
 - `critical` is folded into `high` for cluster widget purposes; per-system critical counts live in `/api/dashboard/summary` aggregate.
 - Systems with zero vulnerabilities across all three levels are still emitted (all zeros) so the widget shows the full system roster.
+
+### 2.5.1 `GET /api/dashboard/asset-risk-topology`
+
+Derived CMDB graph for Managed Asset risk relationships. This is not a physical network topology and MUST NOT persist topology rows.
+
+#### 1. Scope / Trigger
+
+- Trigger: dashboard needs a graph of assets, services, confirmed vulnerabilities, and vulnerability candidates.
+- Source: current CMDB rows only (`asset`, `service`, `vulnerability`, `vulnerability_candidate`).
+
+#### 2. Signatures
+
+Request:
+
+```
+GET /api/dashboard/asset-risk-topology?business_system=<s>&subnet=<cidr>&asset_type=<t>&vulnerability_identity=<key>&candidate_status=<candidate|verified|dismissed>&recent_scan=<scan_id>&focus_id=<node_id>
+```
+
+Response:
+
+```json
+{
+  "nodes": [
+    { "id": "asset:1", "type": "asset", "label": "crm.example.com", "data": {} },
+    { "id": "service:10", "type": "service", "label": "tcp/443", "data": {} },
+    { "id": "vulnerability:CVE:CVE-2026-0001:confirmed", "type": "vulnerability", "label": "CVE-2026-0001", "data": {} }
+  ],
+  "edges": [
+    { "id": "asset:1->service:10:asset-service", "source": "asset:1", "target": "service:10", "kind": "asset-service" }
+  ],
+  "focus_id": "asset:1",
+  "filters": {
+    "business_system": null,
+    "subnet": null,
+    "asset_type": null,
+    "vulnerability_identity": null,
+    "candidate_status": null,
+    "recent_scan": null
+  }
+}
+```
+
+#### 3. Contracts
+
+- Default scope is all Managed Assets for the actor.
+- Missing `tags.system` groups as `"其他"`; invalid/missing `tags.type` groups as `"其他"`.
+- Candidate rows with `status='dismissed'` are hidden unless `candidate_status=dismissed`.
+- Confirmed vulnerability node ids end with `:confirmed`; candidate node ids end with `:candidate`.
+- Vulnerability node `data.affected_asset_count` counts unique Managed Assets, not scan hits.
+- Vulnerability node `data.radius` is derived from unique affected-asset count.
+- `focus_id` is accepted only if it matches a returned node id. It affects layout state only, not CMDB relationships.
+
+#### 4. Validation & Error Matrix
+
+| Input | Result |
+|-------|--------|
+| Invalid `subnet` | `400` |
+| Invalid `candidate_status` | `400` |
+| Filter matches no assets | `200` with empty `nodes` / `edges` and `focus_id=null` |
+| Unknown `focus_id` | `200` with `focus_id=null` |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: one CVE confirmed on two assets produces one confirmed vulnerability node with `affected_asset_count=2`.
+- Base: a service fingerprint creates a candidate node that is visually distinct from confirmed nodes.
+- Bad: topology builder inserts a topology table or infers switch/router links.
+
+#### 6. Tests Required
+
+- Empty-state response shape.
+- Filter handling for system, subnet, asset type, vulnerability identity, candidate status, and recent scan.
+- Confirmed/candidate node distinction and dismissed-default hiding.
+- Unique affected-asset sizing.
+- Invalid filter returns stable API error.
+
+#### 7. Wrong vs Correct
+
+Wrong: build topology from the latest scan only or store graph edges as source-of-truth rows.
+
+Correct: derive the graph on request from CMDB asset/service/vulnerability/candidate rows, with recent scan as an optional filter.
 
 ### 2.6 `GET /api/agents?include_status=true`
 
