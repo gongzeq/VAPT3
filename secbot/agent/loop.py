@@ -785,7 +785,19 @@ class AgentLoop:
                 async def confirm_fn(payload):  # type: ignore[assignment]
                     return await _ws.surface_confirm(payload, chat_id=_chat)
 
-        bind_skill_context(scan_id=scan_id, scan_dir=scan_dir, confirm=confirm_fn)
+        asset_auto_management_enabled = False
+        if active_session_key and self.sessions is not None:
+            with suppress(Exception):
+                asset_auto_management_enabled = (
+                    self.sessions.get_asset_auto_management(active_session_key)
+                )
+
+        bind_skill_context(
+            scan_id=scan_id,
+            scan_dir=scan_dir,
+            confirm=confirm_fn,
+            asset_auto_management_enabled=asset_auto_management_enabled,
+        )
 
         # Resolve / install the chat-scoped blackboard (PRD D3). Every
         # ``self.blackboard`` reference (orchestrator tools, the Subagent

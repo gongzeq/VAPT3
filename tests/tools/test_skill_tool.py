@@ -21,6 +21,7 @@ import pytest
 
 from secbot.agent.tools.skill import (
     bind_skill_context,
+    current_asset_auto_management_enabled,
     discover_skill_tools,
 )
 from secbot.agents.high_risk import HighRiskGate
@@ -142,6 +143,7 @@ def test_execute_runs_handler_and_returns_json(tmp_path: Path, skills_root: Path
     assert payload["artifacts"] == {}
     assert payload["summary"] == {"target": "example.com", "scan_id": "unit-1"}
     assert payload["findings"] == []
+    assert current_asset_auto_management_enabled() is False
 
 
 def test_execute_surfaces_artifact_paths_before_large_summary(tmp_path: Path) -> None:
@@ -276,7 +278,29 @@ def test_execute_persists_cmdb_writes(tmp_path: Path) -> None:
         ),
     )
     tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
-    bind_skill_context(scan_id="unit-cmdb", scan_dir=tmp_path)
+    bind_skill_context(scan_id="unit-cmdb-disabled", scan_dir=tmp_path)
+
+    raw = asyncio.run(tools["persist-skill"].execute(target="10.0.0.1"))
+    payload = json.loads(raw)
+    assert payload["summary"] == {"ok": True}
+    assert len(payload["cmdb_writes"]) == 1
+
+    async def _verify_disabled() -> None:
+        from secbot.cmdb.repo import get_scan, list_assets
+
+        async with cmdb_db.get_session() as session:
+            scan = await get_scan(session, "local", "unit-cmdb-disabled")
+            assert scan is None
+            assets = await list_assets(session, "local", scan_id="unit-cmdb-disabled")
+            assert assets == []
+
+    asyncio.run(_verify_disabled())
+
+    bind_skill_context(
+        scan_id="unit-cmdb",
+        scan_dir=tmp_path,
+        asset_auto_management_enabled=True,
+    )
 
     raw = asyncio.run(tools["persist-skill"].execute(target="10.0.0.1"))
     payload = json.loads(raw)

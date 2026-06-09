@@ -225,7 +225,7 @@ async def test_asset_cluster_folds_critical_into_high(tmp_cmdb) -> None:
     assert cluster == {"CRM": {"high": 2, "medium": 1, "low": 1}}
 
 
-async def test_asset_cluster_excludes_assets_without_system_tag(tmp_cmdb) -> None:
+async def test_asset_cluster_groups_assets_without_system_tag_under_other(tmp_cmdb) -> None:
     # With system
     good = await _mk_asset(
         tmp_cmdb, target="good", tags={"system": "OA", "type": "api"}
@@ -236,8 +236,8 @@ async def test_asset_cluster_excludes_assets_without_system_tag(tmp_cmdb) -> Non
     await _mk_vuln(tmp_cmdb, bad, severity="critical", title="b1")
 
     cluster = await repo.asset_cluster(tmp_cmdb, "local")
-    assert list(cluster.keys()) == ["OA"]
     assert cluster["OA"] == {"high": 1, "medium": 0, "low": 0}
+    assert cluster["其他"] == {"high": 1, "medium": 0, "low": 0}
 
 
 async def test_asset_cluster_emits_system_with_zero_findings(tmp_cmdb) -> None:
@@ -246,3 +246,147 @@ async def test_asset_cluster_emits_system_with_zero_findings(tmp_cmdb) -> None:
     await _mk_asset(tmp_cmdb, target="quiet", tags={"system": "BI", "type": "api"})
     cluster = await repo.asset_cluster(tmp_cmdb, "local")
     assert cluster == {"BI": {"high": 0, "medium": 0, "low": 0}}
+
+
+# ---------------------------------------------------------------------------
+# asset_risk_topology
+# ---------------------------------------------------------------------------
+
+
+async def test_asset_risk_topology_builds_derived_graph_and_sizes_vulns(tmp_cmdb) -> None:
+    crm = await _mk_asset(
+        tmp_cmdb,
+        target="crm.example.com",
+        tags={"system": "CRM", "type": "业务"},
+    )
+    internal = await _mk_asset(
+        tmp_cmdb,
+        target="10.0.0.8",
+        tags={"type": "内网"},
+    )
+    crm_service = await repo.upsert_service(
+        tmp_cmdb,
+        "local",
+        asset_id=crm.id,
+        port=443,
+        protocol="tcp",
+        state="open",
+        service="https",
+        product="nginx",
+        version="1.18.0",
+    )
+    internal_service = await repo.upsert_service(
+        tmp_cmdb,
+        "local",
+        asset_id=internal.id,
+        port=443,
+        protocol="tcp",
+        state="open",
+        service="https",
+    )
+    for asset, service in ((crm, crm_service), (internal, internal_service)):
+        await repo.upsert_vulnerability(
+            tmp_cmdb,
+            "local",
+            asset_id=asset.id,
+            service_id=service.id,
+            severity="high",
+            category="cve",
+            title="shared cve",
+            cve_id="CVE-2026-0001",
+            discovered_by="unit-test",
+        )
+    await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=crm.id,
+        service_id=crm_service.id,
+        cve_id="CVE-2026-0002",
+        category="cve",
+        title="candidate cve",
+        source="unit-db",
+    )
+    await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=internal.id,
+        service_id=internal_service.id,
+        cve_id="CVE-2026-0003",
+        category="cve",
+        title="dismissed cve",
+        source="unit-db",
+        status="dismissed",
+    )
+
+    graph = await repo.asset_risk_topology(
+        tmp_cmdb,
+        "local",
+        focus_id=f"asset:{crm.id}",
+    )
+
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    assert graph["focus_id"] == f"asset:{crm.id}"
+    assert f"asset:{crm.id}" in nodes
+    assert f"asset:{internal.id}" in nodes
+    assert nodes[f"asset:{internal.id}"]["data"]["system"] == "其他"
+    assert "vulnerability:CVE:CVE-2026-0003:candidate" not in nodes
+
+    confirmed = nodes["vulnerability:CVE:CVE-2026-0001:confirmed"]
+    candidate = nodes["vulnerability:CVE:CVE-2026-0002:candidate"]
+    assert confirmed["data"]["status"] == "confirmed"
+    assert confirmed["data"]["affected_asset_count"] == 2
+    assert confirmed["data"]["radius"] > candidate["data"]["radius"]
+    assert candidate["data"]["status"] == "candidate"
+
+    edge_kinds = {edge["kind"] for edge in graph["edges"]}
+    assert {"asset-service", "confirmed-vulnerability", "candidate-vulnerability"} <= edge_kinds
+
+
+async def test_asset_risk_topology_filters_candidates_and_system(tmp_cmdb) -> None:
+    crm = await _mk_asset(
+        tmp_cmdb,
+        target="crm.example.com",
+        tags={"system": "CRM", "type": "业务"},
+    )
+    other = await _mk_asset(
+        tmp_cmdb,
+        target="other.example.com",
+        tags={"system": "ERP", "type": "业务"},
+    )
+    await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=crm.id,
+        category="cve",
+        title="visible candidate",
+        cve_id="CVE-2026-0100",
+        source="unit-db",
+    )
+    await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=other.id,
+        category="cve",
+        title="dismissed candidate",
+        cve_id="CVE-2026-0200",
+        source="unit-db",
+        status="dismissed",
+    )
+
+    crm_graph = await repo.asset_risk_topology(
+        tmp_cmdb,
+        "local",
+        business_system="CRM",
+    )
+    assert {node["id"] for node in crm_graph["nodes"] if node["type"] == "asset"} == {
+        f"asset:{crm.id}"
+    }
+
+    dismissed_graph = await repo.asset_risk_topology(
+        tmp_cmdb,
+        "local",
+        candidate_status="dismissed",
+    )
+    assert "vulnerability:CVE:CVE-2026-0200:candidate" in {
+        node["id"] for node in dismissed_graph["nodes"]
+    }

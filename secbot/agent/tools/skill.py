@@ -65,6 +65,9 @@ _confirm_var: ContextVar[Optional[Callable[[Mapping[str, Any]], Awaitable[bool]]
 _progress_var: ContextVar[Optional[Callable[[float, str], Awaitable[None]]]] = ContextVar(
     "skill_progress", default=None
 )
+_asset_auto_management_var: ContextVar[bool] = ContextVar(
+    "skill_asset_auto_management", default=False
+)
 
 
 def bind_skill_context(
@@ -73,12 +76,14 @@ def bind_skill_context(
     scan_dir: Path,
     confirm: Callable[[Mapping[str, Any]], Awaitable[bool]] | None = None,
     progress: Callable[[float, str], Awaitable[None]] | None = None,
+    asset_auto_management_enabled: bool = False,
 ) -> None:
     """Bind per-turn skill context so every SkillTool.execute sees fresh values."""
     _scan_id_var.set(scan_id)
     _scan_dir_var.set(scan_dir)
     _confirm_var.set(confirm)
     _progress_var.set(progress)
+    _asset_auto_management_var.set(bool(asset_auto_management_enabled))
 
 
 def current_skill_confirm() -> Callable[[Mapping[str, Any]], Awaitable[bool]] | None:
@@ -99,6 +104,12 @@ def current_scan_id() -> str:
     writes in a scan session share one scan record.
     """
     return _scan_id_var.get()
+
+
+def current_asset_auto_management_enabled() -> bool:
+    """Return whether this turn may persist scan discoveries to Managed Assets."""
+
+    return bool(_asset_auto_management_var.get())
 
 
 def _current_scan_dir(default_workspace: Path) -> Path:
@@ -200,10 +211,18 @@ class SkillTool(Tool):
             _LOG.exception("SkillTool %s crashed", self._meta.name)
             return _error_payload(self._meta.name, "internal_error", str(exc))
 
-        # Persist skill-generated CMDB writes so downstream consumers
-        # (report-html, dashboard) see live data.
+        # Persist skill-generated CMDB writes only when this Session opted into
+        # Managed Asset ingestion. The WebUI switch is advisory; this backend
+        # ContextVar is the enforcement point for parent and subagent skills.
         if result.cmdb_writes:
             try:
+                if not current_asset_auto_management_enabled():
+                    _LOG.debug(
+                        "SkillTool %s: skipped cmdb_writes because asset auto-management is disabled",
+                        self._meta.name,
+                    )
+                    return _result_payload(self._meta, result)
+
                 from secbot.cmdb.db import get_session as _get_cmdb_session
                 from secbot.cmdb.models import DEFAULT_ACTOR
                 from secbot.cmdb.repo import create_scan, get_scan

@@ -71,7 +71,7 @@ class Asset(Base):
     hostname: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     os_guess: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Reserved keys: ``system`` (business system name) and ``type`` (asset
-    # class: web_app|api|database|server|network|other). See
+    # class: 业务|智能体|OA|中间件|支撑|内网|其他). See
     # `.trellis/spec/backend/cmdb-schema.md` §2.1.1. Free-form extras are
     # allowed alongside the reserved keys.
     tags: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
@@ -94,6 +94,9 @@ class Asset(Base):
         back_populates="asset", cascade="all, delete-orphan"
     )
     vulnerabilities: Mapped[list["Vulnerability"]] = relationship(
+        back_populates="asset", cascade="all, delete-orphan"
+    )
+    vulnerability_candidates: Mapped[list["VulnerabilityCandidate"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan"
     )
 
@@ -134,6 +137,9 @@ class Service(Base):
 
     asset: Mapped[Asset] = relationship(back_populates="services")
     vulnerabilities: Mapped[list["Vulnerability"]] = relationship(back_populates="service")
+    vulnerability_candidates: Mapped[list["VulnerabilityCandidate"]] = relationship(
+        back_populates="service"
+    )
 
     __table_args__ = (
         UniqueConstraint("asset_id", "port", "protocol", name="uq_service_asset_port_proto"),
@@ -171,6 +177,58 @@ class Vulnerability(Base):
     __table_args__ = (
         Index("ix_vuln_actor_severity_created", "actor_id", "severity", "created_at"),
         Index("ix_vuln_asset", "asset_id"),
+    )
+
+
+class VulnerabilityCandidate(Base):
+    """Passive vulnerability database match awaiting explicit verification."""
+
+    __tablename__ = "vulnerability_candidate"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asset_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("asset.id", ondelete="CASCADE"), nullable=False
+    )
+    service_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("service.id", ondelete="SET NULL"), nullable=True
+    )
+    identity_key: Mapped[str] = mapped_column(String, nullable=False)
+    cve_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    cnvd_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="candidate")
+    last_verification_error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+    actor_id: Mapped[str] = mapped_column(
+        String, nullable=False, default=DEFAULT_ACTOR, server_default=DEFAULT_ACTOR
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+        server_default=func.now(),
+    )
+
+    asset: Mapped[Asset] = relationship(back_populates="vulnerability_candidates")
+    service: Mapped[Optional[Service]] = relationship(back_populates="vulnerability_candidates")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id",
+            "asset_id",
+            "service_id",
+            "identity_key",
+            name="uq_vuln_candidate_identity",
+        ),
+        Index("ix_vuln_candidate_actor_status", "actor_id", "status"),
+        Index("ix_vuln_candidate_asset", "asset_id"),
     )
 
 
@@ -237,6 +295,7 @@ VALID_VULN_CATEGORIES = frozenset(
         "other",
     }
 )
+VALID_VULN_CANDIDATE_STATUSES = frozenset({"candidate", "verified", "dismissed"})
 
 # Reserved vocabulary for the `asset.tags.type` JSON key (spec §2.1.1).
 # Business-oriented asset classification (Chinese labels).

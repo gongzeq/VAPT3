@@ -7,9 +7,9 @@ via the message bus; ``read_assets`` reads with cursor-based pagination.
 See :mod:`secbot.agent.asset_feed` for the underlying registry.
 
 Auto-flush: when ``kind`` is ``vuln``, ``credential``, or ``tech``,
-``AssetPushTool`` also persists the discovery to the CMDB so that
-``report-html`` can render a complete report without a separate flush
-step.  See `.trellis/tasks/06-06-fix-report-pipeline/prd.md`.
+``AssetPushTool`` can persist the discovery to the CMDB, but only when the
+current session's Asset Auto-Management switch is enabled. Disabled sessions
+keep discoveries transient in this feed.
 """
 
 from __future__ import annotations
@@ -137,7 +137,7 @@ def _credential_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
         "data": {
             "target": target,
             "severity": "critical",
-            "category": "credential_disclosure",
+            "category": "weak_password",
             "title": payload.get("title") or f"Credential leak: {payload.get('username', '?')}@{target}",
             "evidence": (
                 f"username={payload.get('username', '')} "
@@ -211,11 +211,21 @@ async def _flush_asset_to_cmdb(
         return False
 
     try:
-        from secbot.agent.tools.skill import _scan_id_var
+        from secbot.agent.tools.skill import (
+            _scan_id_var,
+            current_asset_auto_management_enabled,
+        )
         from secbot.cmdb.db import get_session
         from secbot.cmdb.models import DEFAULT_ACTOR
         from secbot.cmdb.repo import create_scan, get_scan
         from secbot.cmdb.writes import apply_cmdb_writes
+
+        if not current_asset_auto_management_enabled():
+            _logger.debug(
+                "asset_push cmdb flush skipped for kind=%s: asset auto-management disabled",
+                kind,
+            )
+            return False
 
         scan_id = _scan_id_var.get()
         async with get_session() as session:

@@ -21,6 +21,7 @@ from secbot.utils.helpers import (
 )
 
 FILE_MAX_MESSAGES = 2000
+ASSET_AUTO_MANAGEMENT_KEY = "asset_auto_management"
 
 
 @dataclass
@@ -507,6 +508,24 @@ class SessionManager:
         session.metadata["archived"] = bool(archived)
         self.save(session)
         return True
+
+    def get_asset_auto_management(self, key: str) -> bool:
+        """Return whether this session may update Managed Assets.
+
+        The flag defaults off. Backend CMDB ingestion uses this as the source
+        of truth, so a stale or missing WebUI switch state cannot permit writes.
+        """
+
+        session = self.get_or_create(key)
+        return bool(session.metadata.get(ASSET_AUTO_MANAGEMENT_KEY, False))
+
+    def set_asset_auto_management(self, key: str, enabled: bool) -> bool:
+        """Set the session-scoped Managed Asset ingestion switch."""
+
+        session = self.get_or_create(key)
+        session.metadata[ASSET_AUTO_MANAGEMENT_KEY] = bool(enabled)
+        self.save(session)
+        return bool(enabled)
 
     def read_session_file(self, key: str) -> dict[str, Any] | None:
         """Load a session from disk without caching; intended for read-only HTTP endpoints.

@@ -742,6 +742,9 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/dashboard/asset-cluster":
             return await self._handle_dashboard_asset_cluster(request)
 
+        if got == "/api/dashboard/asset-risk-topology":
+            return await self._handle_dashboard_asset_risk_topology(request)
+
         # Phishing detection dashboard (PRD §R6 + spec/backend/phishing-dashboard.md).
         # Read-only views over ``detection_results.db`` written by the phishing
         # workflow's step3 script. Missing/empty DB returns zeroed payload.
@@ -829,6 +832,10 @@ class WebSocketChannel(BaseChannel):
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             return self._handle_session_messages(request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/asset-auto-management$", got)
+        if m:
+            return self._handle_session_asset_auto_management(request, m.group(1))
 
         # NOTE: websockets' HTTP parser only accepts GET, so we cannot expose a
         # true ``DELETE`` verb. The action is folded into the path instead.
@@ -1389,6 +1396,34 @@ class WebSocketChannel(BaseChannel):
         ]
         return _http_json_response({"clusters": clusters})
 
+    async def _handle_dashboard_asset_risk_topology(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.cmdb import repo
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        query = _parse_query(request.path)
+        try:
+            async with get_session() as session:
+                graph = await repo.asset_risk_topology(
+                    session,
+                    DEFAULT_ACTOR,
+                    business_system=_query_first(query, "business_system"),
+                    subnet=_query_first(query, "subnet"),
+                    asset_type=_query_first(query, "asset_type"),
+                    vulnerability_identity=_query_first(query, "vulnerability_identity"),
+                    candidate_status=_query_first(query, "candidate_status"),
+                    recent_scan=_query_first(query, "recent_scan"),
+                    focus_id=_query_first(query, "focus_id"),
+                )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("dashboard.asset_risk_topology: db error")
+            return _http_error(500, "asset risk topology unavailable")
+        return _http_json_response(graph)
+
     # -- Phishing detection dashboard ---------------------------------------
     #
     # PRD §R6 + spec/backend/phishing-dashboard.md. The underlying SQLite is
@@ -1737,6 +1772,9 @@ class WebSocketChannel(BaseChannel):
                     "display_name": spec.display_name,
                     "description": spec.description,
                     "scoped_skills": list(spec.scoped_skills),
+                    "available": spec.available,
+                    "required_binaries": list(spec.required_binaries),
+                    "missing_binaries": list(spec.missing_binaries),
                 }
             )
 
@@ -2244,6 +2282,46 @@ class WebSocketChannel(BaseChannel):
         # the client never needs them once it has the signed fetch URL.
         self._augment_media_urls(data)
         return _http_json_response(data)
+
+    def _handle_session_asset_auto_management(
+        self, request: WsRequest, key: str
+    ) -> Response:
+        """Read or update the session-scoped Managed Asset ingestion switch.
+
+        Contract: ``GET /api/sessions/{key}/asset-auto-management`` reads the
+        current state. Supplying ``?enabled=0|1`` updates it. The route is
+        intentionally scoped to WebSocket sessions, matching the rest of the
+        embedded WebUI session surface.
+        """
+
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._session_manager is None:
+            return _http_error(503, "session manager unavailable")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not self._is_webui_session_key(decoded_key):
+            return _http_error(404, "session not found")
+
+        query = _parse_query(request.path)
+        raw = (_query_first(query, "enabled") or "").strip().lower()
+        if raw:
+            if raw in ("1", "true", "yes", "on"):
+                enabled = True
+            elif raw in ("0", "false", "no", "off"):
+                enabled = False
+            else:
+                return _http_error(400, "enabled must be 0 or 1")
+            self._session_manager.set_asset_auto_management(decoded_key, enabled)
+
+        enabled = self._session_manager.get_asset_auto_management(decoded_key)
+        return _http_json_response(
+            {
+                "key": decoded_key,
+                "asset_auto_management": enabled,
+            }
+        )
 
     def _augment_media_urls(self, payload: dict[str, Any]) -> None:
         """Mutate *payload* in place: each message's ``media`` path list is

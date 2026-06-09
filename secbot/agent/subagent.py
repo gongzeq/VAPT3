@@ -23,7 +23,13 @@ from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileToo
 from secbot.agent.tools.registry import ToolRegistry
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
-from secbot.agent.tools.skill import bind_skill_context, current_skill_confirm, current_scan_id, discover_skill_tools
+from secbot.agent.tools.skill import (
+    bind_skill_context,
+    current_asset_auto_management_enabled,
+    current_scan_id,
+    current_skill_confirm,
+    discover_skill_tools,
+)
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
@@ -589,6 +595,7 @@ class SubagentManager:
             # Crucially, preserve the ``confirm`` callback so critical skills
             # inside the subagent still surface the WebUI approval dialog.
             parent_confirm = current_skill_confirm()
+            parent_asset_auto_management = current_asset_auto_management_enabled()
             # Inherit the parent loop's scan_id so ALL CMDB writes within a
             # scan session (orchestrator + all subagents) share one scan
             # record.  This is essential for report-html which queries by
@@ -599,6 +606,7 @@ class SubagentManager:
                 scan_id=parent_scan_id,
                 scan_dir=self.workspace / ".secbot" / "scans" / task_id,
                 confirm=parent_confirm,
+                asset_auto_management_enabled=parent_asset_auto_management,
             )
             system_prompt = self._build_subagent_prompt(spec)
             # D3: the shared-blackboard snapshot is NO LONGER auto-injected

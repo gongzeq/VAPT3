@@ -98,6 +98,37 @@ async def test_assets_isolated_across_actors(tmp_cmdb):
     assert alice_assets[0].id != bob_assets[0].id
 
 
+async def test_upsert_asset_dedupes_across_scans_by_normalized_identity(tmp_cmdb):
+    scan_a = await repo.create_scan(tmp_cmdb, "local", target="https://Example.COM/login")
+    scan_b = await repo.create_scan(tmp_cmdb, "local", target="93.184.216.34")
+
+    first = await repo.upsert_asset(
+        tmp_cmdb,
+        "local",
+        scan_id=scan_a.id,
+        target="https://Example.COM/login",
+        tags={"system": "CRM", "type": "业务"},
+    )
+    second = await repo.upsert_asset(
+        tmp_cmdb,
+        "local",
+        scan_id=scan_b.id,
+        target="93.184.216.34",
+        ip="93.184.216.34",
+        hostname="example.com.",
+        tags={"system": "ERP", "type": "中间件", "source": "scan"},
+    )
+
+    assert first.id == second.id
+    assert second.scan_id == scan_a.id
+    assert second.ip == "93.184.216.34"
+    assert second.hostname == "example.com"
+    assert second.tags == {"system": "CRM", "type": "业务", "source": "scan"}
+
+    rows = await repo.list_assets(tmp_cmdb, "local")
+    assert len(rows) == 1
+
+
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
@@ -230,6 +261,73 @@ async def test_list_vulnerabilities_severity_filter(tmp_cmdb):
         tmp_cmdb, "local", severity_in=["high", "critical"]
     )
     assert {v.severity for v in high_or_above} == {"high", "critical"}
+
+
+async def test_vulnerability_candidate_lifecycle_is_separate_from_confirmed(tmp_cmdb):
+    scan = await repo.create_scan(tmp_cmdb, "local", target="10.0.0.1")
+    asset = await repo.upsert_asset(tmp_cmdb, "local", scan_id=scan.id, target="10.0.0.1")
+    svc = await repo.upsert_service(
+        tmp_cmdb,
+        "local",
+        asset_id=asset.id,
+        port=443,
+        protocol="tcp",
+        product="nginx",
+        version="1.18.0",
+    )
+
+    candidate = await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=asset.id,
+        service_id=svc.id,
+        cve_id="CVE-2026-0001",
+        category="cve",
+        title="nginx test candidate",
+        source="unit-db",
+        evidence={"version": "1.18.0"},
+    )
+    updated = await repo.upsert_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        asset_id=asset.id,
+        service_id=svc.id,
+        cve_id="CVE-2026-0001",
+        category="cve",
+        title="nginx test candidate",
+        source="unit-db",
+        evidence={"version": "1.18.0", "constraint": "<1.20"},
+    )
+
+    assert candidate.id == updated.id
+    assert updated.identity_key == "CVE:CVE-2026-0001"
+    assert updated.evidence == {"version": "1.18.0", "constraint": "<1.20"}
+    assert await repo.list_vulnerabilities(tmp_cmdb, "local", asset_id=asset.id) == []
+
+    failed = await repo.mark_candidate_verification_failed(
+        tmp_cmdb,
+        "local",
+        updated.id,
+        error="scanner timeout",
+    )
+    assert failed.status == "candidate"
+    assert failed.last_verification_error == "scanner timeout"
+
+    verified, vuln = await repo.verify_vulnerability_candidate(
+        tmp_cmdb,
+        "local",
+        updated.id,
+        severity="high",
+        discovered_by="explicit-verification",
+    )
+    assert verified.status == "verified"
+    assert verified.last_verification_error is None
+    assert vuln.asset_id == asset.id
+    assert vuln.service_id == svc.id
+    assert vuln.cve_id == "CVE-2026-0001"
+
+    confirmed = await repo.list_vulnerabilities(tmp_cmdb, "local", asset_id=asset.id)
+    assert [row.id for row in confirmed] == [vuln.id]
 
 
 async def test_vulnerabilities_isolated_across_actors(tmp_cmdb):

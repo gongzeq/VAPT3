@@ -14,11 +14,14 @@ Hard rules (per `.trellis/spec/backend/cmdb-schema.md` §3 + §4):
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional, Sequence
+from urllib.parse import urlparse
 
 from sqlalchemy import case, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,12 +34,14 @@ from secbot.cmdb.models import (
     VALID_REPORT_TYPES,
     VALID_SCAN_STATUSES,
     VALID_SEVERITIES,
+    VALID_VULN_CANDIDATE_STATUSES,
     VALID_VULN_CATEGORIES,
     Asset,
     ReportMeta,
     Scan,
     Service,
     Vulnerability,
+    VulnerabilityCandidate,
 )
 
 _logger = logging.getLogger(__name__)
@@ -66,6 +71,62 @@ def new_ulid() -> str:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_HOST_PORT_RE = re.compile(r"^\[?([A-Fa-f0-9:.]+)\]?:(\d{1,5})$")
+
+
+def _normalise_host_token(value: str | None) -> str | None:
+    """Return a lowercase host/IP token stripped of URL, path, and port noise."""
+
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    host = parsed.hostname
+    if not host:
+        match = _HOST_PORT_RE.match(raw)
+        host = match.group(1) if match else raw.split("/", 1)[0]
+    host = host.strip("[] ").rstrip(".").lower()
+    return host or None
+
+
+def _normalise_ip(value: str | None) -> str | None:
+    token = _normalise_host_token(value)
+    if not token:
+        return None
+    try:
+        return str(ipaddress.ip_address(token))
+    except ValueError:
+        return None
+
+
+def _normalise_hostname(value: str | None) -> str | None:
+    token = _normalise_host_token(value)
+    if token is None:
+        return None
+    if _normalise_ip(token) is not None:
+        return None
+    return token
+
+
+def _merge_asset_tags(
+    existing: dict[str, Any] | None,
+    incoming: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Merge automatic asset tags while preserving existing governance keys."""
+
+    if existing is None and incoming is None:
+        return None
+    merged: dict[str, Any] = dict(existing or {})
+    for key, value in (incoming or {}).items():
+        if key in {"system", "type"} and merged.get(key):
+            continue
+        merged[key] = value
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -157,11 +218,10 @@ async def upsert_asset(
     os_guess: Optional[str] = None,
     tags: Optional[dict[str, Any]] = None,
 ) -> Asset:
-    """Insert-or-update an asset keyed on ``(actor_id, scan_id, target)``.
+    """Insert-or-update an asset keyed by normalized host identity.
 
-    Within a single scan we treat ``target`` as the natural key (a re-scan
-    that revises ``ip``/``hostname`` MUST update the existing row, not insert
-    a duplicate).
+    The same real IP/hostname discovered by multiple scans MUST resolve to one
+    Managed Asset. ``scan_id`` remains the first-discovery scan for the row.
 
     ``tags`` is a JSON object. Reserved keys per
     `.trellis/spec/backend/cmdb-schema.md` §2.1.1:
@@ -172,33 +232,61 @@ async def upsert_asset(
       ``/api/dashboard/asset-distribution``.
     """
 
-    stmt = select(Asset).where(
-        Asset.actor_id == actor_id,
-        Asset.scan_id == scan_id,
-        Asset.target == target,
+    actor = actor_id or DEFAULT_ACTOR
+    norm_ip = _normalise_ip(ip) or _normalise_ip(target)
+    norm_hostname = (
+        _normalise_hostname(hostname)
+        or _normalise_hostname(target)
+        or None
     )
-    asset = (await session.execute(stmt)).scalar_one_or_none()
+    norm_target = _normalise_host_token(target) or target
+
+    identity_queries = []
+    if norm_ip is not None:
+        identity_queries.append(select(Asset).where(Asset.actor_id == actor, Asset.ip == norm_ip))
+    if norm_hostname is not None:
+        identity_queries.append(
+            select(Asset).where(
+                Asset.actor_id == actor,
+                (
+                    (func.lower(Asset.hostname) == norm_hostname)
+                    | (func.lower(Asset.target) == norm_hostname)
+                ),
+            )
+        )
+    identity_queries.append(
+        select(Asset).where(
+            Asset.actor_id == actor,
+            func.lower(Asset.target) == str(norm_target).lower(),
+        )
+    )
+
+    asset = None
+    for stmt in identity_queries:
+        asset = (await session.execute(stmt.limit(1))).scalar_one_or_none()
+        if asset is not None:
+            break
 
     if asset is None:
         asset = Asset(
-            actor_id=actor_id or DEFAULT_ACTOR,
+            actor_id=actor,
             scan_id=scan_id,
-            target=target,
-            ip=ip,
-            hostname=hostname,
+            target=norm_target,
+            ip=norm_ip,
+            hostname=norm_hostname,
             os_guess=os_guess,
             tags=dict(tags) if tags else None,
         )
         session.add(asset)
     else:
-        if ip is not None:
-            asset.ip = ip
-        if hostname is not None:
-            asset.hostname = hostname
+        if norm_ip is not None:
+            asset.ip = norm_ip
+        if norm_hostname is not None:
+            asset.hostname = norm_hostname
         if os_guess is not None:
             asset.os_guess = os_guess
         if tags is not None:
-            asset.tags = dict(tags)
+            asset.tags = _merge_asset_tags(asset.tags, tags)
         asset.updated_at = _utcnow()
 
     await session.flush()
@@ -403,6 +491,222 @@ async def list_vulnerabilities(
         stmt = stmt.where(Vulnerability.severity.in_(sevs))
     stmt = stmt.order_by(Vulnerability.created_at.desc()).limit(limit)
     return list((await session.execute(stmt)).scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Vulnerability candidates
+# ---------------------------------------------------------------------------
+
+
+def vulnerability_identity_key(
+    *,
+    cve_id: str | None = None,
+    cnvd_id: str | None = None,
+    category: str = "other",
+    title: str = "",
+) -> str:
+    """Return a stable vulnerability identity key, merging common aliases."""
+
+    cve = (cve_id or "").strip().upper()
+    if cve:
+        return f"CVE:{cve}"
+    cnvd = (cnvd_id or "").strip().upper()
+    if cnvd:
+        return f"CNVD:{cnvd}"
+    normalized_title = re.sub(r"\s+", " ", (title or "unknown").strip().lower())
+    normalized_title = re.sub(r"[^a-z0-9\u4e00-\u9fff _.-]+", "", normalized_title)
+    return f"TITLE:{category}:{normalized_title or 'unknown'}"
+
+
+async def upsert_vulnerability_candidate(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    asset_id: int,
+    category: str,
+    title: str,
+    source: str,
+    service_id: Optional[int] = None,
+    identity_key: Optional[str] = None,
+    cve_id: Optional[str] = None,
+    cnvd_id: Optional[str] = None,
+    evidence: Optional[dict[str, Any]] = None,
+    status: str = "candidate",
+    last_verification_error: Optional[str] = None,
+) -> VulnerabilityCandidate:
+    """Insert or update a passive vulnerability match.
+
+    Candidates are not confirmed findings and must not be counted by dashboard
+    vulnerability KPIs until explicit verification succeeds.
+    """
+
+    actor = actor_id or DEFAULT_ACTOR
+    if category not in VALID_VULN_CATEGORIES:
+        raise ValueError(
+            f"invalid category {category!r}; expected one of {sorted(VALID_VULN_CATEGORIES)}"
+        )
+    if status not in VALID_VULN_CANDIDATE_STATUSES:
+        raise ValueError(
+            "invalid candidate status "
+            f"{status!r}; expected one of {sorted(VALID_VULN_CANDIDATE_STATUSES)}"
+        )
+    key = identity_key or vulnerability_identity_key(
+        cve_id=cve_id,
+        cnvd_id=cnvd_id,
+        category=category,
+        title=title,
+    )
+
+    stmt = select(VulnerabilityCandidate).where(
+        VulnerabilityCandidate.actor_id == actor,
+        VulnerabilityCandidate.asset_id == asset_id,
+        VulnerabilityCandidate.identity_key == key,
+    )
+    if service_id is None:
+        stmt = stmt.where(VulnerabilityCandidate.service_id.is_(None))
+    else:
+        stmt = stmt.where(VulnerabilityCandidate.service_id == service_id)
+    row = (await session.execute(stmt)).scalar_one_or_none()
+
+    if row is None:
+        row = VulnerabilityCandidate(
+            actor_id=actor,
+            asset_id=asset_id,
+            service_id=service_id,
+            identity_key=key,
+            cve_id=cve_id,
+            cnvd_id=cnvd_id,
+            category=category,
+            title=title,
+            source=source,
+            evidence=evidence,
+            status=status,
+            last_verification_error=last_verification_error,
+        )
+        session.add(row)
+    else:
+        row.cve_id = cve_id
+        row.cnvd_id = cnvd_id
+        row.category = category
+        row.title = title
+        row.source = source
+        if evidence is not None:
+            row.evidence = evidence
+        row.status = status
+        row.last_verification_error = last_verification_error
+        row.updated_at = _utcnow()
+
+    await session.flush()
+    return row
+
+
+async def list_vulnerability_candidates(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    status: Optional[str] = None,
+    asset_id: Optional[int] = None,
+    include_dismissed: bool = False,
+    limit: int = 500,
+) -> Sequence[VulnerabilityCandidate]:
+    """List passive vulnerability candidates for asset detail/topology views."""
+
+    if status is not None and status not in VALID_VULN_CANDIDATE_STATUSES:
+        raise ValueError(
+            "invalid candidate status "
+            f"{status!r}; expected one of {sorted(VALID_VULN_CANDIDATE_STATUSES)}"
+        )
+    stmt = select(VulnerabilityCandidate).where(VulnerabilityCandidate.actor_id == actor_id)
+    if asset_id is not None:
+        stmt = stmt.where(VulnerabilityCandidate.asset_id == asset_id)
+    if status is not None:
+        stmt = stmt.where(VulnerabilityCandidate.status == status)
+    elif not include_dismissed:
+        stmt = stmt.where(VulnerabilityCandidate.status != "dismissed")
+    stmt = stmt.order_by(VulnerabilityCandidate.updated_at.desc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def mark_candidate_verification_failed(
+    session: AsyncSession,
+    actor_id: str,
+    candidate_id: int,
+    *,
+    error: str,
+) -> VulnerabilityCandidate:
+    """Record failed verification evidence without dismissing the candidate."""
+
+    stmt = select(VulnerabilityCandidate).where(
+        VulnerabilityCandidate.actor_id == actor_id,
+        VulnerabilityCandidate.id == candidate_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise LookupError(f"candidate {candidate_id!r} not found for actor {actor_id!r}")
+    row.status = "candidate"
+    row.last_verification_error = error
+    row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def dismiss_vulnerability_candidate(
+    session: AsyncSession,
+    actor_id: str,
+    candidate_id: int,
+) -> VulnerabilityCandidate:
+    """Hide a false-positive candidate from default risk views."""
+
+    stmt = select(VulnerabilityCandidate).where(
+        VulnerabilityCandidate.actor_id == actor_id,
+        VulnerabilityCandidate.id == candidate_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise LookupError(f"candidate {candidate_id!r} not found for actor {actor_id!r}")
+    row.status = "dismissed"
+    row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def verify_vulnerability_candidate(
+    session: AsyncSession,
+    actor_id: str,
+    candidate_id: int,
+    *,
+    severity: str,
+    discovered_by: str,
+    evidence: Optional[dict[str, Any]] = None,
+    raw_log_path: Optional[str] = None,
+) -> tuple[VulnerabilityCandidate, Vulnerability]:
+    """Promote a candidate after explicit active verification succeeds."""
+
+    stmt = select(VulnerabilityCandidate).where(
+        VulnerabilityCandidate.actor_id == actor_id,
+        VulnerabilityCandidate.id == candidate_id,
+    )
+    candidate = (await session.execute(stmt)).scalar_one_or_none()
+    if candidate is None:
+        raise LookupError(f"candidate {candidate_id!r} not found for actor {actor_id!r}")
+    vuln = await upsert_vulnerability(
+        session,
+        actor_id,
+        asset_id=candidate.asset_id,
+        service_id=candidate.service_id,
+        severity=severity,
+        category=candidate.category,
+        title=candidate.title,
+        cve_id=candidate.cve_id,
+        evidence=evidence or candidate.evidence,
+        raw_log_path=raw_log_path,
+        discovered_by=discovered_by,
+    )
+    candidate.status = "verified"
+    candidate.last_verification_error = None
+    candidate.updated_at = _utcnow()
+    await session.flush()
+    return candidate, vuln
 
 
 # ---------------------------------------------------------------------------
@@ -689,36 +993,22 @@ async def asset_cluster(
     """Return ``{system: {high, medium, low}}`` cluster counts.
 
     Joins ``asset`` ↔ ``vulnerability`` on ``vulnerability.asset_id`` and
-    groups by ``asset.tags.system``. Assets without ``tags.system`` are
-    excluded and counted in a warning log line so the skipped volume is
-    observable.
+    groups by ``asset.tags.system``. Assets without ``tags.system`` are grouped
+    under ``其他`` so the governed asset corpus remains visible.
 
     Per spec §2.5, ``critical`` vulnerabilities fold into ``high`` for the
     cluster widget; ``info`` is excluded entirely.
     """
 
-    system_expr = func.json_extract(Asset.tags, "$.system").label("system")
-
-    # Count assets whose tags.system is NULL so we can emit a single warning.
-    skipped_stmt = (
-        select(func.count())
-        .select_from(Asset)
-        .where(Asset.actor_id == actor_id, system_expr.is_(None))
-    )
-    skipped = int((await session.execute(skipped_stmt)).scalar() or 0)
-    if skipped:
-        _logger.warning(
-            "asset_cluster: skipping %d asset(s) without tags.system (actor=%s)",
-            skipped,
-            actor_id,
-        )
+    raw_system_expr = func.json_extract(Asset.tags, "$.system")
+    system_expr = func.coalesce(raw_system_expr, "其他").label("system")
 
     # Join asset → vulnerability. Assets with zero vulnerabilities still need
     # to appear (§2.5 rule: "Systems with zero vulnerabilities are still
     # emitted"). We fetch the roster first, then overlay counts.
     roster_stmt = (
         select(system_expr)
-        .where(Asset.actor_id == actor_id, system_expr.is_not(None))
+        .where(Asset.actor_id == actor_id)
         .group_by(system_expr)
     )
     roster = [row.system for row in (await session.execute(roster_stmt)).all()]
@@ -742,7 +1032,6 @@ async def asset_cluster(
         .where(
             Asset.actor_id == actor_id,
             Vulnerability.actor_id == actor_id,
-            system_expr.is_not(None),
             Vulnerability.severity.in_(("critical", "high", "medium", "low")),
         )
         .group_by(system_expr, bucket_case)
@@ -757,6 +1046,297 @@ async def asset_cluster(
         cluster.setdefault(row.system, {"high": 0, "medium": 0, "low": 0})
         cluster[row.system][row.bucket] = int(row.n)
     return cluster
+
+
+_SEVERITY_RANK: dict[str, int] = {
+    "critical": 4,
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+    "info": 0,
+}
+
+
+def _asset_system(asset: Asset) -> str:
+    tags = asset.tags if isinstance(asset.tags, dict) else {}
+    value = tags.get("system")
+    return str(value) if value else "其他"
+
+
+def _asset_type(asset: Asset) -> str:
+    tags = asset.tags if isinstance(asset.tags, dict) else {}
+    value = tags.get("type")
+    return str(value) if value in VALID_ASSET_TYPES else "其他"
+
+
+def _vulnerability_identity_from_row(vuln: Vulnerability) -> str:
+    return vulnerability_identity_key(
+        cve_id=vuln.cve_id,
+        category=vuln.category,
+        title=vuln.title,
+    )
+
+
+async def asset_risk_topology(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    business_system: Optional[str] = None,
+    subnet: Optional[str] = None,
+    asset_type: Optional[str] = None,
+    vulnerability_identity: Optional[str] = None,
+    candidate_status: Optional[str] = None,
+    recent_scan: Optional[str] = None,
+    focus_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build the Asset Risk Topology graph from current CMDB rows.
+
+    This is a derived read model. It does not persist topology relationships or
+    infer physical network links.
+    """
+
+    network: ipaddress._BaseNetwork | None = None
+    if subnet:
+        try:
+            network = ipaddress.ip_network(subnet, strict=False)
+        except ValueError as exc:
+            raise ValueError(f"invalid subnet {subnet!r}") from exc
+    if candidate_status is not None and candidate_status not in VALID_VULN_CANDIDATE_STATUSES:
+        raise ValueError(
+            "invalid candidate status "
+            f"{candidate_status!r}; expected one of {sorted(VALID_VULN_CANDIDATE_STATUSES)}"
+        )
+
+    asset_rows = list(
+        (await session.execute(
+            select(Asset).where(Asset.actor_id == actor_id).order_by(Asset.id.asc())
+        )).scalars().all()
+    )
+
+    def _asset_matches(asset: Asset) -> bool:
+        if business_system and _asset_system(asset) != business_system:
+            return False
+        if asset_type and _asset_type(asset) != asset_type:
+            return False
+        if recent_scan and asset.scan_id != recent_scan:
+            return False
+        if network is not None:
+            if not asset.ip:
+                return False
+            try:
+                if ipaddress.ip_address(asset.ip) not in network:
+                    return False
+            except ValueError:
+                return False
+        return True
+
+    assets = [asset for asset in asset_rows if _asset_matches(asset)]
+    asset_ids = {asset.id for asset in assets}
+    if not asset_ids:
+        return {"nodes": [], "edges": [], "focus_id": None, "filters": {}}
+
+    service_rows = list(
+        (await session.execute(
+            select(Service)
+            .where(Service.actor_id == actor_id, Service.asset_id.in_(asset_ids))
+            .order_by(Service.asset_id.asc(), Service.port.asc())
+        )).scalars().all()
+    )
+
+    vuln_rows = list(
+        (await session.execute(
+            select(Vulnerability)
+            .where(Vulnerability.actor_id == actor_id, Vulnerability.asset_id.in_(asset_ids))
+            .order_by(Vulnerability.id.asc())
+        )).scalars().all()
+    )
+    if vulnerability_identity:
+        vuln_rows = [
+            vuln for vuln in vuln_rows
+            if _vulnerability_identity_from_row(vuln) == vulnerability_identity
+        ]
+
+    candidate_stmt = select(VulnerabilityCandidate).where(
+        VulnerabilityCandidate.actor_id == actor_id,
+        VulnerabilityCandidate.asset_id.in_(asset_ids),
+    )
+    if candidate_status is not None:
+        candidate_stmt = candidate_stmt.where(VulnerabilityCandidate.status == candidate_status)
+    else:
+        candidate_stmt = candidate_stmt.where(VulnerabilityCandidate.status != "dismissed")
+    candidate_rows = list(
+        (await session.execute(candidate_stmt.order_by(VulnerabilityCandidate.id.asc())))
+        .scalars()
+        .all()
+    )
+    if vulnerability_identity:
+        candidate_rows = [
+            candidate for candidate in candidate_rows
+            if candidate.identity_key == vulnerability_identity
+        ]
+
+    visible_asset_ids = {
+        asset.id for asset in assets
+        if not vulnerability_identity
+    }
+    if vulnerability_identity:
+        visible_asset_ids = {v.asset_id for v in vuln_rows} | {
+            c.asset_id for c in candidate_rows
+        }
+    visible_service_ids = {
+        service.id for service in service_rows
+        if service.asset_id in visible_asset_ids
+    }
+    visible_service_ids |= {
+        row.service_id for row in vuln_rows + candidate_rows
+        if row.service_id is not None
+    }
+
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    node_ids: set[str] = set()
+    affected_assets_by_node: dict[str, set[int]] = {}
+    highest_severity_by_node: dict[str, str] = {}
+
+    def _add_node(node: dict[str, Any]) -> None:
+        node_id = str(node["id"])
+        if node_id in node_ids:
+            return
+        node_ids.add(node_id)
+        nodes.append(node)
+
+    def _add_edge(source: str, target: str, *, kind: str) -> None:
+        edges.append(
+            {
+                "id": f"{source}->{target}:{kind}",
+                "source": source,
+                "target": target,
+                "kind": kind,
+            }
+        )
+
+    for asset in assets:
+        if asset.id not in visible_asset_ids:
+            continue
+        node_id = f"asset:{asset.id}"
+        _add_node(
+            {
+                "id": node_id,
+                "type": "asset",
+                "label": asset.hostname or asset.ip or asset.target,
+                "data": {
+                    "asset_id": asset.id,
+                    "ip": asset.ip,
+                    "hostname": asset.hostname,
+                    "target": asset.target,
+                    "system": _asset_system(asset),
+                    "asset_type": _asset_type(asset),
+                    "scan_id": asset.scan_id,
+                },
+            }
+        )
+
+    for service in service_rows:
+        if service.id not in visible_service_ids:
+            continue
+        node_id = f"service:{service.id}"
+        _add_node(
+            {
+                "id": node_id,
+                "type": "service",
+                "label": f"{service.protocol}/{service.port}",
+                "data": {
+                    "service_id": service.id,
+                    "asset_id": service.asset_id,
+                    "port": service.port,
+                    "protocol": service.protocol,
+                    "service": service.service,
+                    "product": service.product,
+                    "version": service.version,
+                    "state": service.state,
+                },
+            }
+        )
+        asset_node = f"asset:{service.asset_id}"
+        if asset_node in node_ids:
+            _add_edge(asset_node, node_id, kind="asset-service")
+
+    for vuln in vuln_rows:
+        identity = _vulnerability_identity_from_row(vuln)
+        node_id = f"vulnerability:{identity}:confirmed"
+        affected_assets_by_node.setdefault(node_id, set()).add(vuln.asset_id)
+        existing_sev = highest_severity_by_node.get(node_id, "info")
+        if _SEVERITY_RANK[vuln.severity] > _SEVERITY_RANK[existing_sev]:
+            highest_severity_by_node[node_id] = vuln.severity
+        _add_node(
+            {
+                "id": node_id,
+                "type": "vulnerability",
+                "label": vuln.cve_id or vuln.title,
+                "data": {
+                    "identity_key": identity,
+                    "status": "confirmed",
+                    "category": vuln.category,
+                    "title": vuln.title,
+                    "cve_id": vuln.cve_id,
+                    "severity": vuln.severity,
+                },
+            }
+        )
+        source = f"service:{vuln.service_id}" if vuln.service_id else f"asset:{vuln.asset_id}"
+        if source in node_ids:
+            _add_edge(source, node_id, kind="confirmed-vulnerability")
+
+    for candidate in candidate_rows:
+        node_id = f"vulnerability:{candidate.identity_key}:candidate"
+        affected_assets_by_node.setdefault(node_id, set()).add(candidate.asset_id)
+        _add_node(
+            {
+                "id": node_id,
+                "type": "vulnerability",
+                "label": candidate.cve_id or candidate.cnvd_id or candidate.title,
+                "data": {
+                    "identity_key": candidate.identity_key,
+                    "status": candidate.status,
+                    "category": candidate.category,
+                    "title": candidate.title,
+                    "cve_id": candidate.cve_id,
+                    "cnvd_id": candidate.cnvd_id,
+                    "source": candidate.source,
+                    "last_verification_error": candidate.last_verification_error,
+                },
+            }
+        )
+        source = (
+            f"service:{candidate.service_id}"
+            if candidate.service_id
+            else f"asset:{candidate.asset_id}"
+        )
+        if source in node_ids:
+            _add_edge(source, node_id, kind="candidate-vulnerability")
+
+    for node in nodes:
+        if node["type"] != "vulnerability":
+            continue
+        affected = affected_assets_by_node.get(str(node["id"]), set())
+        node["data"]["affected_asset_count"] = len(affected)
+        if node["data"].get("status") == "confirmed":
+            node["data"]["severity"] = highest_severity_by_node.get(str(node["id"]), "info")
+        node["data"]["radius"] = 18 + min(len(affected), 12) * 3
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "focus_id": focus_id if focus_id in node_ids else None,
+        "filters": {
+            "business_system": business_system,
+            "subnet": subnet,
+            "asset_type": asset_type,
+            "vulnerability_identity": vulnerability_identity,
+            "candidate_status": candidate_status,
+            "recent_scan": recent_scan,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

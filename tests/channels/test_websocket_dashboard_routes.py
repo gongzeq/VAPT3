@@ -24,6 +24,7 @@ from secbot.channels.websocket import WebSocketChannel
 from secbot.cmdb import db as cmdb_db
 from secbot.cmdb import repo
 from secbot.cmdb.models import Base
+from secbot.session.manager import SessionManager
 
 pytestmark = pytest.mark.asyncio
 
@@ -354,7 +355,7 @@ async def test_asset_cluster_groups_by_system_and_folds_critical_into_high(
             target="crm-host",
             tags={"system": "CRM"},
         )
-        # Asset with no ``tags.system`` must be silently skipped.
+        # Asset with no ``tags.system`` is grouped under ``其他``.
         _orphan = await repo.upsert_asset(
             session, "local", scan_id=scan.id, target="orphan", tags={}
         )
@@ -391,13 +392,75 @@ async def test_asset_cluster_groups_by_system_and_folds_critical_into_high(
     )
     body = _body(resp)
     systems = {c["system"]: c for c in body["clusters"]}
-    # Only CRM is reported; ``tags.system=None`` asset is omitted per §2.5.
-    assert list(systems.keys()) == ["CRM"]
+    assert set(systems.keys()) == {"CRM", "其他"}
     crm_cluster = systems["CRM"]
     # ``critical`` folds into ``high`` (1 critical + 1 high = 2).
     assert crm_cluster["high"] == 2
     assert crm_cluster["medium"] == 0
     assert crm_cluster["low"] == 1
+    assert systems["其他"] == {"system": "其他", "high": 0, "medium": 0, "low": 0}
+
+
+async def test_asset_risk_topology_route_returns_graph_and_rejects_bad_subnet(
+    channel: WebSocketChannel, seeded_cmdb
+) -> None:
+    async with cmdb_db.get_session() as session:
+        scan = await repo.create_scan(session, "local", target="10.0.0.1")
+        asset = await repo.upsert_asset(
+            session,
+            "local",
+            scan_id=scan.id,
+            target="10.0.0.1",
+            tags={"system": "CRM", "type": "业务"},
+        )
+        await repo.upsert_service(
+            session,
+            "local",
+            asset_id=asset.id,
+            port=443,
+            protocol="tcp",
+            state="open",
+        )
+
+    resp = await channel._handle_dashboard_asset_risk_topology(
+        _Req("/api/dashboard/asset-risk-topology?business_system=CRM")
+    )
+    body = _body(resp)
+    assert resp.status_code == 200
+    assert [node["id"] for node in body["nodes"] if node["type"] == "asset"] == [
+        f"asset:{asset.id}"
+    ]
+    assert body["filters"]["business_system"] == "CRM"
+
+    bad = await channel._handle_dashboard_asset_risk_topology(
+        _Req("/api/dashboard/asset-risk-topology?subnet=bad-cidr")
+    )
+    assert bad.status_code == 400
+
+
+async def test_session_asset_auto_management_route_defaults_off_and_updates(
+    channel: WebSocketChannel, tmp_path: Path
+) -> None:
+    channel._session_manager = SessionManager(tmp_path)
+
+    default = channel._handle_session_asset_auto_management(
+        _Req("/api/sessions/websocket%3Achat-1/asset-auto-management"),
+        "websocket%3Achat-1",
+    )
+    assert default.status_code == 200
+    assert _body(default)["asset_auto_management"] is False
+
+    updated = channel._handle_session_asset_auto_management(
+        _Req("/api/sessions/websocket%3Achat-1/asset-auto-management?enabled=1"),
+        "websocket%3Achat-1",
+    )
+    assert _body(updated)["asset_auto_management"] is True
+
+    invalid = channel._handle_session_asset_auto_management(
+        _Req("/api/sessions/websocket%3Achat-1/asset-auto-management?enabled=maybe"),
+        "websocket%3Achat-1",
+    )
+    assert invalid.status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -473,8 +536,9 @@ async def test_agents_include_status_running_when_subagent_active(
     """A running ``SubagentStatus`` keyed by ``agent_name`` propagates as
     ``status='running'`` plus ``current_task_id`` + ISO ``last_heartbeat_at``.
     """
-    from secbot.agent.subagent import SubagentStatus
     import time as _time
+
+    from secbot.agent.subagent import SubagentStatus
 
     status = SubagentStatus(
         task_id="t-1",
