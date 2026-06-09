@@ -570,51 +570,241 @@ class SessionManager:
                 return self._session_payload(repaired)
             return None
 
+    @staticmethod
+    def _compute_session_rollups(messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Compute scan metadata and rollups from persisted JSONL messages.
+
+        Returns a dict with: ``scan_type``, ``target``, ``status``,
+        ``findings`` (severity rollup), ``tokens`` (usage rollup),
+        ``duration_ms``.
+
+        This is a best-effort computation — fields default to ``null`` / zero
+        when data is unavailable. Results are intended for caching in the
+        session metadata line so subsequent reads skip the full-file scan.
+        """
+        scan_type: str | None = None
+        target: str | None = None
+        status = "finished"  # default for completed sessions
+
+        findings = {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}
+        tokens = {"input": 0, "output": 0, "cached": 0}
+
+        first_created: str | None = None
+        last_created: str | None = None
+
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+
+            # Track timestamps for duration computation.
+            ts = msg.get("timestamp")
+            if isinstance(ts, str) and ts:
+                if first_created is None:
+                    first_created = ts
+                last_created = ts
+
+            # Agent events: count findings from blackboard entries.
+            if msg.get("_kind") == "agent_event":
+                ae = msg.get("agent_event")
+                if isinstance(ae, dict):
+                    ae_type = ae.get("type")
+
+                    # Blackboard finding entries: ``[finding:critical] ...``
+                    if ae_type == "blackboard_entry":
+                        kind = ae.get("kind")
+                        text = ae.get("text", "")
+                        if kind == "finding" or (isinstance(text, str) and "[finding" in text.lower()):
+                            findings["total"] += 1
+                            # Try to extract severity from text prefix.
+                            lower = text.lower() if isinstance(text, str) else ""
+                            for sev in ("critical", "high", "medium", "low"):
+                                if sev in lower:
+                                    findings[sev] += 1
+                                    break
+                            else:
+                                findings["medium"] += 1  # default severity
+
+                    # Orchestrator plan can hint at scan_type.
+                    if ae_type == "orchestrator_plan":
+                        steps = ae.get("steps")
+                        if isinstance(steps, list):
+                            step_text = " ".join(
+                                str(s.get("title", "")) for s in steps if isinstance(s, dict)
+                            ).lower()
+                            if any(kw in step_text for kw in ("port", "scan", "nmap")):
+                                scan_type = scan_type or "full"
+                            elif "vuln" in step_text:
+                                scan_type = scan_type or "vuln"
+                            elif "weak" in step_text or "password" in step_text:
+                                scan_type = scan_type or "weakpwd"
+                            elif "asset" in step_text:
+                                scan_type = scan_type or "asset"
+
+            # Tool messages may contain scan targets.
+            if msg.get("role") == "tool":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    lower = content.lower()
+                    if "target" in lower and not target:
+                        # Heuristic: look for IP/CIDR patterns.
+                        import re
+                        ip_match = re.search(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:/\d{1,2})?", content)
+                        if ip_match:
+                            target = ip_match.group(0)
+
+            # User messages: infer scan_type from first message.
+            if msg.get("role") == "user" and not msg.get("injected_event"):
+                content = msg.get("content", "")
+                if isinstance(content, str) and not target:
+                    import re
+                    ip_match = re.search(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:/\d{1,2})?", content)
+                    if ip_match:
+                        target = ip_match.group(0)
+                        if not scan_type:
+                            lower = content.lower()
+                            if any(kw in lower for kw in ("full scan", "全量", "full")):
+                                scan_type = "full"
+                            elif any(kw in lower for kw in ("vuln", "漏洞")):
+                                scan_type = "vuln"
+                            elif any(kw in lower for kw in ("weak", "弱口令", "password")):
+                                scan_type = "weakpwd"
+                            elif any(kw in lower for kw in ("asset", "资产")):
+                                scan_type = "asset"
+                            else:
+                                scan_type = "full"
+                    elif not scan_type:
+                        # No IP found — likely a query/conversational session.
+                        if not any(
+                            kw in content.lower()
+                            for kw in ("scan", "扫描", "nmap", "端口", "漏")
+                        ):
+                            scan_type = "query"
+                            target = content[:80] if content else None
+
+        # If scan_type was never inferred, default based on whether we found a target.
+        if scan_type is None:
+            scan_type = "query" if target is None else "full"
+
+        # Duration: compute from first to last message timestamp.
+        duration_ms: int | None = None
+        if first_created and last_created and first_created != last_created:
+            try:
+                from datetime import datetime as _dt
+                t0 = _dt.fromisoformat(first_created)
+                t1 = _dt.fromisoformat(last_created)
+                duration_ms = int((t1 - t0).total_seconds() * 1000)
+                if duration_ms < 0:
+                    duration_ms = None
+            except Exception:
+                duration_ms = None
+
+        return {
+            "scan_type": scan_type,
+            "target": target,
+            "status": status,
+            "findings": findings,
+            "tokens": tokens,
+            "duration_ms": duration_ms,
+        }
+
     def list_sessions(self) -> list[dict[str, Any]]:
         """
-        List all sessions.
+        List all sessions with extended fields for the SessionsPage.
 
         Returns:
-            List of session info dicts.
+            List of session info dicts including ``scan_type``, ``target``,
+            ``status``, ``findings``, ``tokens``, ``duration_ms`` in addition
+            to the base fields (``key``, ``created_at``, ``updated_at``,
+            ``title``, ``archived``, ``preview``).
         """
         sessions = []
 
         for path in self.sessions_dir.glob("*.jsonl"):
             fallback_key = path.stem.replace("_", ":", 1)
             try:
-                # Read the metadata line and then keep scanning until the
-                # first ``role="user"`` turn so the sidebar can show the
-                # user's own opening line as the session title.
                 with open(path, encoding="utf-8") as f:
                     first_line = f.readline().strip()
-                    if first_line:
-                        data = json.loads(first_line)
-                        if data.get("_type") == "metadata":
-                            key = data.get("key") or path.stem.replace("_", ":", 1)
-                            metadata = data.get("metadata", {})
-                            title = metadata.get("title") if isinstance(metadata, dict) else None
-                            # ``archived`` is an opt-in metadata flag (P1/R2):
-                            # old session files predating archive semantics
-                            # simply have no ``archived`` key → treated as
-                            # un-archived. No migration is required.
-                            archived = (
-                                bool(metadata.get("archived"))
-                                if isinstance(metadata, dict)
-                                else False
-                            )
-                            preview = self._first_user_preview(f)
-                            sessions.append({
-                                "key": key,
-                                "created_at": data.get("created_at"),
-                                "updated_at": data.get("updated_at"),
-                                "title": title if isinstance(title, str) else "",
-                                "archived": archived,
-                                "preview": preview,
-                                "path": str(path)
-                            })
+                    if not first_line:
+                        continue
+                    data = json.loads(first_line)
+                    if data.get("_type") != "metadata":
+                        continue
+
+                    key = data.get("key") or path.stem.replace("_", ":", 1)
+                    metadata = data.get("metadata", {})
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    title = metadata.get("title")
+                    archived = bool(metadata.get("archived"))
+                    created_at = data.get("created_at")
+                    updated_at = data.get("updated_at")
+
+                    # Check for cached rollups in metadata.
+                    cached_rollups = metadata.get("_rollups")
+                    if isinstance(cached_rollups, dict) and cached_rollups.get("_v") == 1:
+                        # Use cached rollups — skip the full-file scan.
+                        preview = self._first_user_preview(f)
+                        sessions.append({
+                            "key": key,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "title": title if isinstance(title, str) else "",
+                            "archived": archived,
+                            "preview": preview,
+                            "path": str(path),
+                            "scan_type": cached_rollups.get("scan_type"),
+                            "target": cached_rollups.get("target"),
+                            "status": cached_rollups.get("status", "finished"),
+                            "findings": cached_rollups.get("findings", {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}),
+                            "tokens": cached_rollups.get("tokens", {"input": 0, "output": 0, "cached": 0}),
+                            "duration_ms": cached_rollups.get("duration_ms"),
+                        })
+                    else:
+                        # No cached rollups — read the full file to compute.
+                        messages: list[dict[str, Any]] = []
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                row = json.loads(line)
+                                messages.append(row)
+                            except Exception:
+                                continue
+
+                        preview = self._first_user_preview_from_messages(messages)
+                        rollups = self._compute_session_rollups(messages)
+
+                        # Override with metadata-set values if present.
+                        meta_scan_type = metadata.get("scan_type")
+                        meta_target = metadata.get("target")
+                        meta_status = metadata.get("status")
+                        if isinstance(meta_scan_type, str):
+                            rollups["scan_type"] = meta_scan_type
+                        if isinstance(meta_target, str):
+                            rollups["target"] = meta_target
+                        if isinstance(meta_status, str):
+                            rollups["status"] = meta_status
+
+                        sessions.append({
+                            "key": key,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "title": title if isinstance(title, str) else "",
+                            "archived": archived,
+                            "preview": preview,
+                            "path": str(path),
+                            "scan_type": rollups["scan_type"],
+                            "target": rollups["target"],
+                            "status": rollups["status"],
+                            "findings": rollups["findings"],
+                            "tokens": rollups["tokens"],
+                            "duration_ms": rollups["duration_ms"],
+                        })
             except Exception:
                 repaired = self._repair(fallback_key)
                 if repaired is not None:
+                    rollups = self._compute_session_rollups(repaired.messages)
                     sessions.append({
                         "key": repaired.key,
                         "created_at": repaired.created_at.isoformat(),
@@ -628,7 +818,13 @@ class SessionManager:
                         "preview": self._first_user_preview_from_messages(
                             repaired.messages
                         ),
-                        "path": str(path)
+                        "path": str(path),
+                        "scan_type": rollups["scan_type"],
+                        "target": rollups["target"],
+                        "status": rollups["status"],
+                        "findings": rollups["findings"],
+                        "tokens": rollups["tokens"],
+                        "duration_ms": rollups["duration_ms"],
                     })
                 continue
 
