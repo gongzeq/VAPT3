@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Database } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { AskUserPrompt } from "@/components/thread/AskUserPrompt";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { CumulativeUsageBar } from "@/components/TokenUsageBadge";
 import { ThreadViewport } from "@/components/thread/ThreadViewport";
-import { QuickPrompts } from "@/components/QuickPrompts";
-import { Switch } from "@/components/ui/switch";
+import { ScanQuickStart } from "@/components/ScanQuickStart";
+import { AssetAutoManagementSwitch } from "@/components/AssetAutoManagementSwitch";
 import { useNanobotStream } from "@/hooks/useNanobotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
-import {
-  fetchAssetAutoManagement,
-  listSlashCommands,
-  setAssetAutoManagement,
-} from "@/lib/api";
+import { listSlashCommands } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { ChatSummary, SlashCommand, UIMessage } from "@/lib/types";
 import { useClient } from "@/providers/ClientProvider";
 
@@ -49,6 +46,7 @@ export function ThreadShell({
   session,
   title,
   onToggleSidebar,
+  onNewChat,
   onCreateChat,
   onTurnEnd,
   onOpenSettings = () => {},
@@ -71,8 +69,6 @@ export function ThreadShell({
   const { messages: historical, loading } = useSessionHistory(historyKey);
   const { client, modelName, token } = useClient();
   const [booting, setBooting] = useState(false);
-  const [assetAutoManagement, setAssetAutoManagementState] = useState(false);
-  const [assetAutoManagementBusy, setAssetAutoManagementBusy] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const pendingFirstRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
@@ -160,26 +156,6 @@ export function ThreadShell({
   }, [chatId, send]);
 
   useEffect(() => {
-    if (!historyKey) {
-      setAssetAutoManagementState(false);
-      return;
-    }
-    let cancelled = false;
-    fetchAssetAutoManagement(token, historyKey)
-      .then((state) => {
-        if (!cancelled) {
-          setAssetAutoManagementState(Boolean(state.asset_auto_management));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAssetAutoManagementState(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [historyKey, token]);
-
-  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -208,24 +184,18 @@ export function ThreadShell({
     [booting, onCreateChat],
   );
 
-  const handleAssetAutoManagementChange = useCallback(
-    (enabled: boolean) => {
-      if (!historyKey || assetAutoManagementBusy) return;
-      const previous = assetAutoManagement;
-      setAssetAutoManagementState(enabled);
-      setAssetAutoManagementBusy(true);
-      setAssetAutoManagement(token, historyKey, enabled)
-        .then((state) => {
-          setAssetAutoManagementState(Boolean(state.asset_auto_management));
-        })
-        .catch(() => {
-          setAssetAutoManagementState(previous);
-        })
-        .finally(() => {
-          setAssetAutoManagementBusy(false);
-        });
+  /** Scenario buttons / hero composer dispatcher. When a chat already
+   * exists we send straight away; otherwise we go through the same
+   * `onCreateChat -> queued first send` dance as the welcome composer. */
+  const handleScanSubmit = useCallback(
+    (prompt: string) => {
+      if (session) {
+        send(prompt);
+      } else {
+        void handleWelcomeSend(prompt);
+      }
     },
-    [assetAutoManagement, assetAutoManagementBusy, historyKey, token],
+    [handleWelcomeSend, send, session],
   );
 
 
@@ -236,24 +206,6 @@ export function ThreadShell({
           error={streamError}
           onDismiss={dismissStreamError}
         />
-      ) : null}
-      <CumulativeUsageBar usage={cumulativeUsage} />
-      {session ? (
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between rounded-lg border border-border/70 bg-card/55 px-3 py-2 text-sm">
-          <div className="flex min-w-0 items-center gap-2">
-            <Database className="h-4 w-4 shrink-0 text-primary" />
-            <span className="truncate text-foreground">纳管资产</span>
-            <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
-              {assetAutoManagement ? "开启" : "关闭"}
-            </span>
-          </div>
-          <Switch
-            checked={assetAutoManagement}
-            disabled={assetAutoManagementBusy}
-            onCheckedChange={handleAssetAutoManagementChange}
-            aria-label="纳管资产"
-          />
-        </div>
       ) : null}
       {pendingAsk ? (
         <AskUserPrompt
@@ -317,35 +269,48 @@ export function ThreadShell({
       {t("thread.loadingConversation")}
     </div>
   ) : (
-    <>
-      <div className="flex flex-col items-center justify-center gap-4 pt-2 animate-fade-in-up">
-        {/* 品牌 logo — 与左上角 Navbar 一致 */}
-        <div className="relative">
-          <span
-            aria-hidden
-            className="absolute inset-0 -z-10 rounded-3xl bg-primary/25 blur-2xl"
-          />
-          <img
-            src="/brand/logo.png"
-            alt=""
-            className="relative h-20 w-20 rounded-3xl ring-1 ring-primary/25 shadow-glow"
-          />
-        </div>
-        <div className="flex flex-col items-center gap-2 text-center">
-          <span className="brand-zh brand-zh-hero text-3xl">粤海智盾</span>
-          <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-            {t("home.hero.tagline", {
-              defaultValue: "AI 驱动的智能安全运营平台 · 资产·漏洞·合规一体化",
-            })}
-          </p>
-        </div>
-      </div>
-      <QuickPrompts className="w-full" />
-    </>
+    <ScanQuickStart
+      onSubmit={handleScanSubmit}
+      busy={booting || isStreaming}
+      className="w-full"
+      assetSlot={
+        <AssetAutoManagementSwitch
+          historyKey={historyKey}
+          token={token}
+          compact
+        />
+      }
+    />
   );
 
   return (
     <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {session ? (
+        <div className="sticky top-0 z-10 flex flex-col border-b border-border/60 bg-card/80 backdrop-blur">
+          <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
+            {onNewChat ? (
+              <button
+                type="button"
+                onClick={onNewChat}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2.5 py-1 text-xs font-medium",
+                  "text-muted-foreground transition-colors",
+                  "hover:border-primary/40 hover:bg-primary/10 hover:text-foreground",
+                )}
+                aria-label={t("thread.newChat", { defaultValue: "新建对话" })}
+                title={t("thread.newChat", { defaultValue: "新建对话" })}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("thread.newChat", { defaultValue: "新建对话" })}
+              </button>
+            ) : null}
+            <span className="ml-1 truncate text-xs font-medium text-foreground/80">
+              {title}
+            </span>
+          </div>
+          <CumulativeUsageBar usage={cumulativeUsage} variant="sticky" />
+        </div>
+      ) : null}
       <ThreadViewport
         messages={messages}
         isStreaming={isStreaming}

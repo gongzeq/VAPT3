@@ -14,12 +14,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
+import { ArrowRight, ClipboardList, ShieldCheck } from "lucide-react";
 import { useClient } from "@/providers/ClientProvider";
-import {
-  fetchLogAnalysisLatest,
-  type LogAnalysisLatest,
-} from "@/lib/log-analysis-client";
+import { fetchLogAnalysisLatest, type LogAnalysisLatest } from "@/lib/log-analysis-client";
 import { cn } from "@/lib/utils";
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -101,9 +98,7 @@ export function LogAnalysisSummaryCard() {
         <h2 className="text-base font-semibold">
           {t("logAnalysis.title", { defaultValue: "日志安全分析" })}
         </h2>
-        <span className="text-xs text-muted-foreground">
-          log-analysis workflow
-        </span>
+        <span className="text-xs text-muted-foreground">log-analysis workflow</span>
       </div>
 
       <button
@@ -113,25 +108,21 @@ export function LogAnalysisSummaryCard() {
       >
         {/* Hero metric — anomaly count */}
         <div className="lg:col-span-2 flex items-center gap-4">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-alert-success/15 border border-alert-success/30"
-          >
-            📋
+          <div className="icon-surface icon-surface-success h-12 w-12 rounded-xl">
+            <ClipboardList className="h-6 w-6" />
           </div>
           <div>
             {loading ? (
               <div className="space-y-2">
-                <div className="h-7 w-12 bg-white/10 rounded animate-pulse" />
-                <div className="h-3 w-16 bg-white/5 rounded animate-pulse" />
+                <div className="h-7 w-12 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-16 animate-pulse rounded bg-muted/70" />
               </div>
             ) : (
               <>
                 <p className="text-3xl font-bold tracking-tight font-mono text-alert-success">
-                  {hasData ? latest?.total_entries ?? "—" : "—"}
+                  {hasData ? (latest?.total_entries ?? "—") : "—"}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  已检测总条目
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">已检测总条目</p>
               </>
             )}
           </div>
@@ -141,8 +132,8 @@ export function LogAnalysisSummaryCard() {
         <div className="lg:col-span-3">
           {loading ? (
             <div className="space-y-2">
-              <div className="h-4 w-32 bg-white/10 rounded animate-pulse" />
-              <div className="h-3 w-24 bg-white/5 rounded animate-pulse" />
+              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-24 animate-pulse rounded bg-muted/70" />
             </div>
           ) : hasData ? (
             <>
@@ -164,8 +155,8 @@ export function LogAnalysisSummaryCard() {
         <div className="lg:col-span-4 flex items-center gap-2 flex-wrap">
           {loading ? (
             <div className="flex gap-2">
-              <div className="h-6 w-14 bg-white/10 rounded-full animate-pulse" />
-              <div className="h-6 w-14 bg-white/5 rounded-full animate-pulse" />
+              <div className="h-6 w-14 animate-pulse rounded-full bg-muted" />
+              <div className="h-6 w-14 animate-pulse rounded-full bg-muted/70" />
             </div>
           ) : hasData ? (
             sevTags.length > 0 ? (
@@ -174,19 +165,17 @@ export function LogAnalysisSummaryCard() {
                   key={t.key}
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium",
-                    SEV_COLORS[t.key] || "bg-white/5 text-muted-foreground",
+                    SEV_COLORS[t.key] || "bg-muted/40 text-muted-foreground",
                   )}
                 >
                   {SEV_LABELS[t.key] || t.key} {t.count}
                 </span>
               ))
             ) : (
-              <span className="text-xs text-muted-foreground">
-                无严重级别分布
-              </span>
+              <span className="text-xs text-muted-foreground">无严重级别分布</span>
             )
           ) : (
-            <span className="inline-flex items-center rounded-full border border-border/40 bg-white/5 px-2.5 py-0.5 text-[10px] text-muted-foreground">
+            <span className="inline-flex items-center rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 text-[10px] text-muted-foreground">
               无数据
             </span>
           )}
@@ -195,7 +184,7 @@ export function LogAnalysisSummaryCard() {
         {/* Suggested action + arrow */}
         <div className="lg:col-span-3 flex items-center justify-between gap-2">
           {loading ? (
-            <div className="h-4 w-16 bg-white/10 rounded animate-pulse" />
+            <div className="h-4 w-16 animate-pulse rounded bg-muted" />
           ) : hasData ? (
             <span className="text-xs text-muted-foreground truncate">
               {latest?.suggested_action || "—"}
@@ -205,7 +194,7 @@ export function LogAnalysisSummaryCard() {
           )}
           <div className="flex items-center gap-2 shrink-0">
             <ShieldCheck className="h-4 w-4 text-alert-success" />
-            <span className="text-alert-success text-sm">→</span>
+            <ArrowRight className="h-4 w-4 text-alert-success" />
           </div>
         </div>
       </button>

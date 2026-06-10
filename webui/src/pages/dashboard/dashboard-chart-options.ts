@@ -6,14 +6,7 @@
  */
 
 import { useMemo } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  Bot,
-  CheckCircle2,
-  Server,
-  ShieldAlert,
-} from "lucide-react";
+import { Activity, AlertTriangle, Bot, CheckCircle2, Server, ShieldAlert } from "lucide-react";
 import {
   assetCluster,
   assetDistribution,
@@ -38,14 +31,14 @@ export const ICON_MAP: Record<string, React.ComponentType<{ className?: string }
   ShieldAlert,
 };
 
-/** @description Map of KPI colour tokens to Tailwind text-colour classes. */
+/** @description Map of KPI colour tokens to token-driven icon surface classes. */
 export const COLOR_MAP: Record<KpiItem["color"], string> = {
-  ocean: "text-ocean-500",
-  emerald: "text-emerald-400",
-  amber: "text-amber-400",
-  rose: "text-rose-400",
-  violet: "text-violet-400",
-  slate: "text-slate-400",
+  ocean: "icon-surface-brand",
+  emerald: "icon-surface-success",
+  amber: "icon-surface-warning",
+  rose: "icon-surface-danger",
+  violet: "icon-surface-brand",
+  slate: "icon-surface-muted",
 };
 
 /** @description Map of report status labels to Tailwind badge classes. */
@@ -70,11 +63,7 @@ export function useRiskTrendOption(days: 7 | 30 | 90) {
   return useMemo(() => {
     const data = days === 7 ? riskTrend7 : days === 30 ? riskTrend30 : riskTrend90;
     const dates = data.map((d) => d.date);
-    const makeSeries = (
-      name: string,
-      key: keyof (typeof data)[0],
-      color: string,
-    ) => ({
+    const makeSeries = (name: string, key: keyof (typeof data)[0], color: string) => ({
       name,
       type: "line" as const,
       smooth: true,
@@ -173,15 +162,9 @@ export function useAssetPieOption() {
           data: assetDistribution.map((d, i) => ({
             ...d,
             itemStyle: {
-              color: [
-                "#0ea5e9",
-                "#10b981",
-                "#8b5cf6",
-                "#f97316",
-                "#06b6d4",
-                "#f59e0b",
-                "#64748b",
-              ][i],
+              color: ["#0ea5e9", "#10b981", "#8b5cf6", "#f97316", "#06b6d4", "#f59e0b", "#64748b"][
+                i
+              ],
             },
           })),
         },
@@ -228,14 +211,7 @@ export function useVulnPieOption() {
           data: vulnDistribution.map((d, i) => ({
             ...d,
             itemStyle: {
-              color: [
-                "#ef4444",
-                "#f59e0b",
-                "#1E90FF",
-                "#06b6d4",
-                "#a855f7",
-                "#64748b",
-              ][i],
+              color: ["#ef4444", "#f59e0b", "#1E90FF", "#06b6d4", "#a855f7", "#64748b"][i],
             },
           })),
         },

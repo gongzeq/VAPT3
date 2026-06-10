@@ -711,6 +711,12 @@ class WebSocketChannel(BaseChannel):
         if got == "/api/assets":
             return await self._handle_assets(request)
 
+        if got == "/api/public-assets":
+            return await self._handle_public_asset_discovery_workspace(request)
+
+        if got == "/api/white-box":
+            return await self._handle_white_box_workspace(request)
+
         if got == "/api/settings":
             return self._handle_settings(request)
 
@@ -1071,6 +1077,62 @@ class WebSocketChannel(BaseChannel):
         except Exception:
             self.logger.exception("asset feed snapshot failed for chat_id={}", chat_id)
             return _http_json_response(empty)
+
+    async def _handle_public_asset_discovery_workspace(self, request: WsRequest) -> Response:
+        """Return the passive Public Asset Discovery Workspace snapshot."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api.security_workspaces import public_asset_discovery_snapshot
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        query = _parse_query(request.path)
+        scope_raw = (_query_first(query, "scope_id") or "").strip()
+        status = (_query_first(query, "status") or "").strip() or None
+        scope_id: int | None = None
+        if scope_raw:
+            try:
+                scope_id = int(scope_raw)
+            except ValueError:
+                return _http_error(400, "scope_id must be an integer")
+        try:
+            async with get_session() as session:
+                payload = await public_asset_discovery_snapshot(
+                    session,
+                    DEFAULT_ACTOR,
+                    scope_id=scope_id,
+                    candidate_status=status,
+                )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("public asset discovery workspace snapshot failed")
+            return _http_error(500, "public asset discovery unavailable")
+        return _http_json_response(payload)
+
+    async def _handle_white_box_workspace(self, request: WsRequest) -> Response:
+        """Return the White-Box Workspace snapshot."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from secbot.api.security_workspaces import white_box_workspace_snapshot
+        from secbot.cmdb.db import get_session
+        from secbot.cmdb.models import DEFAULT_ACTOR
+
+        query = _parse_query(request.path)
+        assessment_id = (_query_first(query, "assessment_id") or "").strip() or None
+        try:
+            async with get_session() as session:
+                payload = await white_box_workspace_snapshot(
+                    session,
+                    DEFAULT_ACTOR,
+                    assessment_id=assessment_id,
+                )
+        except ValueError as exc:
+            return _http_error(400, str(exc))
+        except Exception:
+            self.logger.exception("white-box workspace snapshot failed")
+            return _http_error(500, "white-box workspace unavailable")
+        return _http_json_response(payload)
 
     def _settings_payload(self, *, requires_restart: bool = False) -> dict[str, Any]:
         from secbot.config.loader import get_config_path, load_config

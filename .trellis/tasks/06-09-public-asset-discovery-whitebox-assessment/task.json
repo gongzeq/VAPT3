@@ -1,0 +1,30 @@
+{
+  "id": "public-asset-discovery-whitebox-assessment",
+  "name": "public-asset-discovery-whitebox-assessment",
+  "title": "公网资产发现与白盒评估",
+  "description": "Add passive public asset discovery for FOFA/Quake/Shodan and an independent white-box source assessment workspace.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "shan",
+  "assignee": "shan",
+  "createdAt": "2026-06-09",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "labels": [
+      "needs-triage"
+    ]
+  }
+}

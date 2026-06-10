@@ -599,12 +599,13 @@ class SubagentManager:
             # Inherit the parent loop's scan_id so ALL CMDB writes within a
             # scan session (orchestrator + all subagents) share one scan
             # record.  This is essential for report-html which queries by
-            # scan_id.  The scan_dir stays per-subagent (task_id) so raw logs
-            # are isolated.
+            # scan_id.  scan_dir also uses scan_id (not task_id) so all
+            # artifacts — raw logs, reports — are grouped under one folder
+            # per chat session: .secbot/scans/<scan_id>/.
             parent_scan_id = current_scan_id()
             bind_skill_context(
                 scan_id=parent_scan_id,
-                scan_dir=self.workspace / ".secbot" / "scans" / task_id,
+                scan_dir=self.workspace / ".secbot" / "scans" / parent_scan_id,
                 confirm=parent_confirm,
                 asset_auto_management_enabled=parent_asset_auto_management,
             )
@@ -674,6 +675,34 @@ class SubagentManager:
                     status="error",
                     current_task_id=None,
                 )
+            elif result.stop_reason in ("max_iterations", "context_exhausted"):
+                # Interrupted: report with incomplete status so parent knows
+                # the task was not finished and may choose to re-dispatch.
+                interrupt_summary = (
+                    result.final_content
+                    or f"Subagent interrupted ({result.stop_reason}): "
+                       "no summary available."
+                )
+                reason_label = (
+                    "工具调用轮次耗尽" if result.stop_reason == "max_iterations"
+                    else "上下文窗口已满"
+                )
+                logger.warning(
+                    "Subagent [{}] interrupted: {} — reporting incomplete",
+                    task_id, reason_label,
+                )
+                await self._announce_result(
+                    task_id, label, task,
+                    f"[任务未完成 — {reason_label}]\n\n{interrupt_summary}",
+                    origin, "incomplete", origin_message_id,
+                    agent_name=resolved_agent_name,
+                )
+                await self._broadcast_agent_status(
+                    origin=origin,
+                    agent_name=resolved_agent_name,
+                    status="incomplete",
+                    current_task_id=None,
+                )
             else:
                 final_result = result.final_content or "Task completed but no final response was generated."
                 logger.info("Subagent [{}] completed successfully", task_id)
@@ -716,7 +745,12 @@ class SubagentManager:
         agent_name: str | None = None,
     ) -> None:
         """Announce the subagent result to the main agent via the message bus."""
-        status_text = "completed successfully" if status == "ok" else "failed"
+        if status == "ok":
+            status_text = "completed successfully"
+        elif status == "incomplete":
+            status_text = "interrupted (task not completed — see summary below)"
+        else:
+            status_text = "failed"
 
         announce_content = render_template(
             "agent/subagent_announce.md",

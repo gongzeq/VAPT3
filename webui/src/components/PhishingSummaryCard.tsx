@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
+import { ArrowRight, MailWarning } from "lucide-react";
 import { useClient } from "@/providers/ClientProvider";
 import {
   fetchPhishingHealth,
@@ -40,7 +41,7 @@ function healthBadge(health: PhishingHealth | null): {
   if (!health) {
     return {
       label: "—",
-      cls: "border border-border/40 text-muted-foreground bg-white/5",
+      cls: "border border-border/40 text-muted-foreground bg-muted/40",
     };
   }
   const statuses = health.components.map((c) => (c.status || "").toLowerCase());
@@ -77,10 +78,7 @@ export function PhishingSummaryCard() {
     let cancelled = false;
     (async () => {
       try {
-        const [s, h] = await Promise.all([
-          fetchPhishingSummary(token),
-          fetchPhishingHealth(token),
-        ]);
+        const [s, h] = await Promise.all([fetchPhishingSummary(token), fetchPhishingHealth(token)]);
         if (cancelled) return;
         setSummary(s);
         setHealth(h);
@@ -140,9 +138,7 @@ export function PhishingSummaryCard() {
   }, [summary]);
 
   const phishingRate =
-    summary && summary.today_total > 0
-      ? (summary.today_phishing / summary.today_total) * 100
-      : 0;
+    summary && summary.today_total > 0 ? (summary.today_phishing / summary.today_total) * 100 : 0;
 
   const badge = healthBadge(health);
   const todayPhishing = summary?.today_phishing ?? 0;
@@ -156,9 +152,7 @@ export function PhishingSummaryCard() {
         <h2 className="text-base font-semibold">
           {t("phishing.title", { defaultValue: "钓鱼邮件检测" })}
         </h2>
-        <span className="text-xs text-muted-foreground">
-          phishing-email workflow
-        </span>
+        <span className="text-xs text-muted-foreground">phishing-email workflow</span>
       </div>
 
       <button
@@ -168,10 +162,8 @@ export function PhishingSummaryCard() {
       >
         {/* Hero metric */}
         <div className="lg:col-span-3 flex items-center gap-4">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-destructive/15 border border-destructive/30"
-          >
-            🎣
+          <div className="icon-surface icon-surface-danger h-12 w-12 rounded-xl">
+            <MailWarning className="h-6 w-6" />
           </div>
           <div>
             <p className="text-2xl font-bold tracking-tight font-mono text-destructive">
@@ -194,8 +186,7 @@ export function PhishingSummaryCard() {
               })}
             </span>
             <span className="text-xs text-muted-foreground">
-              {t("phishing.summary.rate", { defaultValue: "钓鱼率" })}{" "}
-              {phishingRate.toFixed(2)}%
+              {t("phishing.summary.rate", { defaultValue: "钓鱼率" })} {phishingRate.toFixed(2)}%
             </span>
           </div>
           <div className="h-14 overflow-hidden">
@@ -227,10 +218,8 @@ export function PhishingSummaryCard() {
 
         {/* Status / arrow */}
         <div className="lg:col-span-1 flex items-center justify-end gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-[10px] ${badge.cls}`}>
-            {badge.label}
-          </span>
-          <span className="text-ocean-400 text-sm">→</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] ${badge.cls}`}>{badge.label}</span>
+          <ArrowRight className="h-4 w-4 text-primary" />
         </div>
       </button>
 

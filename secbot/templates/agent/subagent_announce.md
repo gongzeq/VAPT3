@@ -11,6 +11,12 @@ result explicitly says `[tool output persisted]` with a saved path.
 In that case, use `read_file` on the saved path for the full output.
 
 Decide the next action according to the system routing rules:
+- If the subagent was **interrupted** (status includes "interrupted" or
+  "not completed"), the task is unfinished. Evaluate the summary:
+  - If the remaining work is actionable, re-dispatch a new subagent with
+    the summary as context to continue from where it left off.
+  - If the blocker is external (e.g. network, permission), report the
+    blocker to the user and await instructions.
 - If the subagent completed a scan stage, check whether the next stage
   in the pipeline should run. Do NOT skip to the report until ALL
   stages have finished or errored.

@@ -28,6 +28,8 @@ import { LoginPage } from "@/pages/LoginPage";
 import { PhishingDetailPage } from "@/pages/PhishingDetailPage";
 import { LogAnalysisDetailPage } from "@/pages/LogAnalysisDetailPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { SessionsPage } from "@/pages/SessionsPage";
+import { SessionDetailPage } from "@/pages/SessionDetailPage";
 import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { WorkflowListPage } from "@/pages/WorkflowListPage";
 import { WorkflowDetailPage } from "@/pages/WorkflowDetailPage";
@@ -242,6 +244,8 @@ export default function App() {
               }
             />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/sessions" element={<SessionsPage />} />
+            <Route path="/session/:key" element={<SessionDetailPage />} />
             <Route
               path="/dashboard/phishing"
               element={<PhishingDetailPage />}

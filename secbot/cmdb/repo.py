@@ -15,6 +15,7 @@ Hard rules (per `.trellis/spec/backend/cmdb-schema.md` §3 + §4):
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import re
 import secrets
@@ -23,25 +24,43 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional, Sequence
 from urllib.parse import urlparse
 
-from sqlalchemy import case, func, literal_column, select
+from sqlalchemy import case, exists, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from secbot.cmdb.models import (
     DEFAULT_ACTOR,
     REPORT_STATUS_TRANSITIONS,
     VALID_ASSET_TYPES,
+    VALID_PUBLIC_ASSET_CANDIDATE_STATUSES,
+    VALID_PUBLIC_ASSET_SEARCH_SOURCES,
+    VALID_PUBLIC_DISCOVERY_CADENCES_HOURS,
     VALID_REPORT_STATUSES,
     VALID_REPORT_TYPES,
     VALID_SCAN_STATUSES,
     VALID_SEVERITIES,
+    VALID_SOURCE_PACKAGE_FORMATS,
     VALID_VULN_CANDIDATE_STATUSES,
     VALID_VULN_CATEGORIES,
+    VALID_WHITE_BOX_ASSESSMENT_STATUSES,
+    VALID_WHITE_BOX_CONFIDENCES,
+    VALID_WHITE_BOX_FINDING_STATUSES,
+    WHITE_BOX_ASSESSMENT_TRANSITIONS,
     Asset,
+    AssetSearchRule,
+    ExternalAssetSearchCredential,
+    OrganizationScope,
+    PublicAssetCandidate,
+    PublicAssetEvidence,
     ReportMeta,
+    ScheduledPublicAssetDiscovery,
     Scan,
     Service,
     Vulnerability,
     VulnerabilityCandidate,
+    WhiteBoxAssessment,
+    WhiteBoxEvidence,
+    WhiteBoxFinding,
+    WhiteBoxReproductionDocument,
 )
 
 _logger = logging.getLogger(__name__)
@@ -175,6 +194,76 @@ async def list_scans(
     return list((await session.execute(stmt)).scalars().all())
 
 
+async def find_latest_scan_with_assets(
+    session: AsyncSession,
+    actor_id: str,
+    target: str,
+) -> Optional[Scan]:
+    """Find the most recent scan for *actor_id* that has at least one asset
+    matching *target* (host-level fuzzy match).
+
+    Used by the report pipeline when the current session's ``scan_id`` has no
+    CMDB data — e.g. the user requests a report in a new chat session for a
+    target that was scanned in a previous session.
+
+    Matching strategy (most specific first):
+
+    1. ``scan.target`` exactly equals *target*
+    2. ``scan.target`` contains the host extracted from *target* (URL-aware)
+    3. An ``asset`` row exists whose ``target`` or ``ip`` matches the host
+
+    Returns ``None`` when no qualifying scan is found.
+    """
+    # Extract the host component from *target* (handles URLs like
+    # ``http://1.2.3.4:8080/path``).  Falls back to the raw value.
+    host = target
+    try:
+        parsed = urlparse(target)
+        if parsed.hostname:
+            host = parsed.hostname
+    except Exception:
+        pass
+
+    # Subquery: does this scan have at least one asset?
+    has_assets = exists().where(
+        Asset.scan_id == Scan.id,
+    )
+
+    # Subquery: does this scan have an asset whose target/ip matches host?
+    has_matching_asset = exists().where(
+        Asset.scan_id == Scan.id,
+        (Asset.target == host) | (Asset.ip == host) |
+        (Asset.target.contains(host)) | (Asset.hostname.contains(host)),
+    )
+
+    # Priority 1+2: scan.target matches → pick the one with assets.
+    stmt = (
+        select(Scan)
+        .where(
+            Scan.actor_id == actor_id,
+            (Scan.target == target) | (Scan.target.contains(host)),
+            has_assets,
+        )
+        .order_by(Scan.created_at.desc())
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is not None:
+        return row
+
+    # Priority 3: asset-level match (scan.target may be unrelated text).
+    stmt = (
+        select(Scan)
+        .where(
+            Scan.actor_id == actor_id,
+            has_matching_asset,
+        )
+        .order_by(Scan.created_at.desc())
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
 async def update_scan_status(
     session: AsyncSession,
     actor_id: str,
@@ -211,7 +300,7 @@ async def upsert_asset(
     session: AsyncSession,
     actor_id: str,
     *,
-    scan_id: str,
+    scan_id: Optional[str],
     target: str,
     ip: Optional[str] = None,
     hostname: Optional[str] = None,
@@ -707,6 +796,1257 @@ async def verify_vulnerability_candidate(
     candidate.updated_at = _utcnow()
     await session.flush()
     return candidate, vuln
+
+
+# ---------------------------------------------------------------------------
+# Public asset discovery
+# ---------------------------------------------------------------------------
+
+
+def normalize_external_asset_search_source(source: str) -> str:
+    """Return canonical external search source name.
+
+    Only FOFA, Quake, and Shodan are accepted so caller typos cannot create
+    inconsistent source buckets.
+    """
+
+    raw = (source or "").strip().lower()
+    aliases = {"fofa": "FOFA", "quake": "Quake", "shodan": "Shodan"}
+    canonical = aliases.get(raw)
+    if canonical is None:
+        raise ValueError(
+            f"invalid external asset search source {source!r}; expected one of "
+            f"{sorted(VALID_PUBLIC_ASSET_SEARCH_SOURCES)}"
+        )
+    return canonical
+
+
+def public_asset_identity_host(value: str | None) -> str:
+    """Normalize a source-returned host/domain for per-scope candidate dedupe."""
+
+    host = _normalise_host_token(value)
+    if not host:
+        raise ValueError("public asset candidate host is required")
+    return host
+
+
+def _clean_string_list(values: Sequence[Any] | None) -> list[str] | None:
+    cleaned = [str(v).strip() for v in (values or []) if str(v).strip()]
+    return cleaned or None
+
+
+def _serialize_dt(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def organization_scope_to_dict(scope: OrganizationScope) -> dict[str, Any]:
+    """Serialize an Organization Scope for API/UI use."""
+
+    return {
+        "id": scope.id,
+        "name": scope.name,
+        "aliases": scope.aliases or [],
+        "root_domains": scope.root_domains or [],
+        "icp_subjects": scope.icp_subjects or [],
+        "certificate_subjects": scope.certificate_subjects or [],
+        "asns": scope.asns or [],
+        "ip_ranges": scope.ip_ranges or [],
+        "include_terms": scope.include_terms or [],
+        "exclude_terms": scope.exclude_terms or [],
+        "notes": scope.notes,
+        "created_at": _serialize_dt(scope.created_at),
+        "updated_at": _serialize_dt(scope.updated_at),
+    }
+
+
+def asset_search_rule_to_dict(rule: AssetSearchRule) -> dict[str, Any]:
+    """Serialize an Asset Search Rule for API/UI use."""
+
+    return {
+        "id": rule.id,
+        "scope_id": rule.scope_id,
+        "source": rule.source,
+        "query": rule.query,
+        "enabled": bool(rule.enabled),
+        "notes": rule.notes,
+        "created_at": _serialize_dt(rule.created_at),
+        "updated_at": _serialize_dt(rule.updated_at),
+    }
+
+
+def public_asset_evidence_to_dict(evidence: PublicAssetEvidence) -> dict[str, Any]:
+    """Serialize Public Asset Evidence without promoting ports into services."""
+
+    return {
+        "id": evidence.id,
+        "candidate_id": evidence.candidate_id,
+        "rule_id": evidence.rule_id,
+        "source": evidence.source,
+        "observed_host": evidence.observed_host,
+        "port": evidence.port,
+        "protocol": evidence.protocol,
+        "url": evidence.url,
+        "title": evidence.title,
+        "banner": evidence.banner,
+        "certificate": evidence.certificate,
+        "raw": evidence.raw,
+        "observed_at": _serialize_dt(evidence.observed_at),
+        "created_at": _serialize_dt(evidence.created_at),
+    }
+
+
+def public_asset_candidate_to_dict(
+    candidate: PublicAssetCandidate,
+    *,
+    evidence: Sequence[PublicAssetEvidence] | None = None,
+) -> dict[str, Any]:
+    """Serialize a Public Asset Candidate and optional evidence list."""
+
+    return {
+        "id": candidate.id,
+        "scope_id": candidate.scope_id,
+        "normalized_host": candidate.normalized_host,
+        "display_host": candidate.display_host,
+        "status": candidate.status,
+        "managed_asset_id": candidate.managed_asset_id,
+        "review_note": candidate.review_note,
+        "first_seen_at": _serialize_dt(candidate.first_seen_at),
+        "last_seen_at": _serialize_dt(candidate.last_seen_at),
+        "created_at": _serialize_dt(candidate.created_at),
+        "updated_at": _serialize_dt(candidate.updated_at),
+        "evidence": [public_asset_evidence_to_dict(row) for row in (evidence or [])],
+    }
+
+
+async def create_organization_scope(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    name: str,
+    aliases: Sequence[Any] | None = None,
+    root_domains: Sequence[Any] | None = None,
+    icp_subjects: Sequence[Any] | None = None,
+    certificate_subjects: Sequence[Any] | None = None,
+    asns: Sequence[Any] | None = None,
+    ip_ranges: Sequence[Any] | None = None,
+    include_terms: Sequence[Any] | None = None,
+    exclude_terms: Sequence[Any] | None = None,
+    notes: str | None = None,
+    create_default_rules: bool = True,
+) -> OrganizationScope:
+    """Create an Organization Scope.
+
+    The only required user field is ``name``. Optional ownership clues can be
+    filled later to improve precision.
+    """
+
+    actor = actor_id or DEFAULT_ACTOR
+    clean_name = (name or "").strip()
+    if not clean_name:
+        raise ValueError("organization scope name is required")
+    scope = OrganizationScope(
+        actor_id=actor,
+        name=clean_name,
+        aliases=_clean_string_list(aliases),
+        root_domains=_clean_string_list(root_domains),
+        icp_subjects=_clean_string_list(icp_subjects),
+        certificate_subjects=_clean_string_list(certificate_subjects),
+        asns=_clean_string_list(asns),
+        ip_ranges=_clean_string_list(ip_ranges),
+        include_terms=_clean_string_list(include_terms),
+        exclude_terms=_clean_string_list(exclude_terms),
+        notes=(notes or "").strip() or None,
+    )
+    session.add(scope)
+    await session.flush()
+    if create_default_rules:
+        await create_default_asset_search_rules(session, actor, scope.id)
+    return scope
+
+
+async def list_organization_scopes(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    limit: int = 200,
+) -> Sequence[OrganizationScope]:
+    """List Organization Scopes for one actor."""
+
+    stmt = (
+        select(OrganizationScope)
+        .where(OrganizationScope.actor_id == (actor_id or DEFAULT_ACTOR))
+        .order_by(OrganizationScope.updated_at.desc(), OrganizationScope.id.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_organization_scope(
+    session: AsyncSession,
+    actor_id: str,
+    scope_id: int,
+) -> OrganizationScope | None:
+    """Return one Organization Scope by id, actor-scoped."""
+
+    stmt = select(OrganizationScope).where(
+        OrganizationScope.actor_id == (actor_id or DEFAULT_ACTOR),
+        OrganizationScope.id == scope_id,
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+def default_asset_search_queries(scope_name: str) -> dict[str, str]:
+    """Build source-specific default passive queries from an organization name."""
+
+    name = (scope_name or "").strip()
+    if not name:
+        raise ValueError("organization scope name is required")
+    return {
+        "FOFA": f'title="{name}" || cert.subject="{name}" || body="{name}"',
+        "Quake": f'title:"{name}" OR cert.subject:"{name}" OR body:"{name}"',
+        "Shodan": f'ssl.cert.subject.cn:"{name}" OR http.title:"{name}"',
+    }
+
+
+async def create_default_asset_search_rules(
+    session: AsyncSession,
+    actor_id: str,
+    scope_id: int,
+) -> Sequence[AssetSearchRule]:
+    """Create canonical FOFA/Quake/Shodan default rules for a scope."""
+
+    scope = await get_organization_scope(session, actor_id, scope_id)
+    if scope is None:
+        raise LookupError(f"organization scope {scope_id!r} not found")
+    rows = []
+    for source, query in default_asset_search_queries(scope.name).items():
+        rows.append(
+            await upsert_asset_search_rule(
+                session,
+                actor_id,
+                scope_id=scope_id,
+                source=source,
+                query=query,
+                enabled=True,
+                notes="Generated from organization scope name.",
+            )
+        )
+    return rows
+
+
+async def upsert_external_asset_search_credential(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    source: str,
+    credential_ref: str,
+    label: str | None = None,
+    enabled: bool = True,
+) -> ExternalAssetSearchCredential:
+    """Store platform-level credential metadata for one canonical source."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    canonical = normalize_external_asset_search_source(source)
+    ref = (credential_ref or "").strip()
+    if not ref:
+        raise ValueError("credential_ref is required")
+    stmt = select(ExternalAssetSearchCredential).where(
+        ExternalAssetSearchCredential.actor_id == actor,
+        ExternalAssetSearchCredential.source == canonical,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        row = ExternalAssetSearchCredential(
+            actor_id=actor,
+            source=canonical,
+            credential_ref=ref,
+            label=(label or "").strip() or None,
+            enabled=bool(enabled),
+        )
+        session.add(row)
+    else:
+        row.credential_ref = ref
+        row.label = (label or "").strip() or None
+        row.enabled = bool(enabled)
+        row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def upsert_asset_search_rule(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scope_id: int,
+    source: str,
+    query: str,
+    enabled: bool = True,
+    notes: str | None = None,
+    rule_id: int | None = None,
+) -> AssetSearchRule:
+    """Create or update a source-specific passive Asset Search Rule."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    scope = await get_organization_scope(session, actor, scope_id)
+    if scope is None:
+        raise LookupError(f"organization scope {scope_id!r} not found")
+    canonical = normalize_external_asset_search_source(source)
+    clean_query = (query or "").strip()
+    if not clean_query:
+        raise ValueError("asset search rule query is required")
+    row = None
+    if rule_id is not None:
+        stmt = select(AssetSearchRule).where(
+            AssetSearchRule.actor_id == actor,
+            AssetSearchRule.scope_id == scope_id,
+            AssetSearchRule.id == rule_id,
+        )
+        row = (await session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            raise LookupError(f"asset search rule {rule_id!r} not found")
+    if row is None:
+        row = AssetSearchRule(
+            actor_id=actor,
+            scope_id=scope_id,
+            source=canonical,
+            query=clean_query,
+            enabled=bool(enabled),
+            notes=(notes or "").strip() or None,
+        )
+        session.add(row)
+    else:
+        row.source = canonical
+        row.query = clean_query
+        row.enabled = bool(enabled)
+        row.notes = (notes or "").strip() or None
+        row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def list_asset_search_rules(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scope_id: int | None = None,
+    enabled_only: bool = False,
+    limit: int = 500,
+) -> Sequence[AssetSearchRule]:
+    """List Asset Search Rules, optionally narrowed to one scope."""
+
+    stmt = select(AssetSearchRule).where(AssetSearchRule.actor_id == (actor_id or DEFAULT_ACTOR))
+    if scope_id is not None:
+        stmt = stmt.where(AssetSearchRule.scope_id == scope_id)
+    if enabled_only:
+        stmt = stmt.where(AssetSearchRule.enabled.is_(True))
+    stmt = stmt.order_by(AssetSearchRule.scope_id.asc(), AssetSearchRule.id.asc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def upsert_public_discovery_schedule(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scope_id: int,
+    cadence_hours: int,
+    enabled: bool = True,
+    next_run_at: datetime | None = None,
+) -> ScheduledPublicAssetDiscovery:
+    """Create or update a passive recurring discovery schedule."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    if cadence_hours not in VALID_PUBLIC_DISCOVERY_CADENCES_HOURS:
+        raise ValueError(
+            f"invalid public discovery cadence {cadence_hours!r}; expected 4, 8, or 12 hours"
+        )
+    scope = await get_organization_scope(session, actor, scope_id)
+    if scope is None:
+        raise LookupError(f"organization scope {scope_id!r} not found")
+    stmt = select(ScheduledPublicAssetDiscovery).where(
+        ScheduledPublicAssetDiscovery.actor_id == actor,
+        ScheduledPublicAssetDiscovery.scope_id == scope_id,
+    )
+    row = (await session.execute(stmt.limit(1))).scalar_one_or_none()
+    if row is None:
+        row = ScheduledPublicAssetDiscovery(
+            actor_id=actor,
+            scope_id=scope_id,
+            cadence_hours=cadence_hours,
+            enabled=bool(enabled),
+            next_run_at=next_run_at,
+        )
+        session.add(row)
+    else:
+        row.cadence_hours = cadence_hours
+        row.enabled = bool(enabled)
+        row.next_run_at = next_run_at
+        row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def record_public_asset_observation(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scope_id: int,
+    source: str,
+    host: str,
+    rule_id: int | None = None,
+    port: int | None = None,
+    protocol: str | None = None,
+    url: str | None = None,
+    title: str | None = None,
+    banner: str | None = None,
+    certificate: dict[str, Any] | None = None,
+    raw: dict[str, Any] | None = None,
+    observed_at: datetime | None = None,
+) -> tuple[PublicAssetCandidate, PublicAssetEvidence, bool]:
+    """Record passive external-search evidence and upsert the candidate.
+
+    Returns ``(candidate, evidence, created_candidate)``. Source-returned ports
+    remain evidence only; this helper never writes ``service`` rows.
+    """
+
+    actor = actor_id or DEFAULT_ACTOR
+    scope = await get_organization_scope(session, actor, scope_id)
+    if scope is None:
+        raise LookupError(f"organization scope {scope_id!r} not found")
+    canonical = normalize_external_asset_search_source(source)
+    normalized_host = public_asset_identity_host(host or url)
+    display_host = (host or normalized_host).strip()
+    now = observed_at or _utcnow()
+
+    stmt = select(PublicAssetCandidate).where(
+        PublicAssetCandidate.actor_id == actor,
+        PublicAssetCandidate.scope_id == scope_id,
+        PublicAssetCandidate.normalized_host == normalized_host,
+    )
+    candidate = (await session.execute(stmt)).scalar_one_or_none()
+    created = candidate is None
+    if candidate is None:
+        candidate = PublicAssetCandidate(
+            actor_id=actor,
+            scope_id=scope_id,
+            normalized_host=normalized_host,
+            display_host=display_host,
+            status="unreviewed",
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+        session.add(candidate)
+        await session.flush()
+    else:
+        candidate.display_host = display_host
+        candidate.last_seen_at = now
+        candidate.updated_at = _utcnow()
+
+    evidence = PublicAssetEvidence(
+        actor_id=actor,
+        candidate_id=candidate.id,
+        rule_id=rule_id,
+        source=canonical,
+        observed_host=display_host,
+        port=port,
+        protocol=(protocol or "").strip().lower() or None,
+        url=(url or "").strip() or None,
+        title=(title or "").strip() or None,
+        banner=(banner or "").strip() or None,
+        certificate=certificate,
+        raw=raw,
+        observed_at=now,
+    )
+    session.add(evidence)
+    await session.flush()
+    return candidate, evidence, created
+
+
+async def list_public_asset_candidates(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    scope_id: int | None = None,
+    status: str | None = None,
+    limit: int = 500,
+) -> Sequence[PublicAssetCandidate]:
+    """List Public Asset Candidates with simple actor/scope/status filters."""
+
+    if status is not None and status not in VALID_PUBLIC_ASSET_CANDIDATE_STATUSES:
+        raise ValueError(
+            f"invalid public asset candidate status {status!r}; expected one of "
+            f"{sorted(VALID_PUBLIC_ASSET_CANDIDATE_STATUSES)}"
+        )
+    stmt = select(PublicAssetCandidate).where(
+        PublicAssetCandidate.actor_id == (actor_id or DEFAULT_ACTOR)
+    )
+    if scope_id is not None:
+        stmt = stmt.where(PublicAssetCandidate.scope_id == scope_id)
+    if status is not None:
+        stmt = stmt.where(PublicAssetCandidate.status == status)
+    stmt = stmt.order_by(PublicAssetCandidate.updated_at.desc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def list_public_asset_evidence(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    candidate_id: int,
+    limit: int = 500,
+) -> Sequence[PublicAssetEvidence]:
+    """List evidence rows for one Public Asset Candidate."""
+
+    stmt = (
+        select(PublicAssetEvidence)
+        .where(
+            PublicAssetEvidence.actor_id == (actor_id or DEFAULT_ACTOR),
+            PublicAssetEvidence.candidate_id == candidate_id,
+        )
+        .order_by(PublicAssetEvidence.observed_at.desc(), PublicAssetEvidence.id.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def update_public_asset_candidate_status(
+    session: AsyncSession,
+    actor_id: str,
+    candidate_id: int,
+    *,
+    status: str,
+    review_note: str | None = None,
+) -> PublicAssetCandidate:
+    """Set candidate review status without changing Managed Assets."""
+
+    if status not in VALID_PUBLIC_ASSET_CANDIDATE_STATUSES:
+        raise ValueError(
+            f"invalid public asset candidate status {status!r}; expected one of "
+            f"{sorted(VALID_PUBLIC_ASSET_CANDIDATE_STATUSES)}"
+        )
+    stmt = select(PublicAssetCandidate).where(
+        PublicAssetCandidate.actor_id == (actor_id or DEFAULT_ACTOR),
+        PublicAssetCandidate.id == candidate_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise LookupError(f"public asset candidate {candidate_id!r} not found")
+    row.status = status
+    row.review_note = (review_note or "").strip() or None
+    row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def promote_public_asset_candidate(
+    session: AsyncSession,
+    actor_id: str,
+    candidate_id: int,
+    *,
+    review_note: str | None = None,
+) -> tuple[PublicAssetCandidate, Asset]:
+    """Promote a reviewed Public Asset Candidate into Managed Assets.
+
+    Promotion preserves Public Asset Evidence and does not create Services from
+    source-returned ports.
+    """
+
+    actor = actor_id or DEFAULT_ACTOR
+    stmt = select(PublicAssetCandidate).where(
+        PublicAssetCandidate.actor_id == actor,
+        PublicAssetCandidate.id == candidate_id,
+    )
+    candidate = (await session.execute(stmt)).scalar_one_or_none()
+    if candidate is None:
+        raise LookupError(f"public asset candidate {candidate_id!r} not found")
+    scope = await get_organization_scope(session, actor, candidate.scope_id)
+    tags = {
+        "system": scope.name if scope is not None else None,
+        "public_asset_candidate_id": candidate.id,
+        "organization_scope_id": candidate.scope_id,
+        "source": "public_asset_discovery",
+    }
+    asset = await upsert_asset(
+        session,
+        actor,
+        scan_id=None,
+        target=candidate.normalized_host,
+        tags={k: v for k, v in tags.items() if v is not None},
+    )
+    candidate.status = "promoted"
+    candidate.managed_asset_id = asset.id
+    candidate.review_note = (review_note or "").strip() or None
+    candidate.updated_at = _utcnow()
+    await session.flush()
+    return candidate, asset
+
+
+async def build_scan_prompt_draft(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    asset_ids: Sequence[int],
+    scan_request: str = "perform authorized security assessment for the selected managed assets",
+) -> dict[str, Any]:
+    """Build a Session prompt draft from Managed Assets without creating a Scan."""
+
+    ids = [int(v) for v in asset_ids]
+    if not ids:
+        raise ValueError("at least one managed asset is required")
+    stmt = (
+        select(Asset)
+        .where(Asset.actor_id == (actor_id or DEFAULT_ACTOR), Asset.id.in_(ids))
+        .order_by(Asset.id.asc())
+    )
+    assets = list((await session.execute(stmt)).scalars().all())
+    found = {asset.id for asset in assets}
+    missing = [asset_id for asset_id in ids if asset_id not in found]
+    if missing:
+        raise LookupError(f"managed asset ids not found: {missing}")
+
+    lines = [
+        "Scan request draft",
+        "",
+        f"Task: {scan_request.strip() or 'perform authorized security assessment'}",
+        "",
+        "Managed assets:",
+    ]
+    for asset in assets:
+        host = asset.hostname or asset.ip or asset.target
+        lines.append(f"- asset_id={asset.id} target={host}")
+    lines.extend(
+        [
+            "",
+            "Use the existing scan workflow and report findings with evidence.",
+        ]
+    )
+    prompt = "\n".join(lines)
+    return {
+        "prompt": prompt,
+        "asset_ids": [asset.id for asset in assets],
+        "session_redirect": "/?draft=scan-prompt",
+        "created_scan_id": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# White-box assessments
+# ---------------------------------------------------------------------------
+
+
+def _source_package_format(filename: str) -> str:
+    name = (filename or "").strip().lower()
+    if name.endswith(".tar.gz"):
+        return "tar.gz"
+    if name.endswith(".zip"):
+        return "zip"
+    raise ValueError("source package must be .zip or .tar.gz")
+
+
+def white_box_evidence_dedupe_key(
+    *,
+    analyzer: str,
+    vulnerability_type: str,
+    primary_file: str,
+    primary_sink_line: int | None,
+    data_flow: Sequence[Any] | None,
+) -> str:
+    """Return the per-assessment dedupe key for White-Box Findings."""
+
+    normalized_flow = json.dumps(data_flow or [], ensure_ascii=False, sort_keys=True)
+    basis = "|".join(
+        [
+            analyzer.strip().lower(),
+            vulnerability_type.strip().lower(),
+            primary_file.strip().lower(),
+            str(primary_sink_line or 0),
+            normalized_flow,
+        ]
+    )
+    return re.sub(r"\s+", " ", basis)
+
+
+def white_box_assessment_to_dict(assessment: WhiteBoxAssessment) -> dict[str, Any]:
+    """Serialize a White-Box Assessment for API/UI use."""
+
+    return {
+        "id": assessment.id,
+        "package_name": assessment.package_name,
+        "package_format": assessment.package_format,
+        "compressed_size_bytes": assessment.compressed_size_bytes,
+        "extracted_size_bytes": assessment.extracted_size_bytes,
+        "status": assessment.status,
+        "language_summary": assessment.language_summary or {},
+        "source_retained": bool(assessment.source_retained),
+        "error": assessment.error,
+        "started_at": _serialize_dt(assessment.started_at),
+        "finished_at": _serialize_dt(assessment.finished_at),
+        "created_at": _serialize_dt(assessment.created_at),
+        "updated_at": _serialize_dt(assessment.updated_at),
+    }
+
+
+def white_box_evidence_to_dict(evidence: WhiteBoxEvidence) -> dict[str, Any]:
+    """Serialize structured White-Box Evidence."""
+
+    return {
+        "id": evidence.id,
+        "assessment_id": evidence.assessment_id,
+        "analyzer": evidence.analyzer,
+        "vulnerability_type": evidence.vulnerability_type,
+        "confidence": evidence.confidence,
+        "primary_file": evidence.primary_file,
+        "primary_sink_line": evidence.primary_sink_line,
+        "entry_points": evidence.entry_points or [],
+        "sources": evidence.sources or [],
+        "sinks": evidence.sinks or [],
+        "sanitizers": evidence.sanitizers or [],
+        "data_flow": evidence.data_flow or [],
+        "prerequisites": evidence.prerequisites or [],
+        "request_samples": evidence.request_samples or [],
+        "remediation": evidence.remediation,
+        "raw": evidence.raw or {},
+        "created_at": _serialize_dt(evidence.created_at),
+    }
+
+
+def white_box_finding_to_dict(
+    finding: WhiteBoxFinding,
+    *,
+    evidence: WhiteBoxEvidence | None = None,
+    reproduction_documents: Sequence[WhiteBoxReproductionDocument] | None = None,
+) -> dict[str, Any]:
+    """Serialize a White-Box Finding without mapping it to Vulnerability."""
+
+    return {
+        "id": finding.id,
+        "assessment_id": finding.assessment_id,
+        "evidence_id": finding.evidence_id,
+        "title": finding.title,
+        "vulnerability_type": finding.vulnerability_type,
+        "category": finding.category,
+        "severity": finding.severity,
+        "confidence": finding.confidence,
+        "status": finding.status,
+        "dedupe_key": finding.dedupe_key,
+        "primary_file": finding.primary_file,
+        "primary_sink_line": finding.primary_sink_line,
+        "promoted_vulnerability_id": finding.promoted_vulnerability_id,
+        "created_at": _serialize_dt(finding.created_at),
+        "updated_at": _serialize_dt(finding.updated_at),
+        "evidence": white_box_evidence_to_dict(evidence) if evidence is not None else None,
+        "reproduction_documents": [
+            white_box_reproduction_document_to_dict(row) for row in (reproduction_documents or [])
+        ],
+    }
+
+
+def white_box_reproduction_document_to_dict(
+    document: WhiteBoxReproductionDocument,
+) -> dict[str, Any]:
+    """Serialize a White-Box Reproduction Document artifact."""
+
+    return {
+        "id": document.id,
+        "assessment_id": document.assessment_id,
+        "finding_id": document.finding_id,
+        "evidence_id": document.evidence_id,
+        "markdown": document.markdown,
+        "generated_at": _serialize_dt(document.generated_at),
+    }
+
+
+async def create_white_box_assessment(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    package_name: str,
+    compressed_size_bytes: int,
+    extracted_size_bytes: int = 0,
+    archive_path: str | None = None,
+    extracted_path: str | None = None,
+    language_summary: dict[str, Any] | None = None,
+    assessment_id: str | None = None,
+) -> WhiteBoxAssessment:
+    """Create an independent White-Box Assessment row in ``queued`` state."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    clean_name = (package_name or "").strip()
+    if not clean_name:
+        raise ValueError("package_name is required")
+    package_format = _source_package_format(clean_name)
+    if package_format not in VALID_SOURCE_PACKAGE_FORMATS:
+        raise ValueError("source package must be .zip or .tar.gz")
+    if compressed_size_bytes < 0 or compressed_size_bytes > 200 * 1024 * 1024:
+        raise ValueError("compressed source package limit is 200 MB")
+    if extracted_size_bytes < 0 or extracted_size_bytes > 1024 * 1024 * 1024:
+        raise ValueError("extracted source package limit is 1 GB")
+    row = WhiteBoxAssessment(
+        id=assessment_id or new_ulid(),
+        actor_id=actor,
+        package_name=clean_name,
+        package_format=package_format,
+        compressed_size_bytes=int(compressed_size_bytes),
+        extracted_size_bytes=int(extracted_size_bytes),
+        status="queued",
+        archive_path=archive_path,
+        extracted_path=extracted_path,
+        language_summary=language_summary,
+        source_retained=True,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def get_white_box_assessment(
+    session: AsyncSession,
+    actor_id: str,
+    assessment_id: str,
+) -> WhiteBoxAssessment | None:
+    """Return one White-Box Assessment by id, actor-scoped."""
+
+    stmt = select(WhiteBoxAssessment).where(
+        WhiteBoxAssessment.actor_id == (actor_id or DEFAULT_ACTOR),
+        WhiteBoxAssessment.id == assessment_id,
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def list_white_box_assessments(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    status: str | None = None,
+    limit: int = 100,
+) -> Sequence[WhiteBoxAssessment]:
+    """List White-Box Assessments without reading Scan rows."""
+
+    if status is not None and status not in VALID_WHITE_BOX_ASSESSMENT_STATUSES:
+        raise ValueError(
+            f"invalid white-box status {status!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_ASSESSMENT_STATUSES)}"
+        )
+    stmt = select(WhiteBoxAssessment).where(
+        WhiteBoxAssessment.actor_id == (actor_id or DEFAULT_ACTOR)
+    )
+    if status is not None:
+        stmt = stmt.where(WhiteBoxAssessment.status == status)
+    stmt = stmt.order_by(WhiteBoxAssessment.created_at.desc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def transition_white_box_assessment(
+    session: AsyncSession,
+    actor_id: str,
+    assessment_id: str,
+    *,
+    status: str,
+    error: str | None = None,
+) -> WhiteBoxAssessment:
+    """Transition a White-Box Assessment through its independent lifecycle."""
+
+    if status not in VALID_WHITE_BOX_ASSESSMENT_STATUSES:
+        raise ValueError(
+            f"invalid white-box status {status!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_ASSESSMENT_STATUSES)}"
+        )
+    row = await get_white_box_assessment(session, actor_id, assessment_id)
+    if row is None:
+        raise LookupError(f"white-box assessment {assessment_id!r} not found")
+    if row.status != status:
+        allowed = WHITE_BOX_ASSESSMENT_TRANSITIONS.get(row.status, frozenset())
+        if status not in allowed:
+            raise ValueError(f"illegal white-box transition: {row.status!r} -> {status!r}")
+    now = _utcnow()
+    row.status = status
+    row.updated_at = now
+    if status in {"unpacking", "analyzing"} and row.started_at is None:
+        row.started_at = now
+    if status in {"completed", "failed", "cancelled"}:
+        row.finished_at = now
+    row.error = error if status == "failed" else None
+    await session.flush()
+    return row
+
+
+async def purge_white_box_source_material(
+    session: AsyncSession,
+    actor_id: str,
+    assessment_id: str,
+) -> WhiteBoxAssessment:
+    """Mark source archive/workspace purged while retaining findings/docs."""
+
+    row = await get_white_box_assessment(session, actor_id, assessment_id)
+    if row is None:
+        raise LookupError(f"white-box assessment {assessment_id!r} not found")
+    row.archive_path = None
+    row.extracted_path = None
+    row.source_retained = False
+    row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def add_white_box_evidence(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    assessment_id: str,
+    analyzer: str,
+    vulnerability_type: str,
+    confidence: str,
+    primary_file: str,
+    primary_sink_line: int | None = None,
+    entry_points: Sequence[Any] | None = None,
+    sources: Sequence[Any] | None = None,
+    sinks: Sequence[Any] | None = None,
+    sanitizers: Sequence[Any] | None = None,
+    data_flow: Sequence[Any] | None = None,
+    prerequisites: Sequence[Any] | None = None,
+    request_samples: Sequence[Any] | None = None,
+    remediation: str | None = None,
+    raw: dict[str, Any] | None = None,
+) -> WhiteBoxEvidence:
+    """Persist structured White-Box Evidence, the finding source of truth."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    if confidence not in VALID_WHITE_BOX_CONFIDENCES:
+        raise ValueError(
+            f"invalid white-box confidence {confidence!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_CONFIDENCES)}"
+        )
+    assessment = await get_white_box_assessment(session, actor, assessment_id)
+    if assessment is None:
+        raise LookupError(f"white-box assessment {assessment_id!r} not found")
+    if confidence == "high" and not (analyzer or "").strip():
+        raise ValueError("high-confidence white-box evidence requires an analyzer")
+    row = WhiteBoxEvidence(
+        actor_id=actor,
+        assessment_id=assessment_id,
+        analyzer=(analyzer or "").strip() or "generic",
+        vulnerability_type=(vulnerability_type or "").strip() or "other",
+        confidence=confidence,
+        primary_file=(primary_file or "").strip(),
+        primary_sink_line=primary_sink_line,
+        entry_points=list(entry_points or []),
+        sources=list(sources or []),
+        sinks=list(sinks or []),
+        sanitizers=list(sanitizers or []),
+        data_flow=list(data_flow or []),
+        prerequisites=list(prerequisites or []),
+        request_samples=list(request_samples or []),
+        remediation=(remediation or "").strip() or None,
+        raw=raw or {},
+    )
+    if not row.primary_file:
+        raise ValueError("white-box evidence primary_file is required")
+    session.add(row)
+    await session.flush()
+    return row
+
+
+def _score_white_box_severity(
+    *,
+    vulnerability_type: str,
+    confidence: str,
+    data_flow: Sequence[Any] | None,
+    sanitizers: Sequence[Any] | None,
+    raw: dict[str, Any] | None,
+) -> str:
+    impact = str((raw or {}).get("impact") or "").lower()
+    vuln_type = vulnerability_type.lower()
+    has_flow = bool(data_flow)
+    has_sanitizers = bool(sanitizers)
+    if confidence == "high" and (
+        "rce" in vuln_type
+        or "command" in vuln_type
+        or "deserialization" in vuln_type
+        or impact in {"critical", "dangerous_operation"}
+    ):
+        return "critical"
+    if confidence == "high" and has_flow and not has_sanitizers:
+        return "high"
+    if confidence in {"high", "medium"} and has_flow:
+        return "medium"
+    if confidence == "medium":
+        return "low"
+    return "info"
+
+
+async def upsert_white_box_finding_from_evidence(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    evidence_id: int,
+    title: str,
+    category: str = "other",
+    status: str = "open",
+) -> WhiteBoxFinding:
+    """Create or update a deduped White-Box Finding from structured evidence."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    if status not in VALID_WHITE_BOX_FINDING_STATUSES:
+        raise ValueError(
+            f"invalid white-box finding status {status!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_FINDING_STATUSES)}"
+        )
+    if category not in VALID_VULN_CATEGORIES:
+        raise ValueError(
+            f"invalid category {category!r}; expected one of {sorted(VALID_VULN_CATEGORIES)}"
+        )
+    evidence_stmt = select(WhiteBoxEvidence).where(
+        WhiteBoxEvidence.actor_id == actor,
+        WhiteBoxEvidence.id == evidence_id,
+    )
+    evidence = (await session.execute(evidence_stmt)).scalar_one_or_none()
+    if evidence is None:
+        raise LookupError(f"white-box evidence {evidence_id!r} not found")
+    dedupe_key = white_box_evidence_dedupe_key(
+        analyzer=evidence.analyzer,
+        vulnerability_type=evidence.vulnerability_type,
+        primary_file=evidence.primary_file,
+        primary_sink_line=evidence.primary_sink_line,
+        data_flow=evidence.data_flow,
+    )
+    severity = _score_white_box_severity(
+        vulnerability_type=evidence.vulnerability_type,
+        confidence=evidence.confidence,
+        data_flow=evidence.data_flow,
+        sanitizers=evidence.sanitizers,
+        raw=evidence.raw,
+    )
+    stmt = select(WhiteBoxFinding).where(
+        WhiteBoxFinding.actor_id == actor,
+        WhiteBoxFinding.assessment_id == evidence.assessment_id,
+        WhiteBoxFinding.dedupe_key == dedupe_key,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        row = WhiteBoxFinding(
+            actor_id=actor,
+            assessment_id=evidence.assessment_id,
+            evidence_id=evidence.id,
+            title=(title or "").strip() or evidence.vulnerability_type,
+            vulnerability_type=evidence.vulnerability_type,
+            category=category,
+            severity=severity,
+            confidence=evidence.confidence,
+            status=status,
+            dedupe_key=dedupe_key,
+            primary_file=evidence.primary_file,
+            primary_sink_line=evidence.primary_sink_line,
+        )
+        session.add(row)
+    else:
+        row.evidence_id = evidence.id
+        row.title = (title or "").strip() or evidence.vulnerability_type
+        row.vulnerability_type = evidence.vulnerability_type
+        row.category = category
+        row.severity = severity
+        row.confidence = evidence.confidence
+        row.primary_file = evidence.primary_file
+        row.primary_sink_line = evidence.primary_sink_line
+        row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+async def list_white_box_findings(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    assessment_id: str | None = None,
+    status: str | None = None,
+    limit: int = 500,
+) -> Sequence[WhiteBoxFinding]:
+    """List White-Box Findings independent from confirmed Vulnerabilities."""
+
+    if status is not None and status not in VALID_WHITE_BOX_FINDING_STATUSES:
+        raise ValueError(
+            f"invalid white-box finding status {status!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_FINDING_STATUSES)}"
+        )
+    stmt = select(WhiteBoxFinding).where(WhiteBoxFinding.actor_id == (actor_id or DEFAULT_ACTOR))
+    if assessment_id is not None:
+        stmt = stmt.where(WhiteBoxFinding.assessment_id == assessment_id)
+    if status is not None:
+        stmt = stmt.where(WhiteBoxFinding.status == status)
+    stmt = stmt.order_by(WhiteBoxFinding.severity.desc(), WhiteBoxFinding.id.asc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def get_white_box_evidence(
+    session: AsyncSession,
+    actor_id: str,
+    evidence_id: int,
+) -> WhiteBoxEvidence | None:
+    """Return one structured White-Box Evidence row by id."""
+
+    stmt = select(WhiteBoxEvidence).where(
+        WhiteBoxEvidence.actor_id == (actor_id or DEFAULT_ACTOR),
+        WhiteBoxEvidence.id == evidence_id,
+    )
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def list_white_box_evidence(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    assessment_id: str | None = None,
+    limit: int = 500,
+) -> Sequence[WhiteBoxEvidence]:
+    """List structured White-Box Evidence rows."""
+
+    stmt = select(WhiteBoxEvidence).where(WhiteBoxEvidence.actor_id == (actor_id or DEFAULT_ACTOR))
+    if assessment_id is not None:
+        stmt = stmt.where(WhiteBoxEvidence.assessment_id == assessment_id)
+    stmt = stmt.order_by(WhiteBoxEvidence.id.asc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def update_white_box_finding_status(
+    session: AsyncSession,
+    actor_id: str,
+    finding_id: int,
+    *,
+    status: str,
+    promoted_vulnerability_id: int | None = None,
+) -> WhiteBoxFinding:
+    """Update source-level White-Box Finding review status."""
+
+    if status not in VALID_WHITE_BOX_FINDING_STATUSES:
+        raise ValueError(
+            f"invalid white-box finding status {status!r}; expected one of "
+            f"{sorted(VALID_WHITE_BOX_FINDING_STATUSES)}"
+        )
+    stmt = select(WhiteBoxFinding).where(
+        WhiteBoxFinding.actor_id == (actor_id or DEFAULT_ACTOR),
+        WhiteBoxFinding.id == finding_id,
+    )
+    row = (await session.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise LookupError(f"white-box finding {finding_id!r} not found")
+    row.status = status
+    row.promoted_vulnerability_id = promoted_vulnerability_id
+    row.updated_at = _utcnow()
+    await session.flush()
+    return row
+
+
+def render_white_box_reproduction_markdown(
+    finding: WhiteBoxFinding,
+    evidence: WhiteBoxEvidence,
+    *,
+    generated_at: datetime | None = None,
+) -> str:
+    """Render the fixed Markdown artifact from structured White-Box Evidence."""
+
+    generated = generated_at or _utcnow()
+
+    def _lines(label: str, values: Sequence[Any] | None) -> list[str]:
+        rows = [f"## {label}"]
+        items = list(values or [])
+        if not items:
+            rows.append("- None recorded")
+            return rows
+        for item in items:
+            if isinstance(item, dict):
+                rows.append(f"- `{json.dumps(item, ensure_ascii=False, sort_keys=True)}`")
+            else:
+                rows.append(f"- {item}")
+        return rows
+
+    sections = [
+        f"# Reproduction: {finding.title}",
+        "",
+        f"- Finding ID: {finding.id}",
+        f"- Assessment ID: {finding.assessment_id}",
+        f"- Analyzer Evidence ID: {evidence.id}",
+        f"- Analyzer: {evidence.analyzer}",
+        f"- Vulnerability Type: {evidence.vulnerability_type}",
+        f"- Severity: {finding.severity}",
+        f"- Confidence: {finding.confidence}",
+        f"- Primary File: `{evidence.primary_file}`",
+        f"- Primary Sink Line: {evidence.primary_sink_line or 'unknown'}",
+        f"- Generated At: {generated.isoformat()}",
+        "",
+        *_lines("Entry Points", evidence.entry_points),
+        "",
+        *_lines("Sources", evidence.sources),
+        "",
+        *_lines("Sinks", evidence.sinks),
+        "",
+        *_lines("Sanitizers", evidence.sanitizers),
+        "",
+        *_lines("Data-Flow Path", evidence.data_flow),
+        "",
+        *_lines("Prerequisites", evidence.prerequisites),
+        "",
+        *_lines("Request Samples Or Trigger Steps", evidence.request_samples),
+        "",
+        "## Expected Behavior",
+        "The source-backed path reaches the sink under the listed prerequisites.",
+        "",
+        "## Remediation",
+        evidence.remediation or "Add validation, authorization, or output encoding at the trust boundary.",
+    ]
+    return "\n".join(sections).rstrip() + "\n"
+
+
+async def create_white_box_reproduction_document(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    finding_id: int,
+) -> WhiteBoxReproductionDocument:
+    """Render and persist a Markdown Reproduction Document artifact."""
+
+    actor = actor_id or DEFAULT_ACTOR
+    stmt = select(WhiteBoxFinding).where(
+        WhiteBoxFinding.actor_id == actor,
+        WhiteBoxFinding.id == finding_id,
+    )
+    finding = (await session.execute(stmt)).scalar_one_or_none()
+    if finding is None:
+        raise LookupError(f"white-box finding {finding_id!r} not found")
+    evidence_stmt = select(WhiteBoxEvidence).where(
+        WhiteBoxEvidence.actor_id == actor,
+        WhiteBoxEvidence.id == finding.evidence_id,
+    )
+    evidence = (await session.execute(evidence_stmt)).scalar_one()
+    markdown = render_white_box_reproduction_markdown(finding, evidence)
+    row = WhiteBoxReproductionDocument(
+        actor_id=actor,
+        assessment_id=finding.assessment_id,
+        finding_id=finding.id,
+        evidence_id=evidence.id,
+        markdown=markdown,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def list_white_box_reproduction_documents(
+    session: AsyncSession,
+    actor_id: str,
+    *,
+    assessment_id: str | None = None,
+    finding_id: int | None = None,
+    limit: int = 500,
+) -> Sequence[WhiteBoxReproductionDocument]:
+    """List persisted Reproduction Document artifacts."""
+
+    stmt = select(WhiteBoxReproductionDocument).where(
+        WhiteBoxReproductionDocument.actor_id == (actor_id or DEFAULT_ACTOR)
+    )
+    if assessment_id is not None:
+        stmt = stmt.where(WhiteBoxReproductionDocument.assessment_id == assessment_id)
+    if finding_id is not None:
+        stmt = stmt.where(WhiteBoxReproductionDocument.finding_id == finding_id)
+    stmt = stmt.order_by(WhiteBoxReproductionDocument.generated_at.desc()).limit(limit)
+    return list((await session.execute(stmt)).scalars().all())
 
 
 # ---------------------------------------------------------------------------
@@ -1551,6 +2891,7 @@ __all__ = [
     "get_scan",
     "list_scans",
     "update_scan_status",
+    "find_latest_scan_with_assets",
     # Asset / Service / Vulnerability
     "upsert_asset",
     "list_assets",
@@ -1558,6 +2899,55 @@ __all__ = [
     "list_services",
     "upsert_vulnerability",
     "list_vulnerabilities",
+    # Public asset discovery
+    "normalize_external_asset_search_source",
+    "public_asset_identity_host",
+    "organization_scope_to_dict",
+    "asset_search_rule_to_dict",
+    "public_asset_evidence_to_dict",
+    "public_asset_candidate_to_dict",
+    "create_organization_scope",
+    "list_organization_scopes",
+    "get_organization_scope",
+    "default_asset_search_queries",
+    "create_default_asset_search_rules",
+    "upsert_external_asset_search_credential",
+    "upsert_asset_search_rule",
+    "list_asset_search_rules",
+    "upsert_public_discovery_schedule",
+    "record_public_asset_observation",
+    "list_public_asset_candidates",
+    "list_public_asset_evidence",
+    "update_public_asset_candidate_status",
+    "promote_public_asset_candidate",
+    "build_scan_prompt_draft",
+    # White-box assessments
+    "white_box_evidence_dedupe_key",
+    "white_box_assessment_to_dict",
+    "white_box_evidence_to_dict",
+    "white_box_finding_to_dict",
+    "white_box_reproduction_document_to_dict",
+    "create_white_box_assessment",
+    "get_white_box_assessment",
+    "list_white_box_assessments",
+    "transition_white_box_assessment",
+    "purge_white_box_source_material",
+    "add_white_box_evidence",
+    "upsert_white_box_finding_from_evidence",
+    "list_white_box_findings",
+    "get_white_box_evidence",
+    "list_white_box_evidence",
+    "update_white_box_finding_status",
+    "render_white_box_reproduction_markdown",
+    "create_white_box_reproduction_document",
+    "list_white_box_reproduction_documents",
+    # Vulnerability candidates
+    "vulnerability_identity_key",
+    "upsert_vulnerability_candidate",
+    "list_vulnerability_candidates",
+    "mark_candidate_verification_failed",
+    "dismiss_vulnerability_candidate",
+    "verify_vulnerability_candidate",
     # Dashboard aggregations
     "summary_counts",
     "vuln_trend",

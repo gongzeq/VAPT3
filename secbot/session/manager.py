@@ -744,11 +744,13 @@ class SessionManager:
                     if isinstance(cached_rollups, dict) and cached_rollups.get("_v") == 1:
                         # Use cached rollups — skip the full-file scan.
                         preview = self._first_user_preview(f)
+                        # Auto-populate title from first user message when empty.
+                        display_title = title if isinstance(title, str) and title.strip() else (preview[:80] if preview else "")
                         sessions.append({
                             "key": key,
                             "created_at": created_at,
                             "updated_at": updated_at,
-                            "title": title if isinstance(title, str) else "",
+                            "title": display_title,
                             "archived": archived,
                             "preview": preview,
                             "path": str(path),
@@ -786,11 +788,14 @@ class SessionManager:
                         if isinstance(meta_status, str):
                             rollups["status"] = meta_status
 
+                        # Auto-populate title from first user message when empty.
+                        display_title = title if isinstance(title, str) and title.strip() else (preview[:80] if preview else "")
+
                         sessions.append({
                             "key": key,
                             "created_at": created_at,
                             "updated_at": updated_at,
-                            "title": title if isinstance(title, str) else "",
+                            "title": display_title,
                             "archived": archived,
                             "preview": preview,
                             "path": str(path),
@@ -805,19 +810,20 @@ class SessionManager:
                 repaired = self._repair(fallback_key)
                 if repaired is not None:
                     rollups = self._compute_session_rollups(repaired.messages)
+                    repaired_preview = self._first_user_preview_from_messages(repaired.messages)
+                    repaired_title = repaired.metadata.get("title")
+                    display_title = (
+                        repaired_title
+                        if isinstance(repaired_title, str) and repaired_title.strip()
+                        else (repaired_preview[:80] if repaired_preview else "")
+                    )
                     sessions.append({
                         "key": repaired.key,
                         "created_at": repaired.created_at.isoformat(),
                         "updated_at": repaired.updated_at.isoformat(),
-                        "title": (
-                            repaired.metadata.get("title")
-                            if isinstance(repaired.metadata.get("title"), str)
-                            else ""
-                        ),
+                        "title": display_title,
                         "archived": bool(repaired.metadata.get("archived")),
-                        "preview": self._first_user_preview_from_messages(
-                            repaired.messages
-                        ),
+                        "preview": repaired_preview,
                         "path": str(path),
                         "scan_type": rollups["scan_type"],
                         "target": rollups["target"],

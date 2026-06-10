@@ -24,7 +24,14 @@ export function TurnUsageBadge({ usage }: { usage: TurnUsage }) {
   const cachePercent = promptTokens > 0
     ? Math.round((cachedTokens / promptTokens) * 100)
     : 0;
-  const isCacheHit = cachePercent > 50;
+  const cacheTone =
+    cachePercent > 80
+      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+      : cachePercent >= 50
+        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+        : "bg-destructive/15 text-destructive";
+  const cacheLabel =
+    cachePercent > 80 ? "HIT" : cachePercent >= 50 ? "MED" : "MISS";
 
   return (
     <span
@@ -44,12 +51,10 @@ export function TurnUsageBadge({ usage }: { usage: TurnUsage }) {
         <span
           className={cn(
             "ml-0.5 rounded px-1 text-[9px] font-medium",
-            isCacheHit
-              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-              : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+            cacheTone,
           )}
         >
-          {isCacheHit ? "HIT" : "MISS"} {cachePercent}%
+          {cacheLabel} {cachePercent}%
         </span>
       )}
     </span>
@@ -58,22 +63,49 @@ export function TurnUsageBadge({ usage }: { usage: TurnUsage }) {
 
 /**
  * Summary bar showing cumulative token usage across all turns in the
- * current conversation. Rendered as a subtle footer above the composer.
+ * current conversation.
+ *
+ * Two visual variants:
+ * - `inline` (default, legacy): subtle footer rendered just above the
+ *   composer. Returns `null` when no turns have happened yet.
+ * - `sticky`: pinned to the top of the thread surface, visible from the
+ *   start of every chat (zero-state included) so input/output tokens and
+ *   cache-hit ratio are continuously observable.
  */
-export function CumulativeUsageBar({ usage }: { usage: CumulativeUsage }) {
+export function CumulativeUsageBar({
+  usage,
+  variant = "inline",
+}: {
+  usage: CumulativeUsage;
+  variant?: "inline" | "sticky";
+}) {
   const { t } = useTranslation();
-  if (usage.turnCount === 0) return null;
+  const isSticky = variant === "sticky";
+  if (!isSticky && usage.turnCount === 0) return null;
 
   const cachePercent = usage.promptTokens > 0
     ? Math.round((usage.cachedTokens / usage.promptTokens) * 100)
     : 0;
   const totalTokens = usage.promptTokens + usage.completionTokens;
+  const hasTokens = totalTokens > 0;
+  const cacheChipTone = !hasTokens
+    ? "bg-muted/40 text-muted-foreground/60"
+    : cachePercent > 80
+      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      : cachePercent >= 50
+        ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+        : "bg-destructive/10 text-destructive";
+  const cacheChipLabel = hasTokens
+    ? `${cachePercent > 80 ? "HIT" : cachePercent >= 50 ? "MED" : "MISS"} ${cachePercent}%`
+    : "—";
 
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-3 py-1.5",
-        "font-mono text-[11px] text-muted-foreground/70",
+        "flex items-center justify-center gap-3 font-mono text-[11px]",
+        isSticky
+          ? "px-3 py-2 text-muted-foreground/90"
+          : "py-1.5 text-muted-foreground/70",
       )}
       aria-label={t("tokenUsage.cumulativeAriaLabel", {
         defaultValue: `累计消耗: ${totalTokens} tokens`,
@@ -89,18 +121,14 @@ export function CumulativeUsageBar({ usage }: { usage: CumulativeUsage }) {
       <span className="text-muted-foreground/50">
         = {fmtTokens(totalTokens)}
       </span>
-      {usage.cachedTokens > 0 && (
-        <span
-          className={cn(
-            "rounded px-1.5 py-0.5 text-[10px] font-medium",
-            cachePercent > 50
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-          )}
-        >
-          Cache {cachePercent > 50 ? "HIT" : "MISS"} {cachePercent}%
-        </span>
-      )}
+      <span
+        className={cn(
+          "rounded px-1.5 py-0.5 text-[10px] font-medium",
+          cacheChipTone,
+        )}
+      >
+        {t("tokenUsage.cacheLabel", { defaultValue: "Cache" })} {cacheChipLabel}
+      </span>
       <span className="text-muted-foreground/40">
         {usage.turnCount} {t("tokenUsage.turns", { defaultValue: "轮" })}
       </span>

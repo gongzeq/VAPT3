@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PanelLeftOpen, PanelRightOpen } from "lucide-react";
-import { DeleteConfirm } from "@/components/DeleteConfirm";
+import { useSearchParams } from "react-router-dom";
+import { PanelRightOpen } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Sidebar } from "@/components/Sidebar";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useSessions } from "@/hooks/useSessions";
 import { displaySessionTitle } from "@/lib/session-title";
 import { cn } from "@/lib/utils";
 import type { ChatSummary } from "@/lib/types";
 
-const SIDEBAR_STORAGE_KEY = "secbot-webui.sidebar";
 const RIGHT_RAIL_STORAGE_KEY = "secbot-webui.right-rail";
-const SIDEBAR_WIDTH = 272;
 const RIGHT_RAIL_WIDTH = 320;
 type ShellView = "chat" | "settings";
 
@@ -42,17 +38,6 @@ export interface ShellProps {
   }) => React.ReactNode;
 }
 
-function readSidebarOpen(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    const raw = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-    if (raw === null) return true;
-    return raw === "1";
-  } catch {
-    return true;
-  }
-}
-
 function readRightRailOpen(): boolean {
   if (typeof window === "undefined") return true;
   try {
@@ -65,11 +50,14 @@ function readRightRailOpen(): boolean {
 }
 
 /**
- * Chat + sidebar shell. Extracted from App.tsx in PR3 so HomePage can mount
- * it under the new router. The internal `view` toggle (chat ↔ settings) is
- * preserved for the legacy code path; when `onOpenSettingsExternal` is
- * provided, settings interactions are delegated to the caller and the
- * internal toggle is short-circuited.
+ * Two-column chat shell (main + optional right rail). The legacy left
+ * Sidebar with the historical conversation list has been promoted to a
+ * top-level `/sessions` page, so the chat surface here only ever shows
+ * the *current* conversation.
+ *
+ * The active session can be deep-linked via the `?session=<key>` query
+ * param so the Sessions page can hand the user back into a specific
+ * thread without losing in-page context.
  */
 export function Shell({
   onModelNameChange,
@@ -78,29 +66,13 @@ export function Shell({
   rightRail,
 }: ShellProps) {
   const { t, i18n } = useTranslation();
-  const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const { sessions, refresh, createChat } = useSessions();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sessionParam = searchParams.get("session");
+  const [activeKey, setActiveKey] = useState<string | null>(sessionParam);
   const [view, setView] = useState<ShellView>("chat");
-  const [desktopSidebarOpen, setDesktopSidebarOpen] =
-    useState<boolean>(readSidebarOpen);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [rightRailOpen, setRightRailOpen] = useState<boolean>(readRightRailOpen);
-  const [pendingDelete, setPendingDelete] = useState<{
-    key: string;
-    label: string;
-  } | null>(null);
   const lastSessionsLen = useRef(0);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        SIDEBAR_STORAGE_KEY,
-        desktopSidebarOpen ? "1" : "0",
-      );
-    } catch {
-      // ignore storage errors (private mode, etc.)
-    }
-  }, [desktopSidebarOpen]);
 
   useEffect(() => {
     try {
@@ -113,94 +85,73 @@ export function Shell({
     }
   }, [rightRailOpen]);
 
+  // Keep activeKey in sync with the URL query param. Allows
+  // `/sessions` → `打开会话` to deep-link back to a specific thread.
   useEffect(() => {
-    if (activeKey) return;
+    if (sessionParam !== activeKey) {
+      setActiveKey(sessionParam);
+      setView("chat");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionParam]);
+
+  // First-load fallback: when no `?session=` is provided, auto-select the
+  // most recent thread once the session list has loaded for the first time.
+  useEffect(() => {
+    if (activeKey || sessionParam) return;
     if (sessions.length > 0 && lastSessionsLen.current === 0) {
       setActiveKey(sessions[0].key);
     }
     lastSessionsLen.current = sessions.length;
-  }, [sessions, activeKey]);
+  }, [sessions, activeKey, sessionParam]);
 
   const activeSession = useMemo<ChatSummary | null>(() => {
     if (!activeKey) return null;
     return sessions.find((s) => s.key === activeKey) ?? null;
   }, [sessions, activeKey]);
 
-  const closeDesktopSidebar = useCallback(() => {
-    setDesktopSidebarOpen(false);
-  }, []);
-
-  const closeMobileSidebar = useCallback(() => {
-    setMobileSidebarOpen(false);
-  }, []);
-
-  const toggleSidebar = useCallback(() => {
-    const isDesktop =
-      typeof window !== "undefined" &&
-      window.matchMedia("(min-width: 1024px)").matches;
-    if (isDesktop) {
-      setDesktopSidebarOpen((v) => !v);
-    } else {
-      setMobileSidebarOpen((v) => !v);
-    }
-  }, []);
-
   const onCreateChat = useCallback(async () => {
     try {
       const chatId = await createChat();
-      setActiveKey(`websocket:${chatId}`);
+      const newKey = `websocket:${chatId}`;
+      setActiveKey(newKey);
       setView("chat");
-      setMobileSidebarOpen(false);
+      // Reflect the new session in the URL so refresh / share keeps state.
+      const next = new URLSearchParams(searchParams);
+      next.set("session", newKey);
+      setSearchParams(next, { replace: true });
       return chatId;
     } catch {
       return null;
     }
-  }, [createChat]);
+  }, [createChat, searchParams, setSearchParams]);
 
   const onNewChat = useCallback(() => {
     setActiveKey(null);
     setView("chat");
-    setMobileSidebarOpen(false);
-  }, []);
-
-  const onSelectChat = useCallback((key: string) => {
-    setActiveKey(key);
-    setView("chat");
-    setMobileSidebarOpen(false);
-  }, []);
+    if (searchParams.has("session")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("session");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const onOpenSettings = useCallback(() => {
     if (onOpenSettingsExternal) {
       onOpenSettingsExternal();
-      setMobileSidebarOpen(false);
       return;
     }
     setView("settings");
-    setMobileSidebarOpen(false);
   }, [onOpenSettingsExternal]);
 
   const onTurnEnd = useCallback(() => {
     void refresh();
   }, [refresh]);
 
-  const onConfirmDelete = useCallback(async () => {
-    if (!pendingDelete) return;
-    const key = pendingDelete.key;
-    const deletingActive = activeKey === key;
-    const currentIndex = sessions.findIndex((s) => s.key === key);
-    const fallbackKey = deletingActive
-      ? (sessions[currentIndex + 1]?.key ??
-          sessions[currentIndex - 1]?.key ??
-          null)
-      : activeKey;
-    setPendingDelete(null);
-    if (deletingActive) setActiveKey(fallbackKey);
-    try {
-      await deleteChat(key);
-    } catch {
-      if (deletingActive) setActiveKey(key);
-    }
-  }, [pendingDelete, deleteChat, activeKey, sessions]);
+  // Sidebar has been removed. Keep a stable no-op so ThreadShell's
+  // `onToggleSidebar` prop remains satisfied without consumers needing a
+  // refactor.
+  const noopToggleSidebar = useCallback(() => {}, []);
 
   const headerTitle = activeSession
     ? displaySessionTitle(
@@ -215,52 +166,8 @@ export function Shell({
       : t("app.documentTitle.base");
   }, [activeSession, headerTitle, i18n.resolvedLanguage, t]);
 
-  const sidebarProps = {
-    sessions,
-    activeKey,
-    loading,
-    onNewChat,
-    onSelect: onSelectChat,
-    onRequestDelete: (key: string, label: string) =>
-      setPendingDelete({ key, label }),
-  };
-
   return (
     <div className="relative flex h-full w-full gap-6 overflow-hidden p-6">
-      {/* Desktop Sidebar */}
-      <aside
-        className={cn(
-          "relative z-20 hidden shrink-0 overflow-hidden rounded-2xl border border-border gradient-card lg:block",
-          "transition-[width] duration-300 ease-out",
-        )}
-        style={{ width: desktopSidebarOpen ? SIDEBAR_WIDTH : 0 }}
-      >
-        <div
-          className={cn(
-            "absolute inset-y-0 left-0 h-full overflow-hidden",
-            "transition-transform duration-300 ease-out",
-            desktopSidebarOpen ? "translate-x-0" : "-translate-x-full",
-          )}
-          style={{ width: SIDEBAR_WIDTH }}
-        >
-          <Sidebar {...sidebarProps} onCollapse={closeDesktopSidebar} />
-        </div>
-      </aside>
-
-      <Sheet
-        open={mobileSidebarOpen}
-        onOpenChange={(open) => setMobileSidebarOpen(open)}
-      >
-        <SheetContent
-          side="left"
-          showCloseButton={false}
-          className="p-0 lg:hidden"
-          style={{ width: SIDEBAR_WIDTH, maxWidth: SIDEBAR_WIDTH }}
-        >
-          <Sidebar {...sidebarProps} onCollapse={closeMobileSidebar} />
-        </SheetContent>
-      </Sheet>
-
       {/* Main chat area */}
       <main className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border gradient-card">
         <ErrorBoundary>
@@ -270,54 +177,21 @@ export function Shell({
               onModelNameChange={onModelNameChange}
               onLogout={onLogout}
             />
-          ) : rightRail ? (
-            <div className="flex h-full min-h-0 flex-1">
-              <div className="flex h-full min-w-0 flex-1 flex-col">
-                <ThreadShell
-                  session={activeSession}
-                  title={headerTitle}
-                  onToggleSidebar={toggleSidebar}
-                  onNewChat={onNewChat}
-                  onCreateChat={onCreateChat}
-                  onTurnEnd={onTurnEnd}
-                  onOpenSettings={onOpenSettings}
-                  hideSidebarToggleOnDesktop={desktopSidebarOpen}
-                  onToggleRightRail={() => setRightRailOpen((v) => !v)}
-                  rightRailOpen={rightRailOpen}
-                />
-              </div>
-            </div>
           ) : (
             <ThreadShell
               session={activeSession}
               title={headerTitle}
-              onToggleSidebar={toggleSidebar}
+              onToggleSidebar={noopToggleSidebar}
               onNewChat={onNewChat}
               onCreateChat={onCreateChat}
               onTurnEnd={onTurnEnd}
               onOpenSettings={onOpenSettings}
-              hideSidebarToggleOnDesktop={desktopSidebarOpen}
+              hideSidebarToggleOnDesktop
+              onToggleRightRail={() => setRightRailOpen((v) => !v)}
+              rightRailOpen={rightRailOpen}
             />
           )}
         </ErrorBoundary>
-
-        {/* Expand sidebar floating button (visible only when collapsed) */}
-        {!desktopSidebarOpen && (
-          <button
-            type="button"
-            onClick={() => setDesktopSidebarOpen(true)}
-            className={cn(
-              "absolute left-3 top-3 z-20 hidden h-9 w-9 items-center justify-center",
-              "rounded-full border border-border bg-background/80 text-muted-foreground shadow-sm backdrop-blur-sm",
-              "transition-colors hover:bg-accent/40 hover:text-foreground",
-              "lg:flex",
-            )}
-            aria-label={t("thread.header.toggleSidebar", { defaultValue: "展开对话栏" })}
-            title={t("thread.header.toggleSidebar", { defaultValue: "展开对话栏" })}
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </button>
-        )}
 
         {/* Expand right-rail floating button (visible only when collapsed) */}
         {rightRail && !rightRailOpen && view === "chat" && (
@@ -356,20 +230,13 @@ export function Shell({
             style={{ width: RIGHT_RAIL_WIDTH }}
           >
             {rightRail?.({
-              onToggleSidebar: toggleSidebar,
+              onToggleSidebar: noopToggleSidebar,
               onToggleRightRail: () => setRightRailOpen((v) => !v),
               session: activeSession,
             })}
           </div>
         </aside>
       )}
-
-      <DeleteConfirm
-        open={!!pendingDelete}
-        title={pendingDelete?.label ?? ""}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={onConfirmDelete}
-      />
     </div>
   );
 }

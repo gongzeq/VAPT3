@@ -49,7 +49,7 @@ export function DashboardPage() {
                 className="glass-card card-hover-glow rounded-xl p-4 flex flex-col gap-2"
               >
                 <div className="flex items-center justify-between">
-                  <span className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10", COLOR_MAP[kpi.color])}>
+                  <span className={cn("icon-surface h-8 w-8 rounded-lg", COLOR_MAP[kpi.color])}>
                     <Icon className="h-4 w-4" />
                   </span>
                   {kpi.delta != null && kpi.delta !== 0 && (
@@ -95,7 +95,7 @@ export function DashboardPage() {
                     className={cn(
                       "rounded-md px-2.5 py-1 transition-colors",
                       trendDays === d
-                        ? "gradient-primary text-white"
+                        ? "gradient-primary text-primary-foreground"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
@@ -104,11 +104,7 @@ export function DashboardPage() {
                 ))}
               </div>
             </div>
-            <ReactECharts
-              option={trendOption}
-              opts={{ renderer: "svg" }}
-              className="h-[320px]"
-            />
+            <ReactECharts option={trendOption} opts={{ renderer: "svg" }} className="h-[320px]" />
           </div>
 
           {/* Pie — 1/3 (toggleable: asset / vuln) */}
@@ -125,7 +121,7 @@ export function DashboardPage() {
                   className={cn(
                     "rounded-md px-2.5 py-1 transition-colors",
                     pieMode === "asset"
-                      ? "gradient-primary text-white"
+                      ? "gradient-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -136,7 +132,7 @@ export function DashboardPage() {
                   className={cn(
                     "rounded-md px-2.5 py-1 transition-colors",
                     pieMode === "vuln"
-                      ? "gradient-primary text-white"
+                      ? "gradient-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -159,19 +155,13 @@ export function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="section-accent-bar text-base font-semibold">资产聚类</h3>
-                <p className="text-xs text-muted-foreground mt-0.5 pl-3">
-                  按业务系统 + 风险等级
-                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 pl-3">按业务系统 + 风险等级</p>
               </div>
               <button className="text-xs text-primary/80 hover:text-primary inline-flex items-center gap-1 transition-colors duration-200">
                 查看全部 <ArrowRight className="h-3 w-3" />
               </button>
             </div>
-            <ReactECharts
-              option={clusterOption}
-              opts={{ renderer: "svg" }}
-              className="h-[280px]"
-            />
+            <ReactECharts option={clusterOption} opts={{ renderer: "svg" }} className="h-[280px]" />
           </div>
 
           {/* Recent Reports — table */}
@@ -204,12 +194,7 @@ export function DashboardPage() {
                       </td>
                       <td className="py-3 text-xs text-muted-foreground">{r.type}</td>
                       <td className="py-3 text-right">
-                        <span
-                          className={cn(
-                            "font-mono font-medium",
-                            SEVERITY_COLOR[r.severity],
-                          )}
-                        >
+                        <span className={cn("font-mono font-medium", SEVERITY_COLOR[r.severity])}>
                           {r.highCount}
                         </span>
                       </td>

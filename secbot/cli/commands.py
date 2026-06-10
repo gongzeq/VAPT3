@@ -527,6 +527,33 @@ def _migrate_cron_store(config: "Config") -> None:
         shutil.move(str(legacy_path), str(new_path))
 
 
+def _migrate_cmdb() -> None:
+    """Run pending Alembic migrations for the CMDB SQLite database.
+
+    Keeps the schema in sync with the ORM models without requiring the
+    operator to run ``alembic upgrade head`` manually.  Failures are
+    logged but non-fatal so the gateway can still start.
+    """
+    try:
+        from alembic import command as alembic_command
+        from alembic.config import Config as AlembicConfig
+
+        # Resolve alembic.ini relative to the package so it works both
+        # in editable installs and wheel distributions.
+        _cmdb_dir = Path(__file__).resolve().parent.parent / "cmdb"
+        _ini_path = _cmdb_dir / "alembic.ini"
+        if not _ini_path.is_file():
+            logger.debug("alembic.ini not found at {}; skipping auto-migration", _ini_path)
+            return
+
+        alembic_cfg = AlembicConfig(str(_ini_path))
+        alembic_cfg.set_main_option("script_location", str(_cmdb_dir / "migrations"))
+        alembic_command.upgrade(alembic_cfg, "head")
+        logger.info("CMDB schema migrated to head")
+    except Exception as exc:
+        logger.warning("CMDB auto-migration failed ({}); gateway will continue", exc)
+
+
 def _build_api_workflow_kwargs(
     config: "Config", agent_loop: Any
 ) -> dict[str, Any]:
@@ -619,6 +646,7 @@ def serve(
     port = port if port is not None else api_cfg.port
     timeout = timeout if timeout is not None else api_cfg.timeout
     sync_workspace_templates(runtime_config.workspace_path)
+    _migrate_cmdb()
     bus = MessageBus()
     provider = _make_provider(runtime_config)
     session_manager = SessionManager(runtime_config.workspace_path)
@@ -733,6 +761,7 @@ def _run_gateway(
 
     console.print(f"{__logo__} Starting secbot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
+    _migrate_cmdb()
     bus = MessageBus()
     try:
         provider_snapshot = build_provider_snapshot(config)

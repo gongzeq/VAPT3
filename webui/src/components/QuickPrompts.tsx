@@ -1,13 +1,5 @@
 import { useTranslation } from "react-i18next";
-import {
-  ArrowUpRight,
-  Bug,
-  FileText,
-  Key,
-  Radar,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowUpRight, Bug, FileText, Key, Radar, Zap, type LucideIcon } from "lucide-react";
 import { dispatchComposerPrefill } from "@/components/PromptSuggestions";
 
 interface PromptDef {
@@ -62,8 +54,8 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
   return (
     <section className={className}>
       <header className="mb-4 flex items-center gap-2.5">
-        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-          <Zap className="h-4 w-4 text-primary" />
+        <span className="icon-surface icon-surface-brand h-7 w-7 rounded-lg">
+          <Zap className="h-4 w-4" />
         </span>
         <h4 className="text-sm font-semibold tracking-wide text-foreground">
           {t("home.prompts.title", { defaultValue: "快捷指令" })}
@@ -89,17 +81,12 @@ export function QuickPrompts({ className }: QuickPromptsProps) {
             <button
               key={p.key}
               type="button"
-              className="group relative w-full overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-muted/40 to-muted/10 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_30px_-12px_hsl(var(--primary)/0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              className="prompt-accent group relative w-full overflow-hidden rounded-xl border border-border/60 bg-card p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_10px_30px_-20px_hsl(var(--primary)/0.32)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
               onClick={() => dispatchComposerPrefill(prefill)}
             >
-              {/* 悬停时右上角浮现的海蓝辉光 */}
-              <span
-                aria-hidden
-                className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none"
-              />
               <div className="relative flex items-start gap-3">
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-cyan-glow/10 ring-1 ring-primary/15 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
-                  <Icon className="h-5 w-5 text-primary" />
+                <span className="icon-surface icon-surface-brand h-10 w-10 shrink-0 rounded-lg transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                  <Icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">

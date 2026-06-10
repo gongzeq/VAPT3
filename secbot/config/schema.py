@@ -73,11 +73,11 @@ class AgentDefaults(Base):
     provider: str = (
         "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
     )
-    max_tokens: int = 8192
-    context_window_tokens: int = 65_536
+    max_tokens: int = 16_384
+    context_window_tokens: int = 131_072
     context_block_limit: int | None = None
     temperature: float = 0.1
-    max_tool_iterations: int = 200
+    max_tool_iterations: int = 60
     max_concurrent_subagents: int = Field(default=1, ge=1)
     max_tool_result_chars: int = 16_000
     provider_retry_mode: Literal["standard", "persistent"] = "standard"

@@ -1,0 +1,27 @@
+{"file": "CONTEXT.md", "reason": "Domain vocabulary for Organization Scope, Public Asset Candidate, Managed Asset, White-Box Assessment, evidence, and verification concepts."}
+{"file": ".trellis/tasks/06-09-public-asset-discovery-whitebox-assessment/prd.md", "reason": "Primary product requirements and implementation decisions for public asset discovery and white-box assessment."}
+{"file": "docs/adr/0001-white-box-assessment-uses-independent-lifecycle.md", "reason": "Architecture constraint: White-Box Assessment must not reuse Scan lifecycle or dashboard counts."}
+{"file": "docs/adr/0002-white-box-evidence-is-source-of-truth.md", "reason": "Architecture constraint: structured White-Box Evidence drives findings and reproduction documents."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend guideline index and authoritative contract map."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Layering, persistence boundary, and agent/skill ownership constraints."}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "CMDB schema, Managed Asset ingestion gate, candidate semantics, actor_id filtering, migration policy."}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Existing Scan lifecycle that prompt drafts and document-guided verification must route through without reuse by white-box tasks."}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Safety gate semantics for any live-target verification routed through Scan behavior."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Sandbox, network, and no raw subprocess constraints relevant to analyzers and any external tool integrations."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Skill packaging/output constraints if discovery, report, or verification capabilities are exposed as skills."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Expert agent registry boundaries if new routing units are introduced."}
+{"file": ".trellis/spec/backend/prompts-config.md", "reason": "Prompt prefill and quick-command contract relevant to Scan Prompt Draft behavior."}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Streaming and notification envelope constraints for discovery and white-box task updates."}
+{"file": ".trellis/spec/backend/report-pipeline.md", "reason": "Markdown-canonical artifact guidance relevant to reproduction document rendering and persistence."}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "Structured summary vs disk artifact rules for evidence, raw logs, and generated documents."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Classified error handling and sanitized API/skill failures."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality, security, persistence, and testing red lines."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend hard rules and pre-implementation checklist."}
+{"file": ".trellis/spec/frontend/coding-standards.md", "reason": "React/TypeScript component, data fetching, TSDoc, testing, and forbidden-pattern rules."}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Shell/view hierarchy constraints for adding Public Asset Discovery and White-Box Workspace entries."}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "Color-token and severity palette constraints."}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Chat, tool-call, destructive confirmation, and layout patterns."}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Chart/graph dependency whitelist and timeline/progress guidance."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Shared guide index required before implementation."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data-flow checklist for API, database, services, notifications, and frontend surfaces."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Search-first and reuse checklist before adding new utilities, constants, services, or UI patterns."}

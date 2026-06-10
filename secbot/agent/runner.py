@@ -52,6 +52,30 @@ _COMPACTABLE_TOOLS = frozenset({
 })
 _BACKFILL_CONTENT = "[Tool result unavailable — call was interrupted or lost]"
 
+_INTERRUPT_SUMMARY_PROMPT = """\
+You are an AI agent that has been interrupted before completing its task.
+Below is a summary of your work so far. Synthesize it into a concise structured report.
+
+Output format (in the same language as the task):
+## 任务状态：未完成
+
+## 已收集的信息
+- <key findings, data collected>
+
+## 已尝试的方法
+- <tools called, approaches taken>
+
+## 当前阻塞点
+- <what prevented completion, what remains to be done>
+
+## 续接建议
+- <specific next steps for a new session to continue>
+
+---
+Work history:
+{context}
+"""
+
 
 
 @dataclass(slots=True)
@@ -290,6 +314,41 @@ class AgentRunner:
                     messages_for_model = messages
             context = AgentHookContext(iteration=iteration, messages=messages)
             await hook.before_iteration(context)
+
+            # Detect context window exhaustion: if after all governance the
+            # prompt still exceeds the usable window, stop before the LLM
+            # call fails with a context-length error.
+            if (
+                spec.context_window_tokens
+                and spec.context_window_tokens > 0
+                and iteration > 2
+            ):
+                try:
+                    _ctx_est, _ = estimate_prompt_tokens_chain(
+                        self.provider, spec.model,
+                        messages_for_model, spec.tools.get_definitions(),
+                    )
+                    _provider_max = getattr(
+                        getattr(self.provider, "generation", None), "max_tokens", 4096,
+                    )
+                    _ctx_budget = spec.context_window_tokens - max(
+                        1, int(_provider_max),
+                    ) - _SNIP_SAFETY_BUFFER
+                    if _ctx_est > _ctx_budget and _ctx_budget > 0:
+                        logger.warning(
+                            "Context exhausted at iteration {}: estimated {} tokens, "
+                            "budget {} tokens",
+                            iteration, _ctx_est, _ctx_budget,
+                        )
+                        stop_reason = "context_exhausted"
+                        final_content = await self._generate_interrupt_summary(
+                            spec, messages, tool_events, stop_reason,
+                        )
+                        self._append_final_message(messages, final_content)
+                        break
+                except Exception:
+                    pass  # token estimation failure is non-fatal
+
             response = await self._request_model(spec, messages_for_model, hook, context)
             raw_usage = self._usage_dict(response.usage)
             context.response = response
@@ -553,16 +612,9 @@ class AgentRunner:
             break
         else:
             stop_reason = "max_iterations"
-            if spec.max_iterations_message:
-                final_content = spec.max_iterations_message.format(
-                    max_iterations=spec.max_iterations,
-                )
-            else:
-                final_content = render_template(
-                    "agent/max_iterations_message.md",
-                    strip=True,
-                    max_iterations=spec.max_iterations,
-                )
+            final_content = await self._generate_interrupt_summary(
+                spec, messages, tool_events, stop_reason,
+            )
             self._append_final_message(messages, final_content)
             # Drain any remaining injections so they are appended to the
             # conversation history instead of being re-published as
@@ -1285,3 +1337,96 @@ class AgentRunner:
         if summary.get("parse_error"):
             return f"parse_error: {summary['parse_error']}"
         return None
+
+    # ------------------------------------------------------------------
+    # Interrupt summary generation (hybrid: LLM-first, deterministic fallback)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_deterministic_summary(
+        tool_events: list[dict[str, str]],
+        messages: list[dict[str, Any]],
+        stop_reason: str,
+    ) -> str:
+        """Build a structured summary from tool_events and recent messages."""
+        reason_label = (
+            "工具调用轮次已耗尽" if stop_reason == "max_iterations"
+            else "上下文窗口已满"
+        )
+        lines: list[str] = [
+            f"## 任务状态：未完成（{reason_label}）",
+            "",
+        ]
+
+        # Completed tool steps
+        completed = [e for e in tool_events if e.get("status") == "ok"]
+        if completed:
+            lines.append("## 已收集的信息 / 已尝试的方法")
+            for event in completed[-10:]:
+                lines.append(f"- **{event['name']}**: {event.get('detail', '')}")
+            lines.append("")
+
+        # Errors
+        failures = [e for e in tool_events if e.get("status") == "error"]
+        if failures:
+            lines.append("## 当前阻塞点")
+            for event in failures[-3:]:
+                lines.append(f"- **{event['name']}** 失败: {event.get('detail', '')}")
+            lines.append("")
+
+        # Last assistant message for additional context
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant" and msg.get("content"):
+                content = str(msg["content"]).strip()
+                if content:
+                    lines.append("## 最后输出")
+                    lines.append(content[:500])
+                    break
+
+        if not completed and not failures:
+            lines.append("## 当前阻塞点")
+            lines.append("- 未收集到足够的执行信息，请重新分解任务后重试")
+
+        lines.append("")
+        lines.append("## 续接建议")
+        lines.append("- 请根据以上信息继续完成任务，从上次中断处继续")
+
+        return "\n".join(lines)
+
+    async def _generate_interrupt_summary(
+        self,
+        spec: AgentRunSpec,
+        messages: list[dict[str, Any]],
+        tool_events: list[dict[str, str]],
+        stop_reason: str,
+    ) -> str:
+        """Hybrid summary: try LLM first, fall back to deterministic format."""
+        deterministic = self._format_deterministic_summary(tool_events, messages, stop_reason)
+        try:
+            # Build a compact work-history context from recent messages
+            context_parts: list[str] = []
+            for event in tool_events[-15:]:
+                status = event.get("status", "")
+                context_parts.append(f"[{status}] {event['name']}: {event.get('detail', '')}")
+            # Append last few assistant utterances
+            for msg in messages[-6:]:
+                if msg.get("role") == "assistant":
+                    content = str(msg.get("content") or "").strip()
+                    if content:
+                        context_parts.append(f"Assistant: {content[:300]}")
+            work_history = "\n".join(context_parts[-20:]) if context_parts else "(no events)"
+
+            summary_prompt = _INTERRUPT_SUMMARY_PROMPT.format(context=work_history)
+            resp = await self.provider.chat_with_retry(
+                messages=[{"role": "user", "content": summary_prompt}],
+                tools=None,
+                model=spec.model,
+                max_tokens=2048,
+            )
+            if resp.content and len(resp.content.strip()) > 50:
+                logger.info("LLM interrupt summary generated ({} chars)", len(resp.content))
+                return resp.content.strip()
+            logger.warning("LLM summary too short, falling back to deterministic")
+        except Exception as exc:
+            logger.warning("LLM interrupt summary failed ({}), using deterministic fallback", exc)
+        return deterministic

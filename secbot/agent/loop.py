@@ -1202,6 +1202,43 @@ class AgentLoop:
                 session_key=key,
                 pending_queue=pending_queue,
             )
+            # Auto-continue when the main agent hits iteration/context limits:
+            # inject the interrupt summary as a continuation prompt and start a
+            # fresh loop (iteration counter resets, context window is clean).
+            _MAX_CONTINUATIONS = 5
+            _continuations = 0
+            while stop_reason in ("max_iterations", "context_exhausted") and _continuations < _MAX_CONTINUATIONS:
+                _continuations += 1
+                _summary = final_content or f"[会话中断 — {stop_reason}]"
+                logger.info(
+                    "Auto-continue #{}: {} — restarting agent loop with summary",
+                    _continuations, stop_reason,
+                )
+                _cont_msgs = self.context.build_messages(
+                    history="",
+                    current_message=(
+                        f"[会话中断续接 #{_continuations}]\n\n"
+                        f"上一次执行因{('轮次耗尽' if stop_reason == 'max_iterations' else '上下文窗口已满')}而中断。"
+                        f"以下是中断时的进度摘要，请从断点处继续完成任务：\n\n{_summary}"
+                    ),
+                    channel=channel,
+                    chat_id=chat_id,
+                    is_orchestrator=self.is_orchestrator,
+                    agent_registry=self._agent_registry,
+                )
+                final_content, _, _cont_msgs, stop_reason, _ = await self._run_agent_loop(
+                    _cont_msgs, session=session, channel=channel, chat_id=chat_id,
+                    message_id=msg.metadata.get("message_id"),
+                    metadata=msg.metadata,
+                    session_key=key,
+                    pending_queue=pending_queue,
+                )
+                all_msgs.extend(_cont_msgs)
+            if stop_reason in ("max_iterations", "context_exhausted"):
+                logger.warning(
+                    "Auto-continue exhausted after {} rounds; reporting final state",
+                    _MAX_CONTINUATIONS,
+                )
             self._save_turn(session, all_msgs, 1 + len(history))
             session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
             self._clear_runtime_checkpoint(session)
@@ -1379,6 +1416,54 @@ class AgentLoop:
             session_key=key,
             pending_queue=pending_queue,
         )
+
+        # Auto-continue when the main agent hits iteration/context limits:
+        # inject the interrupt summary as a continuation prompt and start a
+        # fresh loop (iteration counter resets, context window is clean).
+        _MAX_CONTINUATIONS = 5
+        _continuations = 0
+        while stop_reason in ("max_iterations", "context_exhausted") and _continuations < _MAX_CONTINUATIONS:
+            _continuations += 1
+            _summary = final_content or f"[会话中断 — {stop_reason}]"
+            logger.info(
+                "Auto-continue #{}: {} — restarting agent loop with summary",
+                _continuations, stop_reason,
+            )
+            _cont_msgs = self.context.build_messages(
+                history="",
+                current_message=(
+                    f"[会话中断续接 #{_continuations}]\n\n"
+                    f"上一次执行因{('轮次耗尽' if stop_reason == 'max_iterations' else '上下文窗口已满')}而中断。"
+                    f"以下是中断时的进度摘要，请从断点处继续完成任务：\n\n{_summary}"
+                ),
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                is_orchestrator=self.is_orchestrator,
+                agent_registry=self._agent_registry,
+            )
+            _fc, _, _cm, stop_reason, _hi = await self._run_agent_loop(
+                _cont_msgs,
+                on_progress=on_progress or _bus_progress,
+                on_stream=on_stream,
+                on_stream_end=on_stream_end,
+                on_retry_wait=_on_retry_wait,
+                session=session,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                message_id=msg.metadata.get("message_id"),
+                metadata=msg.metadata,
+                session_key=key,
+                pending_queue=pending_queue,
+            )
+            final_content = _fc or final_content
+            all_msgs.extend(_cm)
+            if _hi:
+                had_injections = True
+        if stop_reason in ("max_iterations", "context_exhausted"):
+            logger.warning(
+                "Auto-continue exhausted after {} rounds; reporting final state",
+                _MAX_CONTINUATIONS,
+            )
 
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE

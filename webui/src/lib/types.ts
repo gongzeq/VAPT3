@@ -297,6 +297,63 @@ export interface ChatSummary {
   preview: string;
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Sessions History page (`/sessions`) — structured per-session record with
+// scan metadata, findings rollup, token accounting and generated reports.
+// Currently fed by frontend mocks; backend `/api/sessions` + `/api/reports`
+// are TODO (see `webui/src/gap/dashboard-data.md`).
+// ────────────────────────────────────────────────────────────────────────
+
+/** Quick-start scan scenario chosen from the Hero `<ScanQuickStart />`.
+ * Also includes non-scanning session types (e.g. security knowledge queries). */
+export type ScanType = "full" | "vuln" | "weakpwd" | "asset" | "query";
+
+/** Lifecycle status of a recorded session. */
+export type SessionStatus = "running" | "finished" | "failed" | "stopped";
+
+/** Aggregated severity counts surfaced in the sessions table. */
+export interface SessionFindingsRollup {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  total: number;
+}
+
+/** Token accounting projected onto a single session. */
+export interface SessionTokenRollup {
+  input: number;
+  output: number;
+  cached: number;
+}
+
+/** One report artefact produced by a session (HTML or PDF). */
+export interface ReportRow {
+  id: string;
+  /** Foreign key into :type:`SessionRow.key`. */
+  sessionKey: string;
+  title: string;
+  format: "html" | "pdf";
+  /** Either an absolute URL or a same-origin path. */
+  url: string;
+  sizeBytes: number;
+  /** ISO-8601 UTC timestamp. */
+  createdAt: string;
+}
+
+/** Structured row rendered in `/sessions` table — extends ChatSummary so a
+ * row can hand off to the existing chat surface via session.key. */
+export interface SessionRow extends ChatSummary {
+  target: string | null;
+  scanType: ScanType | null;
+  status: SessionStatus;
+  findings: SessionFindingsRollup;
+  tokens: SessionTokenRollup;
+  /** Wall-clock duration (ms) for the session, or null while still running. */
+  durationMs: number | null;
+  reports: ReportRow[];
+}
+
 export interface BootstrapResponse {
   token: string;
   ws_path: string;

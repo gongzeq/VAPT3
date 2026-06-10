@@ -77,6 +77,7 @@
   },
   "thread": {
     "loadingConversation": "Loading conversation…",
+    "newChat": "New chat",
     "empty": {
       "greeting": "What can I do for you?",
       "quickActions": {
@@ -214,8 +215,118 @@
     "dismiss": "Dismiss"
   },
   "nav": {
+    "home": "Assistant",
+    "sessions": "History",
+    "dashboard": "Dashboard",
+    "settings": "Settings",
     "notifications": "Notifications",
     "workflows": "Workflows"
+  },
+  "home": {
+    "hero": {
+      "tagline": "AI-driven security operations · assets, vulns, compliance"
+    },
+    "scan": {
+      "title": "Quick actions",
+      "run": "Start scan",
+      "target": {
+        "label": "Scan target",
+        "placeholder": "192.168.1.10:8080  /  https://example.com",
+        "hint": "Enter IP+port, domain or CIDR, then click a scenario to launch a scan.",
+        "required": "Enter a target before choosing a scenario"
+      },
+      "full": {
+        "label": "Full scan",
+        "desc": "Assets + ports + vulns + weak passwords + report",
+        "template": "Run a full security scan against {target}: asset discovery, port/service ID, vulnerability detection, weak-password brute force, and a final HTML report."
+      },
+      "vuln": {
+        "label": "Vuln scan",
+        "desc": "OWASP Top 10 + known-CVE detection",
+        "template": "Run a vulnerability scan against {target} covering OWASP Top 10 and known-CVE detection, then generate an HTML report."
+      },
+      "weakpwd": {
+        "label": "Weak password",
+        "desc": "Dictionary brute force on SSH / RDP / SMB / HTTP",
+        "template": "Run a weak-password check against {target} covering SSH, RDP, SMB and HTTP dictionary brute force."
+      },
+      "asset": {
+        "label": "Asset only",
+        "desc": "Live hosts + port fingerprints into CMDB",
+        "template": "Discover assets and ports on {target} only — write results to CMDB and skip vulnerability validation."
+      }
+    },
+    "assetAutoManagement": {
+      "label": "Auto-manage assets",
+      "on": "On",
+      "off": "Off"
+    }
+  },
+  "sessions": {
+    "page": {
+      "title": "Session history",
+      "subtitle": "Structured records and generated reports for every session.",
+      "breadcrumb": "Navigation / History",
+      "newScan": "New scan"
+    },
+    "loading": "Loading sessions…",
+    "type": {
+      "query": "Security Query"
+    },
+    "filter": {
+      "searchPlaceholder": "Search target / chat id / title",
+      "status": "Status",
+      "scanType": "Scan type",
+      "sessionType": "Session type",
+      "range": "Time range",
+      "allStatuses": "All statuses",
+      "allScans": "All types",
+      "range1d": "Last 1 day",
+      "range7d": "Last 7 days",
+      "range30d": "Last 30 days",
+      "rangeAll": "All time"
+    },
+    "status": {
+      "running": "Running",
+      "finished": "Finished",
+      "failed": "Failed",
+      "stopped": "Stopped"
+    },
+    "column": {
+      "session": "Session / target",
+      "status": "Status",
+      "scanType": "Scan type",
+      "sessionType": "Session type",
+      "findings": "Findings",
+      "tokens": "Tokens",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
+    "actions": {
+      "openSession": "Open",
+      "downloadReport": "Download report",
+      "noReportGenerated": "No report generated",
+      "batchDelete": "Batch delete",
+      "deleteSession": "Delete session",
+      "selectSession": "Select this session",
+      "selectAll": "Select all"
+    },
+    "empty": {
+      "title": "No sessions yet",
+      "subtitle": "Adjust the filters or head back home to launch a new scan.",
+      "cta": "Start a new scan"
+    }
+  },
+  "settings": {
+    "theme": {
+      "title": "Appearance",
+      "mode": "Display mode",
+      "light": "Light",
+      "dark": "Dark",
+      "color": "Theme color"
+    },
+    "language": "Language and region",
+    "interfaceLang": "Interface language"
   },
   "workflow": {
     "listTitle": "Workflows",
@@ -502,6 +613,87 @@
       "network": "Network error, failed to load",
       "401": "Session expired",
       "500": "Server error"
+    }
+  },
+  "sessionDetail": {
+    "loading": "Loading session details…",
+    "backToList": "Back to history",
+    "openChat": "Open chat",
+    "delete": "Delete",
+    "notFound": {
+      "title": "Session not found",
+      "subtitle": "This session may have been deleted or does not exist"
+    },
+    "kpi": {
+      "findings": "Findings",
+      "tokens": "Token usage",
+      "cacheRate": "Cache hit rate",
+      "duration": "Duration",
+      "running": "In progress",
+      "sessionType": "Session type",
+      "queryHint": "Knowledge query / Security consultation"
+    },
+    "section": {
+      "findings": "Findings breakdown",
+      "timeline": "Session timeline",
+      "info": "Session info",
+      "reports": "Generated reports",
+      "tokenBreakdown": "Token breakdown",
+      "messages": "Conversation log"
+    },
+    "findings": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "none": "No security issues found",
+      "totalSuffix": "total findings"
+    },
+    "timeline": {
+      "sessionCreated": "Session created",
+      "scanning": "Scanning…",
+      "processing": "Processing…",
+      "inProgress": "In progress",
+      "completed": "Scan completed",
+      "queryCompleted": "Session completed",
+      "failed": "Scan failed",
+      "queryFailed": "Session failed",
+      "stopped": "Stopped by user",
+      "reportGenerated": "Report generated"
+    },
+    "info": {
+      "sessionKey": "Session Key",
+      "chatId": "Chat ID",
+      "channel": "Channel",
+      "target": "Scan target",
+      "topic": "Query topic",
+      "noTopic": "—",
+      "createdAt": "Created",
+      "updatedAt": "Last updated",
+      "preview": "Session summary"
+    },
+    "reports": {
+      "none": "No reports generated",
+      "open": "Open",
+      "download": "Download"
+    },
+    "tokens": {
+      "input": "Input Tokens",
+      "output": "Output Tokens",
+      "cached": "Cached Tokens",
+      "total": "Total",
+      "cacheRate": "Cache hit rate"
+    },
+    "messages": {
+      "catAll": "All",
+      "catTools": "Tools",
+      "catErrors": "Errors",
+      "catThinking": "Thinking",
+      "catRespond": "Responses",
+      "loading": "Loading conversation log…",
+      "empty": "No conversation records yet",
+      "emptyCategory": "No records in this category",
+      "totalCount": "{{count}} records in total"
     }
   },
   "errors": {

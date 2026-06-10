@@ -3,18 +3,28 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
+  Check,
   Globe,
   LogOut,
+  Moon,
   Palette,
   Server,
+  Sun,
   Trash2,
 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { Button } from "@/components/ui/button";
+import {
+  THEME_COLOR_OPTIONS,
+  useTheme,
+  type ThemeColor,
+  type ThemeColorOption,
+} from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 
+/** Props for the route-level settings page. */
 export interface SettingsPageProps {
   onModelNameChange: (modelName: string | null) => void;
   onLogout: () => void;
@@ -34,6 +44,47 @@ const TABS: TabDef[] = [
   { id: "danger", label: "危险区", icon: AlertTriangle },
 ];
 
+/** Props for a selectable theme color button. */
+export interface ThemeColorButtonProps {
+  option: ThemeColorOption;
+  selected: boolean;
+  onSelect: (theme: ThemeColor) => void;
+}
+
+function ThemeColorButton({ option, selected, onSelect }: ThemeColorButtonProps) {
+  const handleClick = () => onSelect(option.id);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-pressed={selected}
+      className={cn(
+        "flex h-10 items-center justify-between gap-2 rounded-md border px-3 text-sm transition-all",
+        selected
+          ? "border-primary bg-primary/10 text-foreground shadow-[0_0_0_1px_hsl(var(--primary)/0.18)]"
+          : "border-border/60 bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          className={cn(
+            "h-4 w-4 shrink-0 rounded-full ring-1 ring-border/60",
+            option.swatchClassName,
+          )}
+          aria-hidden="true"
+        />
+        <span className="truncate">{option.label}</span>
+      </span>
+      {selected ? (
+        <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+      ) : (
+        <span className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
 /**
  * /settings — Tab layout per template §7.5 / PRD R4.5.
  *
@@ -46,6 +97,7 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<SettingsTab>("preferences");
+  const { theme, colorTheme, setTheme, setColorTheme } = useTheme();
 
   return (
     <div className="flex h-full w-full flex-col bg-background">
@@ -78,6 +130,65 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
         {/* ── Tab Content ── */}
         {activeTab === "preferences" && (
           <section className="space-y-6">
+            {/* Theme */}
+            <div className="rounded-xl border border-border/40 bg-card p-6">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Palette className="h-4 w-4 text-muted-foreground" />
+                {t("settings.theme.title", { defaultValue: "主题外观" })}
+              </h3>
+              <div className="space-y-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm text-foreground">
+                      {t("settings.theme.mode", { defaultValue: "显示模式" })}
+                    </p>
+                  </div>
+                  <div className="grid w-full grid-cols-2 gap-2 sm:w-[260px]">
+                    <Button
+                      type="button"
+                      variant={theme === "light" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTheme("light")}
+                      aria-pressed={theme === "light"}
+                      className="justify-center gap-1.5"
+                    >
+                      <Sun className="h-3.5 w-3.5" />
+                      {t("settings.theme.light", { defaultValue: "浅色" })}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={theme === "dark" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTheme("dark")}
+                      aria-pressed={theme === "dark"}
+                      className="justify-center gap-1.5"
+                    >
+                      <Moon className="h-3.5 w-3.5" />
+                      {t("settings.theme.dark", { defaultValue: "深色" })}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border-t border-border/40" />
+
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm text-foreground">
+                    {t("settings.theme.color", { defaultValue: "主题色彩" })}
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    {THEME_COLOR_OPTIONS.map((option) => (
+                      <ThemeColorButton
+                        key={option.id}
+                        option={option}
+                        selected={colorTheme === option.id}
+                        onSelect={setColorTheme}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Language */}
             <div className="rounded-xl border border-border/40 bg-card p-6">
               <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -126,12 +237,7 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
                       })}
                     </p>
                   </div>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={onLogout}
-                    className="gap-1.5"
-                  >
+                  <Button variant="destructive" size="sm" onClick={onLogout} className="gap-1.5">
                     <LogOut className="h-3.5 w-3.5" />
                     {t("settings.logoutBtn", { defaultValue: "退出" })}
                   </Button>
@@ -149,8 +255,7 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {t("settings.clearSessionsHint", {
-                        defaultValue:
-                          "删除所有对话历史记录，此操作不可逆",
+                        defaultValue: "删除所有对话历史记录，此操作不可逆",
                       })}
                     </p>
                   </div>
@@ -161,8 +266,7 @@ export function SettingsPage({ onModelNameChange, onLogout }: SettingsPageProps)
                       if (
                         window.confirm(
                           t("settings.clearConfirm", {
-                            defaultValue:
-                              "确定要清空所有会话吗？此操作不可逆。",
+                            defaultValue: "确定要清空所有会话吗？此操作不可逆。",
                           }),
                         )
                       ) {

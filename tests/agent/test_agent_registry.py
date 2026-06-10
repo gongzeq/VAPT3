@@ -32,6 +32,7 @@ REAL_SKILL_NAMES = {
     "hydra-bruteforce",
     # report
     "report-html",
+    "detection-db-query",
     # vuln_detec
     "vuln-detec-manual",
     # crawl_web

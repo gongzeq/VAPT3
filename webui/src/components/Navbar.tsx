@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Bell,
-  LayoutDashboard,
-  Menu,
-  MessageSquare,
-  Settings,
-  Workflow,
-} from "lucide-react";
+import { Bell, History, LayoutDashboard, Menu, MessageSquare, Settings, Workflow } from "lucide-react";
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { NotificationPanel } from "@/components/NotificationPanel";
 import { useClient, useUnread } from "@/providers/ClientProvider";
 import { cn } from "@/lib/utils";
@@ -25,6 +22,7 @@ const NAV_ITEMS: Array<{
   enabled?: boolean;
 }> = [
   { to: "/", labelKey: "nav.home", fallback: "智能助手", icon: MessageSquare },
+  { to: "/sessions", labelKey: "nav.sessions", fallback: "历史会话", icon: History },
   { to: "/dashboard", labelKey: "nav.dashboard", fallback: "大屏分析", icon: LayoutDashboard },
   {
     to: "/workflows",
@@ -56,13 +54,10 @@ export function Navbar(_props: NavbarProps) {
   useEffect(() => client.onStatus(setStatus), [client]);
 
   const isOpen = status === "open";
-  const statusLabel = isOpen
-    ? "WS · 已连接"
-    : t(`connection.${status}`, { defaultValue: status });
+  const statusLabel = isOpen ? "WS · 已连接" : t(`connection.${status}`, { defaultValue: status });
 
   // Badge caps at ``99+`` so a runaway backend never blows the pill layout.
-  const unreadDisplay =
-    unread.unreadCount > 99 ? "99+" : String(unread.unreadCount);
+  const unreadDisplay = unread.unreadCount > 99 ? "99+" : String(unread.unreadCount);
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -91,9 +86,7 @@ export function Navbar(_props: NavbarProps) {
           {NAV_ITEMS.filter((item) => item.enabled !== false).map((item) => {
             const Icon = item.icon;
             const active =
-              item.to === "/"
-                ? location.pathname === "/"
-                : location.pathname.startsWith(item.to);
+              item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
             const label = t(item.labelKey, { defaultValue: item.fallback });
             return (
               <NavLink
@@ -102,7 +95,7 @@ export function Navbar(_props: NavbarProps) {
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-all duration-200",
                   active
-                    ? "gradient-primary font-medium text-white shadow-[0_2px_12px_hsl(var(--primary)/0.35)]"
+                    ? "gradient-primary font-medium text-primary-foreground shadow-[0_2px_12px_hsl(var(--primary)/0.35)]"
                     : "text-muted-foreground hover:bg-primary/8 hover:text-foreground",
                 )}
               >
@@ -127,9 +120,7 @@ export function Navbar(_props: NavbarProps) {
                   : "bg-muted-foreground/60",
               )}
             />
-            <span className="font-mono text-muted-foreground/80">
-              {statusLabel}
-            </span>
+            <span className="font-mono text-muted-foreground/80">{statusLabel}</span>
           </div>
 
           {/* Bell + notification panel */}
@@ -137,11 +128,11 @@ export function Navbar(_props: NavbarProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="relative rounded-lg border border-border/60 bg-card/60 p-2 transition-all duration-200 hover:border-primary/30 hover:shadow-[0_0_12px_hsl(var(--primary)/0.12)]"
+                className="icon-surface icon-surface-muted relative h-9 w-9 rounded-lg transition-all duration-200 hover:border-primary/30 hover:text-primary hover:shadow-[0_0_12px_hsl(var(--primary)/0.12)]"
                 aria-label={t("nav.notifications", { defaultValue: "通知" })}
                 data-testid="notification-bell"
               >
-                <Bell className="h-4 w-4 text-muted-foreground" />
+                <Bell className="h-4 w-4" />
                 {unread.unreadCount > 0 && (
                   <span
                     className={cn(
@@ -159,11 +150,7 @@ export function Navbar(_props: NavbarProps) {
                 )}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              sideOffset={8}
-              className="p-0"
-            >
+            <DropdownMenuContent align="end" sideOffset={8} className="p-0">
               <NotificationPanel
                 token={token}
                 open={panelOpen}

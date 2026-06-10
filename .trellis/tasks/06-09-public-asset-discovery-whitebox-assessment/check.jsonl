@@ -1,0 +1,25 @@
+{"file": "CONTEXT.md", "reason": "Verify implementation uses the agreed domain vocabulary and relationships."}
+{"file": ".trellis/tasks/06-09-public-asset-discovery-whitebox-assessment/prd.md", "reason": "Verify behavior, boundaries, out-of-scope items, and testing decisions against the PRD."}
+{"file": "docs/adr/0001-white-box-assessment-uses-independent-lifecycle.md", "reason": "Check that White-Box Assessment remains independent from Scan lifecycle and statistics."}
+{"file": "docs/adr/0002-white-box-evidence-is-source-of-truth.md", "reason": "Check that findings and Markdown documents are grounded in structured evidence."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Check layer boundaries and persistence responsibilities."}
+{"file": ".trellis/spec/backend/cmdb-schema.md", "reason": "Check CMDB writes, actor_id filtering, migrations, candidate/asset separation, and vulnerability metrics isolation."}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Check that prompt drafts and document-guided verification integrate with Scan only where required."}
+{"file": ".trellis/spec/backend/high-risk-confirmation.md", "reason": "Check live-target verification respects high-risk guardrails."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Check archive/analyzer/tool paths avoid unsafe subprocess and network behavior."}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Check any skill-facing additions satisfy metadata, schema, output, error, and raw-log contracts."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Check expert-agent routing additions, if any, follow YAML registry boundaries."}
+{"file": ".trellis/spec/backend/prompts-config.md", "reason": "Check prompt draft behavior does not bypass existing prompt/session patterns."}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Check notification and lifecycle event payloads are versioned and cross-layer consistent."}
+{"file": ".trellis/spec/backend/report-pipeline.md", "reason": "Check Markdown artifact generation follows canonical rendering principles where applicable."}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "Check large evidence/log/document payloads stay on disk with bounded summaries."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Check classified, sanitized failures across APIs, integrations, and tasks."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Check backend quality, security, persistence, and test coverage expectations."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Check frontend hard rules and required quality gates."}
+{"file": ".trellis/spec/frontend/coding-standards.md", "reason": "Check TypeScript strictness, TSDoc exports, component size, tests, and forbidden patterns."}
+{"file": ".trellis/spec/frontend/webui-design.md", "reason": "Check new workspace navigation and view hierarchy changes fit the shell contract."}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "Check UI uses semantic tokens and severity palette."}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "Check confirmation, prompt draft, chat handoff, and evidence display patterns."}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "Check no banned visualization dependency is introduced."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check API/service/database/frontend formats survive round-trip and validation is placed correctly."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check implementation reuses existing patterns and avoids duplicated constants or utilities."}

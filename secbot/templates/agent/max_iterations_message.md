@@ -1,1 +1,1 @@
-I reached the maximum number of tool call iterations ({{ max_iterations }}) without completing the task. You can try breaking the task into smaller steps.
+I reached the maximum number of tool call iterations ({{ max_iterations }}) without completing the task. A structured summary of progress and blockers has been generated above. You can try breaking the task into smaller steps or continue from where I left off.

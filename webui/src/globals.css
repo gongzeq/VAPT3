@@ -5,72 +5,78 @@
 /* Design tokens — HSL form, sourced from shadcn/ui's "neutral" palette. */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 3% 12%;
+    --background: 210 35% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 3% 12%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 3% 12%;
+    --popover-foreground: 222 47% 11%;
     --primary: 240 4% 16%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --secondary: 214 32% 95%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 95%;
+    --muted-foreground: 215 16% 41%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
+    --border: 214 24% 88%;
+    --input: 214 24% 88%;
     --ring: 0 0% 3.9%;
     --radius: 0.4375rem;
-    --sidebar: 0 0% 98.5%;
-    --sidebar-foreground: 0 0% 3.9%;
-    --sidebar-accent: 0 0% 95.8%;
-    --sidebar-accent-foreground: 0 0% 9%;
-    --sidebar-border: 0 0% 89.8%;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 24% 88%;
+    --border-subtle: 214 22% 92%;
+    --text-primary: 222 47% 11%;
+    --text-secondary: 215 16% 41%;
+
+    --sev-critical: 0 100% 50%;
+    --sev-high: 22 100% 45%;
+    --sev-medium: 45 92% 42%;
+    --sev-low: 203 90% 42%;
+    --sev-info: 220 7% 45%;
+
+    --ocean-300: 210 100% 72%;
+    --ocean-500: 210 100% 56%;
+    --ocean-700: 210 92% 38%;
+    --cyan-glow: 189 94% 56%;
+    --alert-warning: 38 95% 44%;
+    --alert-success: 152 70% 35%;
+    --alert-info: 210 100% 56%;
+    --status-run: 152 70% 35%;
+    --status-wait: 38 95% 44%;
+    --status-idle: 220 7% 45%;
+    --status-off: 0 100% 50%;
+    --bb-milestone: 152 70% 35%;
+    --bb-blocker: 0 100% 50%;
+    --bb-finding: 38 95% 44%;
+    --bb-progress: 210 100% 56%;
+
+    --theme-preview-secbot: 210 100% 56%;
+    --theme-preview-indigo: 243 75% 59%;
+    --theme-preview-emerald: 160 72% 38%;
+    --theme-preview-crimson: 350 78% 50%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--card)));
+    --gradient-card: linear-gradient(140deg, hsl(var(--card) / 0.95), hsl(var(--muted) / 0.85));
+    --shadow-elegant: 0 16px 36px -22px hsl(var(--ocean-700) / 0.35);
+    --shadow-glow: 0 0 32px hsl(var(--ocean-500) / 0.22);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dark {
-    --background: 0 0% 10%;
-    --foreground: 240 4% 96%;
-    --card: 0 0% 12%;
-    --card-foreground: 240 4% 96%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 240 4% 96%;
-    --primary: 240 5% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 13%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 0 0% 83.1%;
-    --sidebar: 0 0% 11.5%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-accent: 0 0% 15.5%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 18%;
-  }
-
-  /* secbot dark theme overrides — applied when [data-theme="secbot"] is set
-     on the root element. Mirrors `.trellis/tasks/.../research/cybersec-ui-patterns.md` §3.3-§3.4. */
-  :root[data-theme="secbot"] {
-    --background: 230 20% 5%;          /* #0A0B10 */
-    --foreground: 220 10% 92%;         /* #E6E8EE */
-    --card: 230 18% 9%;                /* #13141B */
+    --background: 230 20% 5%;
+    --foreground: 220 10% 92%;
+    --card: 230 18% 9%;
     --card-foreground: 220 10% 92%;
-    --popover: 230 16% 12%;            /* #1A1C25 */
+    --popover: 230 16% 12%;
     --popover-foreground: 220 10% 92%;
-    --border: 230 12% 18%;             /* #262833 */
-    --border-subtle: 230 14% 14%;      /* #1F2029 */
-    --primary: 210 100% 56%;           /* #1E90FF — Dodger Blue */
+    --primary: 210 100% 56%;
     --primary-foreground: 230 20% 5%;
     --secondary: 222 28% 14%;
     --secondary-foreground: 220 10% 92%;
@@ -78,59 +84,171 @@
     --muted-foreground: 210 16% 65%;
     --accent: 222 28% 14%;
     --accent-foreground: 220 10% 92%;
-    --destructive: 0 100% 65%;         /* #FF4D4F (== Critical) */
+    --destructive: 0 100% 65%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 230 12% 18%;
+    --border-subtle: 230 14% 14%;
+    --input: 230 12% 18%;
+    --ring: 210 100% 56%;
+    --sidebar: 230 18% 8%;
+    --sidebar-foreground: 220 10% 92%;
+    --sidebar-accent: 222 28% 14%;
+    --sidebar-accent-foreground: 220 10% 92%;
+    --sidebar-border: 230 12% 18%;
+    --text-primary: 220 10% 92%;
+    --text-secondary: 220 7% 64%;
+
+    --sev-critical: 0 100% 65%;
+    --sev-high: 22 100% 62%;
+    --sev-medium: 48 96% 53%;
+    --sev-low: 203 100% 62%;
+    --sev-info: 220 7% 64%;
+    --alert-warning: 38 95% 56%;
+    --alert-success: 152 70% 45%;
+    --alert-info: 210 100% 56%;
+    --status-run: 152 70% 45%;
+    --status-wait: 38 95% 56%;
+    --status-idle: 220 7% 64%;
+    --status-off: 0 100% 65%;
+    --bb-milestone: 152 70% 45%;
+    --bb-blocker: 0 100% 65%;
+    --bb-finding: 38 95% 56%;
+    --bb-progress: 210 100% 56%;
+  }
+
+  /* secbot dark theme overrides — applied when [data-theme="secbot"] is set
+     on the root element. Mirrors `.trellis/tasks/.../research/cybersec-ui-patterns.md` §3.3-§3.4. */
+  .dark[data-theme="secbot"] {
+    --background: 230 20% 5%; /* #0A0B10 */
+    --foreground: 220 10% 92%; /* #E6E8EE */
+    --card: 230 18% 9%; /* #13141B */
+    --card-foreground: 220 10% 92%;
+    --popover: 230 16% 12%; /* #1A1C25 */
+    --popover-foreground: 220 10% 92%;
+    --border: 230 12% 18%; /* #262833 */
+    --border-subtle: 230 14% 14%; /* #1F2029 */
+    --primary: 210 100% 56%; /* #1E90FF — Dodger Blue */
+    --primary-foreground: 230 20% 5%;
+    --secondary: 222 28% 14%;
+    --secondary-foreground: 220 10% 92%;
+    --muted: 222 28% 14%;
+    --muted-foreground: 210 16% 65%;
+    --accent: 222 28% 14%;
+    --accent-foreground: 220 10% 92%;
+    --destructive: 0 100% 65%; /* #FF4D4F (== Critical) */
     --destructive-foreground: 0 0% 100%;
     --text-primary: 220 10% 92%;
-    --text-secondary: 220 7% 64%;      /* #9AA0AC */
+    --text-secondary: 220 7% 64%; /* #9AA0AC */
 
     /* Severity palette (per §3.2). */
-    --sev-critical: 0 100% 65%;        /* #FF4D4F */
-    --sev-high:     22 100% 62%;       /* #FF8A3D */
-    --sev-medium:   48 96% 53%;        /* #FACC15 */
-    --sev-low:      203 100% 62%;      /* #3FB6FF */
-    --sev-info:     220 7% 64%;        /* #9AA0AC */
+    --sev-critical: 0 100% 65%; /* #FF4D4F */
+    --sev-high: 22 100% 62%; /* #FF8A3D */
+    --sev-medium: 48 96% 53%; /* #FACC15 */
+    --sev-low: 203 100% 62%; /* #3FB6FF */
+    --sev-info: 220 7% 64%; /* #9AA0AC */
 
     /* Ocean accent ramp — derived from --primary 海蓝 (hsl 210 100% 56%).
        Used by gradients, glow rings and dashboard chips. NOT a severity. */
-    --ocean-300: 210 100% 72%;         /* #7AB8FF */
-    --ocean-500: 210 100% 56%;         /* #1E90FF (== --primary) */
-    --ocean-700: 210 92% 38%;          /* #0A6AC2 deep ocean */
+    --ocean-300: 210 100% 72%; /* #7AB8FF */
+    --ocean-500: 210 100% 56%; /* #1E90FF (== --primary) */
+    --ocean-700: 210 92% 38%; /* #0A6AC2 deep ocean */
 
     /* Cyan glow — kept as decorative companion (button rings, focus halos).
        Distinct from --primary so we can layer two-stop gradients. */
-    --cyan-glow: 189 94% 56%;          /* #1FCFE8 */
+    --cyan-glow: 189 94% 56%; /* #1FCFE8 */
 
     /* Generic UI alert palette — separate from --sev-* (which is reserved for
        vulnerability severity). Use these for toasts and inline banners. */
-    --alert-warning: 38 95% 56%;       /* #F4A52A */
-    --alert-success: 152 70% 45%;      /* #22B574 */
-    --alert-info:    210 100% 56%;     /* alias to --primary */
+    --alert-warning: 38 95% 56%; /* #F4A52A */
+    --alert-success: 152 70% 45%; /* #22B574 */
+    --alert-info: 210 100% 56%; /* alias to --primary */
 
     /* Agent runtime status palette — Sidebar "专家智能体" chip colors.
        PRD F6 spec: st-run / st-wait / st-idle / st-off. Mapped to existing
        brand tokens so the palette stays cohesive (no new hex). */
-    --status-run:  152 70% 45%;        /* alias to --alert-success */
-    --status-wait: 38 95% 56%;         /* alias to --alert-warning */
-    --status-idle: 220 7% 64%;         /* alias to --sev-info / muted */
-    --status-off:  0 100% 65%;         /* alias to --sev-critical */
+    --status-run: 152 70% 45%; /* alias to --alert-success */
+    --status-wait: 38 95% 56%; /* alias to --alert-warning */
+    --status-idle: 220 7% 64%; /* alias to --sev-info / muted */
+    --status-off: 0 100% 65%; /* alias to --sev-critical */
 
     /* Blackboard entry palette — 4 kinds keyed off ``BlackboardEntry.kind``.
        PRD F8 spec: milestone (success) / blocker (critical, breathes) /
        finding (warning) / progress (primary). All aliased to existing
        tokens to keep the brand palette tight. */
-    --bb-milestone: 152 70% 45%;       /* alias to --alert-success */
-    --bb-blocker:   0 100% 65%;        /* alias to --sev-critical */
-    --bb-finding:   38 95% 56%;        /* alias to --alert-warning */
-    --bb-progress:  210 100% 56%;      /* alias to --primary */
+    --bb-milestone: 152 70% 45%; /* alias to --alert-success */
+    --bb-blocker: 0 100% 65%; /* alias to --sev-critical */
+    --bb-finding: 38 95% 56%; /* alias to --alert-warning */
+    --bb-progress: 210 100% 56%; /* alias to --primary */
 
     /* Gradients / shadows / transitions — sourced from UI 模板 §3, retuned
        to the secbot 海蓝 primary so brand colour stays canonical. */
     --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
-    --gradient-subtle:  linear-gradient(180deg, hsl(var(--background)), hsl(230 18% 9%));
-    --gradient-card:    linear-gradient(140deg, hsl(222 47% 11% / 0.95), hsl(210 32% 14% / 0.85));
-    --shadow-elegant:   0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
-    --shadow-glow:      0 0 40px hsl(var(--ocean-500) / 0.30);
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(230 18% 9%));
+    --gradient-card: linear-gradient(140deg, hsl(222 47% 11% / 0.95), hsl(210 32% 14% / 0.85));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.3);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  :root[data-theme="secbot"] {
+    --primary: 210 100% 56%;
+    --primary-foreground: 230 20% 5%;
+    --ocean-300: 210 100% 72%;
+    --ocean-500: 210 100% 56%;
+    --ocean-700: 210 92% 38%;
+    --cyan-glow: 189 94% 56%;
+    --alert-info: 210 100% 56%;
+    --bb-progress: 210 100% 56%;
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.3);
+  }
+
+  :root[data-theme="indigo"] {
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --ocean-300: 243 88% 76%;
+    --ocean-500: 243 75% 59%;
+    --ocean-700: 244 58% 42%;
+    --cyan-glow: 263 88% 72%;
+    --alert-info: 243 75% 59%;
+    --bb-progress: 243 75% 59%;
+    --gradient-primary: linear-gradient(135deg, hsl(243 75% 59%), hsl(263 88% 72%));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.3);
+  }
+
+  :root[data-theme="emerald"] {
+    --primary: 160 72% 38%;
+    --primary-foreground: 0 0% 100%;
+    --ocean-300: 158 64% 62%;
+    --ocean-500: 160 72% 38%;
+    --ocean-700: 162 72% 26%;
+    --cyan-glow: 174 72% 46%;
+    --alert-info: 160 72% 38%;
+    --bb-progress: 160 72% 38%;
+    --gradient-primary: linear-gradient(135deg, hsl(160 72% 38%), hsl(174 72% 46%));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.3);
+  }
+
+  :root[data-theme="crimson"] {
+    --primary: 350 78% 50%;
+    --primary-foreground: 0 0% 100%;
+    --ocean-300: 350 90% 70%;
+    --ocean-500: 350 78% 50%;
+    --ocean-700: 350 72% 34%;
+    --cyan-glow: 18 90% 62%;
+    --alert-info: 350 78% 50%;
+    --bb-progress: 350 78% 50%;
+    --gradient-primary: linear-gradient(135deg, hsl(350 78% 50%), hsl(18 90% 62%));
+    --shadow-elegant: 0 10px 30px -10px hsl(var(--ocean-500) / 0.32);
+    --shadow-glow: 0 0 40px hsl(var(--ocean-500) / 0.3);
+  }
+
+  :root:not(.dark)[data-theme] {
+    --shadow-elegant: 0 16px 36px -22px hsl(var(--ocean-700) / 0.35);
+    --shadow-glow: 0 0 32px hsl(var(--ocean-500) / 0.22);
   }
 }
 
@@ -162,6 +280,83 @@
 }
 
 @layer utilities {
+  .theme-swatch-secbot {
+    background-color: hsl(var(--theme-preview-secbot));
+  }
+
+  .theme-swatch-indigo {
+    background-color: hsl(var(--theme-preview-indigo));
+  }
+
+  .theme-swatch-emerald {
+    background-color: hsl(var(--theme-preview-emerald));
+  }
+
+  .theme-swatch-crimson {
+    background-color: hsl(var(--theme-preview-crimson));
+  }
+
+  .icon-surface {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid hsl(var(--border) / 0.72);
+    background-color: hsl(var(--muted) / 0.72);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--card) / 0.75),
+      0 10px 22px -18px hsl(var(--foreground) / 0.28);
+  }
+
+  .dark .icon-surface {
+    border-color: hsl(var(--border) / 0.55);
+    background-color: hsl(var(--muted) / 0.55);
+    box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.04);
+  }
+
+  .icon-surface-brand {
+    color: hsl(var(--primary));
+    border-color: hsl(var(--primary) / 0.24);
+    background:
+      linear-gradient(135deg, hsl(var(--primary) / 0.16), hsl(var(--cyan-glow) / 0.08)),
+      hsl(var(--card));
+    box-shadow:
+      inset 0 1px 0 hsl(var(--card) / 0.8),
+      0 12px 24px -18px hsl(var(--primary) / 0.55);
+  }
+
+  .dark .icon-surface-brand {
+    background:
+      linear-gradient(135deg, hsl(var(--primary) / 0.18), hsl(var(--cyan-glow) / 0.08)),
+      hsl(var(--muted) / 0.45);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--foreground) / 0.04),
+      0 0 18px hsl(var(--primary) / 0.12);
+  }
+
+  .icon-surface-success {
+    color: hsl(var(--alert-success));
+    border-color: hsl(var(--alert-success) / 0.28);
+    background-color: hsl(var(--alert-success) / 0.1);
+  }
+
+  .icon-surface-warning {
+    color: hsl(var(--alert-warning));
+    border-color: hsl(var(--alert-warning) / 0.3);
+    background-color: hsl(var(--alert-warning) / 0.11);
+  }
+
+  .icon-surface-danger {
+    color: hsl(var(--destructive));
+    border-color: hsl(var(--destructive) / 0.26);
+    background-color: hsl(var(--destructive) / 0.1);
+  }
+
+  .icon-surface-muted {
+    color: hsl(var(--muted-foreground));
+    border-color: hsl(var(--border) / 0.78);
+    background-color: hsl(var(--muted) / 0.78);
+  }
+
   .shadow-inner-right {
     box-shadow: inset -9px 0 6px -1px rgb(0 0 0 / 0.02);
   }
@@ -210,13 +405,23 @@
   /* 粤海智盾 — 科技感品牌标识样式
      海蓝渐变 + 动态辉光 + 横向光扫，切合智能体主题 */
   @keyframes brand-glow-pulse {
-    0%, 100% { filter: drop-shadow(0 0 6px hsl(var(--ocean-500) / 0.45)); }
-    50%       { filter: drop-shadow(0 0 16px hsl(var(--ocean-300) / 0.75)); }
+    0%,
+    100% {
+      filter: drop-shadow(0 0 6px hsl(var(--ocean-500) / 0.45));
+    }
+    50% {
+      filter: drop-shadow(0 0 16px hsl(var(--ocean-300) / 0.75));
+    }
   }
   .brand-zh {
     font-weight: 700;
     letter-spacing: 0.16em;
-    background-image: linear-gradient(135deg, hsl(var(--ocean-300)), hsl(var(--ocean-500)), hsl(var(--primary)));
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--ocean-300)),
+      hsl(var(--ocean-500)),
+      hsl(var(--primary))
+    );
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -268,22 +473,31 @@
   /* Glass card: translucent surface with subtle inner border highlight.
      Used by dashboard KPI cards and summary panels. */
   .glass-card {
-    background-color: hsl(var(--card) / 0.55);
+    background-color: hsl(var(--card) / 0.92);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow:
+      inset 0 1px 0 0 hsl(var(--card) / 0.75),
+      0 12px 30px -26px hsl(var(--foreground) / 0.3);
+  }
+
+  .dark .glass-card {
+    background-color: hsl(var(--card) / 0.55);
     box-shadow: inset 0 1px 0 0 hsl(var(--foreground) / 0.04);
   }
 
   /* Hover glow for interactive cards — ocean-tinted ambient shadow. */
   .card-hover-glow {
-    transition: box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .card-hover-glow:hover {
     border-color: hsl(var(--primary) / 0.3);
-    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.08),
-                0 8px 24px -8px hsl(var(--primary) / 0.18);
+    box-shadow:
+      0 0 0 1px hsl(var(--primary) / 0.08),
+      0 8px 24px -8px hsl(var(--primary) / 0.18);
   }
 
   /* Section header decorative accent bar — 2px ocean gradient. */
@@ -292,7 +506,7 @@
     padding-left: 0.75rem;
   }
   .section-accent-bar::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
     top: 0.125rem;
@@ -307,7 +521,7 @@
     position: relative;
   }
   .sidebar-active-bar::before {
-    content: '';
+    content: "";
     position: absolute;
     left: -0.5rem;
     top: 0.375rem;
@@ -332,7 +546,7 @@
     overflow: hidden;
   }
   .prompt-accent::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
     top: 0;
@@ -373,12 +587,7 @@
     left: 0;
     width: 40%;
     border-radius: 9999px;
-    background: linear-gradient(
-      to right,
-      transparent,
-      hsl(var(--primary) / 0.9),
-      transparent
-    );
+    background: linear-gradient(to right, transparent, hsl(var(--primary) / 0.9), transparent);
     animation: flow-x 1.8s linear infinite;
   }
   .flow-node-running {

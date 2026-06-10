@@ -9,8 +9,8 @@
       content="粤海智盾智能体管控台 · secbot WebUI"
       data-i18n-meta="description"
     />
-    <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0b10" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="64x64" href="/brand/logo.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-180.png" />
@@ -29,18 +29,28 @@
 
       body {
         margin: 0;
-        background: #ffffff;
-        color: #0a0a0a;
+        background: #f8fafc;
+        color: #0f172a;
         font-family:
-          "Inter", "Noto Sans SC", system-ui, -apple-system,
-          BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-          "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+          "Inter",
+          "Noto Sans SC",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          "Noto Sans",
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
           sans-serif;
       }
 
       html.dark body {
-        background: #1a1a1a;
-        color: #fafafa;
+        background: #0a0b10;
+        color: #e6e8ee;
       }
 
       .boot-splash {
@@ -86,8 +96,24 @@
     <script>
       (function () {
         try {
+          var root = document.documentElement;
+          var mode = localStorage.getItem("secbot-webui.theme");
+          var colorTheme = localStorage.getItem("secbot-webui.theme-color");
+          var colorThemes = {
+            secbot: true,
+            indigo: true,
+            emerald: true,
+            crimson: true,
+          };
+          if (mode !== "light" && mode !== "dark") mode = "dark";
+          if (!colorThemes[colorTheme]) colorTheme = "secbot";
+          if (mode === "dark") root.classList.add("dark");
+          else root.classList.remove("dark");
+          root.setAttribute("data-theme", colorTheme);
+        } catch {
           document.documentElement.classList.add("dark");
-        } catch {}
+          document.documentElement.setAttribute("data-theme", "secbot");
+        }
       })();
     </script>
     <script>
@@ -96,40 +122,40 @@
         var copy = {
           en: {
             boot: "Loading secbot…",
-            description: "secbot web UI — chat with your secbot workspace."
+            description: "secbot web UI — chat with your secbot workspace.",
           },
           "zh-CN": {
             boot: "正在加载 secbot…",
-            description: "secbot Web UI —— 与你的 secbot 工作区对话。"
+            description: "secbot Web UI —— 与你的 secbot 工作区对话。",
           },
           "zh-TW": {
             boot: "正在載入 secbot…",
-            description: "secbot Web UI —— 與你的 secbot 工作區對話。"
+            description: "secbot Web UI —— 與你的 secbot 工作區對話。",
           },
           fr: {
             boot: "Chargement de secbot…",
-            description: "Interface web secbot — discutez avec votre espace de travail secbot."
+            description: "Interface web secbot — discutez avec votre espace de travail secbot.",
           },
           ja: {
             boot: "secbot を読み込み中…",
-            description: "secbot Web UI — secbot ワークスペースと会話します。"
+            description: "secbot Web UI — secbot ワークスペースと会話します。",
           },
           ko: {
             boot: "secbot 불러오는 중…",
-            description: "secbot 웹 UI — secbot 작업공간과 대화하세요."
+            description: "secbot 웹 UI — secbot 작업공간과 대화하세요.",
           },
           es: {
             boot: "Cargando secbot…",
-            description: "Interfaz web secbot: conversa con tu espacio de trabajo de secbot."
+            description: "Interfaz web secbot: conversa con tu espacio de trabajo de secbot.",
           },
           vi: {
             boot: "Đang tải secbot…",
-            description: "Giao diện web secbot — trò chuyện với workspace secbot của bạn."
+            description: "Giao diện web secbot — trò chuyện với workspace secbot của bạn.",
           },
           id: {
             boot: "Memuat secbot…",
-            description: "UI web secbot — ngobrol dengan workspace secbot Anda."
-          }
+            description: "UI web secbot — ngobrol dengan workspace secbot Anda.",
+          },
         };
 
         function normalizeLocale(input) {
@@ -156,10 +182,7 @@
         try {
           var stored = localStorage.getItem(localeKey);
           var detected =
-            stored ||
-            (navigator.languages && navigator.languages[0]) ||
-            navigator.language ||
-            "en";
+            stored || (navigator.languages && navigator.languages[0]) || navigator.language || "en";
           var locale = normalizeLocale(detected);
           var localized = copy[locale] || copy.en;
           document.documentElement.lang = locale;
