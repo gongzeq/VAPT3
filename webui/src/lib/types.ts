@@ -449,6 +449,14 @@ export type InboundEvent =
        * never be inferred from persisted ``tool_calls`` rows, which can
        * linger past the actual turn boundary. Absent on older servers. */
       active_turn?: boolean;
+      /** Cumulative token usage from all persisted turns for this session.
+       * Absent on older backends or brand-new sessions with no turns yet. */
+      cumulative_usage?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        cached_tokens: number;
+        turn_count: number;
+      };
     }
   | {
       event: "message";

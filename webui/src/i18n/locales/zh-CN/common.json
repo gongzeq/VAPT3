@@ -232,7 +232,7 @@
       "vuln": {
         "label": "漏洞扫描",
         "desc": "OWASP Top 10 + 已知 CVE 检测",
-        "template": "请对目标 {target} 执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），完成后生成 HTML 报告。"
+        "template": "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描，完成后生成 HTML 报告。"
       },
       "weakpwd": {
         "label": "弱口令检测",

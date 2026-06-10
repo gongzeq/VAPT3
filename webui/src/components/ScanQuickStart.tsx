@@ -49,7 +49,7 @@ const SCENARIOS: ScenarioDef[] = [
     descFallback: "OWASP Top 10 + 已知 CVE 检测",
     templateKey: "home.scan.vuln.template",
     templateFallback:
-      "请对目标 {target} 执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），完成后生成 HTML 报告。",
+      "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描，完成后生成 HTML 报告。",
     icon: Bug,
     iconBgClass: "bg-destructive/15 text-destructive",
   },

@@ -299,6 +299,16 @@ export function useNanobotStream(
       // ``turn_end`` delivery because the tab was closed mid-turn).
       if (ev.event === "attached") {
         setIsStreaming(Boolean(ev.active_turn));
+        // Seed cumulative usage from the backend's persisted turn data so
+        // the token badge reflects history even on a fresh connection.
+        if (ev.cumulative_usage) {
+          setCumulativeUsage({
+            promptTokens: ev.cumulative_usage.prompt_tokens || 0,
+            completionTokens: ev.cumulative_usage.completion_tokens || 0,
+            cachedTokens: ev.cumulative_usage.cached_tokens || 0,
+            turnCount: ev.cumulative_usage.turn_count || 0,
+          });
+        }
         return;
       }
 

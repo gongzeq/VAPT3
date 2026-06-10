@@ -627,11 +627,20 @@ class SubagentManager:
                     origin=origin, type=type_, payload=payload
                 )
 
+            # Respect per-agent max_iterations from the YAML spec, capped
+            # at the global limit so a misconfigured agent can't exceed the
+            # system-wide safety ceiling.
+            _effective_max_iter = (
+                min(self.max_iterations, spec.max_iterations)
+                if spec is not None
+                else self.max_iterations
+            )
+
             result = await self.runner.run(AgentRunSpec(
                 initial_messages=messages,
                 tools=tools,
                 model=self.model,
-                max_iterations=self.max_iterations,
+                max_iterations=_effective_max_iter,
                 max_tool_result_chars=self.max_tool_result_chars,
                 hook=_SubagentHook(
                     task_id,

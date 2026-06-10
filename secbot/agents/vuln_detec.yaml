@@ -13,7 +13,7 @@ system_prompt_file: ./prompts/vuln_detec.md
 scoped_skills:
   - vuln-detec-manual
 
-max_iterations: 10
+max_iterations: 60
 emit_plan_steps: true
 allow_exec: true
 

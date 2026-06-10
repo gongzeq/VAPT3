@@ -66,6 +66,18 @@ def test_hard_rules_mention_protocol_routing():
     assert "fscan-vuln-scan" in rendered
 
 
+def test_hard_rules_mention_stage_skip_for_vuln_scan():
+    """When the target already has an explicit port or the user requests
+    only vulnerability scanning, the orchestrator MUST skip port_scan.
+    """
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    assert "stage-skip rules" in rendered
+    assert "SKIP both" in rendered
+    assert "SKIP `port_scan`" in rendered
+    assert "Port scanning is NOT part of vulnerability scanning" in rendered
+
+
 def test_prompt_requires_auto_report_after_scan():
     """PR2 contract: the orchestrator MUST auto-spawn report after the
     final scan stage via the ``report-html`` skill. This behaviour is
