@@ -601,6 +601,43 @@ class WebSocketChannel(BaseChannel):
                 self._subs.pop(cid, None)
         self._conn_default.pop(connection, None)
 
+    def _cumulative_usage_for_chat(self, chat_id: str) -> dict[str, int] | None:
+        """Sum persisted ``_turn_usage`` entries for a session.
+
+        Returns a dict ``{prompt_tokens, completion_tokens, cached_tokens, turn_count}``
+        matching the frontend ``CumulativeUsage`` interface, or ``None`` when
+        no usage data exists (e.g. brand-new sessions).
+        """
+        if self._session_manager is None:
+            return None
+        session_key = f"{self.name}:{chat_id}"
+        try:
+            session = self._session_manager.get_or_create(session_key)
+        except Exception:
+            return None
+        turn_usage = session.metadata.get("_turn_usage")
+        if not isinstance(turn_usage, list) or not turn_usage:
+            return None
+        prompt = 0
+        completion = 0
+        cached = 0
+        count = 0
+        for entry in turn_usage:
+            if not isinstance(entry, dict):
+                continue
+            prompt += entry.get("input", 0)
+            completion += entry.get("output", 0)
+            cached += entry.get("cached", 0)
+            count += 1
+        if count == 0:
+            return None
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "cached_tokens": cached,
+            "turn_count": count,
+        }
+
     async def _send_event(self, connection: Any, event: str, **fields: Any) -> None:
         """Send a control event (attached, error, ...) to a single connection."""
         payload: dict[str, Any] = {"event": event}
@@ -966,6 +1003,13 @@ class WebSocketChannel(BaseChannel):
             for s in sessions
             if isinstance(s.get("key"), str) and s["key"].startswith("websocket:")
         ]
+
+        # Override status for sessions with an in-flight turn: the rollup
+        # layer only sees persisted state and defaults to "finished", but
+        # ``_active_turns`` is the live authoritative source of truth.
+        for row in cleaned:
+            if row.get("key") in self._active_turns:
+                row["status"] = "running"
 
         # R2 extensions (P1). Existing clients that don't pass any of ``q /
         # archived / limit / offset`` still see the original response shape —
@@ -2893,12 +2937,16 @@ class WebSocketChannel(BaseChannel):
             # switch, the Stop button must appear iff the server is still
             # processing a turn for this chat. Stale persisted tool_calls no
             # longer influence the UI.
-            await self._send_event(
-                connection,
-                "attached",
-                chat_id=cid,
-                active_turn=cid in self._active_turns,
-            )
+            attach_kwargs: dict[str, Any] = {
+                "chat_id": cid,
+                "active_turn": cid in self._active_turns,
+            }
+            # Seed cumulative token usage so the webui badge reflects
+            # turns that completed before this connection attached.
+            cumulative_usage = self._cumulative_usage_for_chat(cid)
+            if cumulative_usage:
+                attach_kwargs["cumulative_usage"] = cumulative_usage
+            await self._send_event(connection, "attached", **attach_kwargs)
             return
         if t == "stop":
             # Silent cancel request from the WebUI composer — route it as an
