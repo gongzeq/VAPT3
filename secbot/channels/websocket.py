@@ -801,6 +801,11 @@ class WebSocketChannel(BaseChannel):
         if m:
             return await self._handle_report_detail(request, m.group(1))
 
+        # Serve scan report files from the filesystem.
+        m_dl = re.match(r"^/api/scan-reports/([^/]+)/download$", got)
+        if m_dl:
+            return self._handle_scan_report_download(m_dl.group(1))
+
         # Expert-agent registry + optional runtime status. Backwards compatible
         # when called without ``include_status=true``.
         if got == "/api/agents":
@@ -1807,6 +1812,51 @@ class WebSocketChannel(BaseChannel):
             return _http_error(404, "report not found")
         return _http_json_response(
             self._serialise_report_row(row, include_download_url=True)
+        )
+
+    def _handle_scan_report_download(self, scan_id: str) -> Response:
+        """Serve a scan report file from the filesystem.
+
+        Reports are generated during scans and stored under
+        ``~/.secbot/workspace/.secbot/scans/<scan_id>/report/``.
+        This endpoint serves ``report.html`` (or the first ``.html``/``.pdf``
+        found) so the sessions page can offer a direct download.
+        """
+        import mimetypes as _mt
+        from pathlib import Path as _P
+
+        report_dir = _P.home() / ".secbot" / "workspace" / ".secbot" / "scans" / scan_id / "report"
+        if not report_dir.is_dir():
+            return _http_error(404, "report not found")
+
+        # Prefer report.html, then any .html, then any .pdf.
+        candidate = report_dir / "report.html"
+        if not candidate.is_file():
+            for f in sorted(report_dir.iterdir()):
+                if f.is_file() and f.suffix in (".html", ".pdf"):
+                    candidate = f
+                    break
+            else:
+                return _http_error(404, "report not found")
+
+        if not candidate.is_file():
+            return _http_error(404, "report not found")
+
+        try:
+            body = candidate.read_bytes()
+        except OSError:
+            return _http_error(500, "read error")
+
+        mime, _ = _mt.guess_type(candidate.name)
+        if not mime:
+            mime = "application/octet-stream"
+        return _http_response(
+            body,
+            content_type=mime,
+            extra_headers=[
+                ("Content-Disposition", f'attachment; filename="{candidate.name}"'),
+                ("Cache-Control", "private, max-age=3600"),
+            ],
         )
 
     # -- Agent registry + runtime status ------------------------------------

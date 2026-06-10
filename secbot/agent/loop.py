@@ -1242,6 +1242,7 @@ class AgentLoop:
             self._save_turn(session, all_msgs, 1 + len(history))
             session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
             self._clear_runtime_checkpoint(session)
+            self._persist_turn_usage(session)
             self.sessions.save(session)
             self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
             options = ask_user_options_from_messages(all_msgs) if stop_reason == "ask_user" else []
@@ -1474,6 +1475,7 @@ class AgentLoop:
         session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
         self._clear_pending_user_turn(session)
         self._clear_runtime_checkpoint(session)
+        self._persist_turn_usage(session)
         self.sessions.save(session)
         self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
 
@@ -1576,6 +1578,34 @@ class AgentLoop:
     # context without losing the information the LLM needs for future
     # orchestration decisions.
     _ORCHESTRATOR_RESULT_MAX_CHARS = 600
+
+    def _persist_turn_usage(self, session: Session) -> None:
+        """Append this turn's token usage to session metadata for later rollup.
+
+        ``_last_usage`` is populated by ``_run_agent_loop`` from the LLM
+        provider response.  We accumulate it into ``session.metadata["_turn_usage"]``
+        so that ``_compute_session_rollups`` can sum input/output tokens across
+        all turns without scanning message content.
+        """
+        usage = getattr(self, "_last_usage", None)
+        if not usage:
+            return
+        prompt = usage.get("prompt_tokens", 0)
+        completion = usage.get("completion_tokens", 0)
+        cached = usage.get("cached_tokens", usage.get("cache_read_input_tokens", 0))
+        if not (prompt or completion):
+            return
+        turn_list = session.metadata.setdefault("_turn_usage", [])
+        if not isinstance(turn_list, list):
+            turn_list = []
+            session.metadata["_turn_usage"] = turn_list
+        from datetime import datetime as _dt
+        turn_list.append({
+            "ts": _dt.now().isoformat(timespec="seconds"),
+            "input": prompt,
+            "output": completion,
+            "cached": cached,
+        })
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results.

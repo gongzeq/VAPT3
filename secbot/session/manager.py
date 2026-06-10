@@ -571,7 +571,10 @@ class SessionManager:
             return None
 
     @staticmethod
-    def _compute_session_rollups(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def _compute_session_rollups(
+        messages: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Compute scan metadata and rollups from persisted JSONL messages.
 
         Returns a dict with: ``scan_type``, ``target``, ``status``,
@@ -609,13 +612,15 @@ class SessionManager:
                 if isinstance(ae, dict):
                     ae_type = ae.get("type")
 
-                    # Blackboard finding entries: ``[finding:critical] ...``
+                    # Blackboard entries: findings AND milestones both count.
                     if ae_type == "blackboard_entry":
                         kind = ae.get("kind")
                         text = ae.get("text", "")
-                        if kind == "finding" or (isinstance(text, str) and "[finding" in text.lower()):
+                        is_finding = kind == "finding" or (isinstance(text, str) and "[finding" in text.lower())
+                        is_milestone = kind == "milestone" or (isinstance(text, str) and "[milestone" in text.lower())
+                        if is_finding or is_milestone:
                             findings["total"] += 1
-                            # Try to extract severity from text prefix.
+                            # Try to extract severity from text prefix / content.
                             lower = text.lower() if isinstance(text, str) else ""
                             for sev in ("critical", "high", "medium", "low"):
                                 if sev in lower:
@@ -698,6 +703,16 @@ class SessionManager:
             except Exception:
                 duration_ms = None
 
+        # Tokens: sum persisted per-turn usage from session metadata.
+        if metadata:
+            turn_usage = metadata.get("_turn_usage")
+            if isinstance(turn_usage, list):
+                for entry in turn_usage:
+                    if isinstance(entry, dict):
+                        tokens["input"] += entry.get("input", 0)
+                        tokens["output"] += entry.get("output", 0)
+                        tokens["cached"] += entry.get("cached", 0)
+
         return {
             "scan_type": scan_type,
             "target": target,
@@ -706,6 +721,174 @@ class SessionManager:
             "tokens": tokens,
             "duration_ms": duration_ms,
         }
+
+    @staticmethod
+    def _enrich_from_cmdb(target: str | None, created_at: str | None, rollups: dict[str, Any], session_key: str | None = None) -> dict[str, Any]:
+        """Enrich session rollups with real CMDB data when a matching scan exists.
+
+        Queries ``~/.secbot/cmdb.sqlite3`` directly (sync sqlite3) to find scans
+        matching the session. Matching strategies (in priority order):
+
+        1. Session key → scan ID mapping (``websocket:XXX`` → ``websocket_XXX``).
+        2. Target IP/hostname LIKE match against ``scan.target``.
+
+        When a match is found, the vulnerability severity counts from the CMDB
+        replace the JSONL-inferred rollup.
+
+        Returns the (possibly updated) rollups dict.
+        """
+        if not target and not session_key:
+            return rollups
+
+        scan_id: str | None = None
+        try:
+            import sqlite3 as _sqlite3
+            from pathlib import Path as _Path
+
+            db_path = _Path.home() / ".secbot" / "cmdb.sqlite3"
+            if not db_path.exists():
+                return rollups
+
+            conn = _sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn.row_factory = _sqlite3.Row
+            cur = conn.cursor()
+
+            best_scan = None
+
+            # Strategy 1: Match by session key → scan ID.
+            if session_key:
+                derived_scan_id = session_key.replace(":", "_", 1)
+                cur.execute(
+                    "SELECT id, target, status, started_at, finished_at, scope_json "
+                    "FROM scan WHERE id = ?",
+                    (derived_scan_id,),
+                )
+                best_scan = cur.fetchone()
+
+            # Strategy 2: Match by target IP/hostname.
+            if best_scan is None and target:
+                like_pat = f"%{target}%"
+                cur.execute(
+                    "SELECT id, target, status, started_at, finished_at, scope_json "
+                    "FROM scan WHERE target LIKE ? ORDER BY started_at DESC LIMIT 1",
+                    (like_pat,),
+                )
+                best_scan = cur.fetchone()
+
+            if best_scan is not None:
+                scan_id = best_scan["id"]
+                scan_status = best_scan["status"]
+
+                # Update status from CMDB if available.
+                if scan_status and scan_status != "queued":
+                    rollups["status"] = "running" if scan_status == "running" else "finished"
+
+                # Count vulnerabilities by severity for this scan's assets.
+                cur.execute(
+                    "SELECT v.severity, COUNT(*) as cnt "
+                    "FROM vulnerability v "
+                    "JOIN asset a ON v.asset_id = a.id "
+                    "WHERE a.scan_id = ? "
+                    "GROUP BY v.severity",
+                    (scan_id,),
+                )
+                vuln_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}
+                for row in cur.fetchall():
+                    sev = row["severity"]
+                    cnt = row["cnt"]
+                    if sev in vuln_counts:
+                        vuln_counts[sev] = cnt
+                    vuln_counts["total"] += cnt
+
+                # Only replace JSONL findings if CMDB has data.
+                if vuln_counts["total"] > 0:
+                    rollups["findings"] = vuln_counts
+
+                # Update target from scan if session target is just an IP fragment.
+                scan_target = best_scan["target"]
+                if scan_target and scan_target != scan_id:
+                    rollups["target"] = scan_target
+
+                # Infer scan type from scan scope if available.
+                scope_raw = best_scan["scope_json"]
+                if scope_raw:
+                    try:
+                        scope = json.loads(scope_raw) if isinstance(scope_raw, str) else scope_raw
+                        if isinstance(scope, dict):
+                            st = scope.get("scan_type") or scope.get("type")
+                            if isinstance(st, str) and st:
+                                rollups["scan_type"] = st
+                    except Exception:
+                        pass
+
+                # Query report_meta for this scan.
+                try:
+                    cur.execute(
+                        "SELECT id, title, type, status, download_path, critical_count "
+                        "FROM report_meta WHERE scan_id = ? ORDER BY created_at DESC",
+                        (scan_id,),
+                    )
+                    reports = [dict(r) for r in cur.fetchall()]
+                    if reports:
+                        rollups["reports"] = reports
+                except Exception:
+                    pass
+
+                conn.close()
+            else:
+                conn.close()
+        except Exception:
+            # CMDB enrichment is best-effort; fall back to JSONL data.
+            pass
+
+        # Fallback: scan filesystem for generated reports when CMDB
+        # report_meta is empty.  Reports live under
+        # ``~/.secbot/workspace/.secbot/scans/<scan_id>/report/``.
+        if not rollups.get("reports"):
+            try:
+                from pathlib import Path as _P
+                scans_root = _P.home() / ".secbot" / "workspace" / ".secbot" / "scans"
+
+                # Candidate scan dirs: the matched scan_id first, then any
+                # scan whose directory name contains the target IP/hostname.
+                candidate_ids: list[str] = []
+                if scan_id:
+                    candidate_ids.append(scan_id)
+                if session_key:
+                    derived = session_key.replace(":", "_", 1)
+                    if derived not in candidate_ids:
+                        candidate_ids.append(derived)
+                if target and scans_root.is_dir():
+                    try:
+                        for d in scans_root.iterdir():
+                            if d.is_dir() and d.name not in candidate_ids and target in d.name:
+                                candidate_ids.append(d.name)
+                    except OSError:
+                        pass
+
+                for cid in candidate_ids:
+                    scan_dir = scans_root / cid / "report"
+                    if not scan_dir.is_dir():
+                        continue
+                    fs_reports = []
+                    for rpt in sorted(scan_dir.iterdir()):
+                        if rpt.is_file() and rpt.suffix in (".html", ".pdf"):
+                            fmt = "pdf" if rpt.suffix == ".pdf" else "html"
+                            fs_reports.append({
+                                "id": rpt.stem,
+                                "title": f"{cid} {fmt.upper()} Report",
+                                "type": fmt,
+                                "status": "completed",
+                                "download_path": f"/api/scan-reports/{cid}/download",
+                                "critical_count": 0,
+                            })
+                    if fs_reports:
+                        rollups["reports"] = fs_reports
+                        break
+            except Exception:
+                pass
+
+        return rollups
 
     def list_sessions(self) -> list[dict[str, Any]]:
         """
@@ -741,11 +924,21 @@ class SessionManager:
 
                     # Check for cached rollups in metadata.
                     cached_rollups = metadata.get("_rollups")
-                    if isinstance(cached_rollups, dict) and cached_rollups.get("_v") == 1:
+                    if isinstance(cached_rollups, dict) and cached_rollups.get("_v") == 2:
                         # Use cached rollups — skip the full-file scan.
                         preview = self._first_user_preview(f)
                         # Auto-populate title from first user message when empty.
                         display_title = title if isinstance(title, str) and title.strip() else (preview[:80] if preview else "")
+                        rollups = {
+                            "scan_type": cached_rollups.get("scan_type"),
+                            "target": cached_rollups.get("target"),
+                            "status": cached_rollups.get("status", "finished"),
+                            "findings": cached_rollups.get("findings", {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}),
+                            "tokens": cached_rollups.get("tokens", {"input": 0, "output": 0, "cached": 0}),
+                            "duration_ms": cached_rollups.get("duration_ms"),
+                        }
+                        # Enrich with CMDB data (may override findings if real vuln data exists).
+                        rollups = self._enrich_from_cmdb(rollups.get("target"), created_at, rollups, session_key=key)
                         sessions.append({
                             "key": key,
                             "created_at": created_at,
@@ -754,12 +947,13 @@ class SessionManager:
                             "archived": archived,
                             "preview": preview,
                             "path": str(path),
-                            "scan_type": cached_rollups.get("scan_type"),
-                            "target": cached_rollups.get("target"),
-                            "status": cached_rollups.get("status", "finished"),
-                            "findings": cached_rollups.get("findings", {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}),
-                            "tokens": cached_rollups.get("tokens", {"input": 0, "output": 0, "cached": 0}),
-                            "duration_ms": cached_rollups.get("duration_ms"),
+                            "scan_type": rollups.get("scan_type"),
+                            "target": rollups.get("target"),
+                            "status": rollups.get("status", "finished"),
+                            "findings": rollups.get("findings", {"critical": 0, "high": 0, "medium": 0, "low": 0, "total": 0}),
+                            "tokens": rollups.get("tokens", {"input": 0, "output": 0, "cached": 0}),
+                            "duration_ms": rollups.get("duration_ms"),
+                            "reports": rollups.get("reports", []),
                         })
                     else:
                         # No cached rollups — read the full file to compute.
@@ -775,7 +969,7 @@ class SessionManager:
                                 continue
 
                         preview = self._first_user_preview_from_messages(messages)
-                        rollups = self._compute_session_rollups(messages)
+                        rollups = self._compute_session_rollups(messages, metadata=metadata)
 
                         # Override with metadata-set values if present.
                         meta_scan_type = metadata.get("scan_type")
@@ -787,6 +981,20 @@ class SessionManager:
                             rollups["target"] = meta_target
                         if isinstance(meta_status, str):
                             rollups["status"] = meta_status
+
+                        # Enrich with CMDB data (real vulnerability counts).
+                        rollups = self._enrich_from_cmdb(rollups.get("target"), created_at, rollups, session_key=key)
+
+                        # Cache enriched rollups in metadata for next read.
+                        try:
+                            metadata["_rollups"] = {**rollups, "_v": 2}
+                            data["metadata"] = metadata
+                            with open(path, "w", encoding="utf-8") as wf:
+                                wf.write(json.dumps(data, ensure_ascii=False) + "\n")
+                                for msg in messages:
+                                    wf.write(json.dumps(msg, ensure_ascii=False) + "\n")
+                        except Exception:
+                            pass  # caching is best-effort
 
                         # Auto-populate title from first user message when empty.
                         display_title = title if isinstance(title, str) and title.strip() else (preview[:80] if preview else "")
@@ -805,13 +1013,16 @@ class SessionManager:
                             "findings": rollups["findings"],
                             "tokens": rollups["tokens"],
                             "duration_ms": rollups["duration_ms"],
+                            "reports": rollups.get("reports", []),
                         })
             except Exception:
                 repaired = self._repair(fallback_key)
                 if repaired is not None:
-                    rollups = self._compute_session_rollups(repaired.messages)
+                    rollups = self._compute_session_rollups(repaired.messages, metadata=repaired.metadata)
                     repaired_preview = self._first_user_preview_from_messages(repaired.messages)
                     repaired_title = repaired.metadata.get("title")
+                    # Enrich with CMDB data.
+                    rollups = self._enrich_from_cmdb(rollups.get("target"), None, rollups, session_key=repaired.key)
                     display_title = (
                         repaired_title
                         if isinstance(repaired_title, str) and repaired_title.strip()
@@ -831,6 +1042,7 @@ class SessionManager:
                         "findings": rollups["findings"],
                         "tokens": rollups["tokens"],
                         "duration_ms": rollups["duration_ms"],
+                        "reports": rollups.get("reports", []),
                     })
                 continue
 

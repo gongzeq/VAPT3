@@ -127,6 +127,14 @@ export async function fetchSessionRows(
   token: string,
   base: string = "",
 ): Promise<import("./types").SessionRow[]> {
+  type BackendReport = {
+    id: string;
+    title: string;
+    type: string;
+    status: string;
+    download_path?: string | null;
+    critical_count?: number;
+  };
   type BackendRow = {
     key: string;
     created_at: string | null;
@@ -140,6 +148,7 @@ export async function fetchSessionRows(
     findings?: { critical: number; high: number; medium: number; low: number; total: number };
     tokens?: { input: number; output: number; cached: number };
     duration_ms?: number | null;
+    reports?: BackendReport[];
   };
   const body = await request<{ sessions: BackendRow[] }>(
     `${base}/api/sessions`,
@@ -158,7 +167,15 @@ export async function fetchSessionRows(
     findings: s.findings ?? { critical: 0, high: 0, medium: 0, low: 0, total: 0 },
     tokens: s.tokens ?? { input: 0, output: 0, cached: 0 },
     durationMs: s.duration_ms ?? null,
-    reports: [],
+    reports: (s.reports ?? []).map((r) => ({
+      id: r.id,
+      sessionKey: s.key,
+      title: r.title,
+      format: (r.type === "pdf" ? "pdf" : "html") as "html" | "pdf",
+      url: r.download_path ?? "",
+      sizeBytes: 0,
+      createdAt: "",
+    })),
   }));
 }
 
