@@ -776,3 +776,36 @@ Implemented session-scoped Asset Auto-Management, CMDB-backed managed asset dedu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 修复轮次耗尽后 Orchestrator 不重派子代理
+
+**Date**: 2026-06-11
+**Task**: 修复轮次耗尽后 Orchestrator 不重派子代理
+**Branch**: `main`
+
+### Summary
+
+子代理因 max_iterations/context_exhausted 中断后自动重派（上限2次，携带中断摘要）；runner 在生成中断摘要前先 drain 注入消息；auto-continue 续接 prompt 携带未消费的子代理结果。新增 7 个单测全过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e1d8e02fb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
