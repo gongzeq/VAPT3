@@ -46,10 +46,10 @@ const SCENARIOS: ScenarioDef[] = [
     titleKey: "home.scan.vuln.label",
     titleFallback: "漏洞扫描",
     descKey: "home.scan.vuln.desc",
-    descFallback: "OWASP Top 10 + 已知 CVE 检测",
+    descFallback: "OWASP Top 10 + 已知 CVE 检测 + 手工验证",
     templateKey: "home.scan.vuln.template",
     templateFallback:
-      "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描，完成后生成 HTML 报告。",
+      "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描；对发现的高危漏洞进行手工验证（构造 PoC 复现、剔除误报），完成后生成 HTML 报告。",
     icon: Bug,
     iconBgClass: "bg-destructive/15 text-destructive",
   },
@@ -68,7 +68,7 @@ const SCENARIOS: ScenarioDef[] = [
   {
     key: "asset",
     titleKey: "home.scan.asset.label",
-    titleFallback: "仅资产探测",
+    titleFallback: "资产探测",
     descKey: "home.scan.asset.desc",
     descFallback: "存活主机 + 端口指纹，结果落 CMDB",
     templateKey: "home.scan.asset.template",

@@ -242,8 +242,8 @@
       },
       "vuln": {
         "label": "Vuln scan",
-        "desc": "OWASP Top 10 + known-CVE detection",
-        "template": "Run a vulnerability scan against {target} covering OWASP Top 10 and known-CVE detection, then generate an HTML report."
+        "desc": "OWASP Top 10 + known-CVE detection + manual verification",
+        "template": "Run a vulnerability scan against {target} covering OWASP Top 10 and known-CVE detection; manually verify high-risk findings (construct PoC to reproduce, eliminate false positives), then generate an HTML report."
       },
       "weakpwd": {
         "label": "Weak password",

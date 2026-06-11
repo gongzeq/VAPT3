@@ -231,8 +231,8 @@
       },
       "vuln": {
         "label": "漏洞扫描",
-        "desc": "OWASP Top 10 + 已知 CVE 检测",
-        "template": "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描，完成后生成 HTML 报告。"
+        "desc": "OWASP Top 10 + 已知 CVE 检测 + 手工验证",
+        "template": "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描；对发现的高危漏洞进行手工验证（构造 PoC 复现、剔除误报），完成后生成 HTML 报告。"
       },
       "weakpwd": {
         "label": "弱口令检测",
