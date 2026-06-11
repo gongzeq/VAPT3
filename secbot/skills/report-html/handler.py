@@ -12,57 +12,55 @@ from typing import Any
 
 from secbot.cmdb.db import get_session
 from secbot.cmdb.models import DEFAULT_ACTOR
-from secbot.cmdb.repo import create_scan, find_latest_scan_with_assets, get_scan
-from secbot.report.builder import build_report_model, record_report_meta
+from secbot.cmdb.repo import create_scan, get_scan
+from secbot.report.builder import ReportModel, record_report_meta
 from secbot.report.render import render_html
+from secbot.report.session_source import (
+    build_report_model_from_session_jsonl,
+    workspace_from_scan_dir,
+)
 from secbot.skills.types import SkillContext, SkillResult
 
 _logger = logging.getLogger(__name__)
 
+_REPORT_META_TYPE_MAP = {
+    "asset": "asset_inventory",
+    "port": "asset_inventory",
+    "vuln": "vuln_summary",
+    "weak_password": "vuln_summary",
+    "pentest": "custom",
+    "custom": "custom",
+}
+
 
 async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     # scan_id is always inherited from the parent agent loop via
-    # bind_skill_context (set in loop.py / subagent.py).  This guarantees
-    # the report queries the same CMDB scan record that earlier stages
-    # (crawl, vuln_detec, vuln_scan) wrote to via asset_push auto-flush.
+    # bind_skill_context (set in loop.py / subagent.py). This maps directly
+    # to ``<workspace>/sessions/<scan_id>.jsonl`` for WebUI sessions.
     from secbot.agent.tools.skill import current_scan_id
+
     scan_id: str = current_scan_id()
     actor_id: str = args.get("actor_id", DEFAULT_ACTOR)
     report_title: str = args.get("title") or f"Scan {scan_id} report"
-    report_type: str = args.get("type", "custom")
+    report_type: str = _REPORT_META_TYPE_MAP.get(args.get("type", "custom"), "custom")
     target: str = args.get("target") or ""
 
-    async with get_session() as session:
-        # Ensure the scan row exists so build_report_model never raises.
-        # Prior stages may have skipped CMDB writes (e.g. empty results or
-        # early failure), but the report must still be renderable.
-        scan = await get_scan(session, actor_id, scan_id)
-        if scan is None:
-            await create_scan(session, actor_id, target=target or report_title or scan_id, scan_id=scan_id)
-
-        model = await build_report_model(session, scan_id, actor_id=actor_id)
-
-        # Fallback: if the current session has no CMDB data (e.g. user
-        # requested a report in a new chat for a previously scanned target),
-        # search for the most recent historical scan that has assets
-        # matching the target.
-        if model.is_empty() and target:
-            _logger.info(
-                "report-html: current scan %r has no assets, searching "
-                "historical scans for target=%r",
-                scan_id, target,
-            )
-            hist_scan = await find_latest_scan_with_assets(session, actor_id, target)
-            if hist_scan is not None and hist_scan.id != scan_id:
-                _logger.info(
-                    "report-html: found historical scan %r with assets for target=%r",
-                    hist_scan.id, target,
-                )
-                model = await build_report_model(session, hist_scan.id, actor_id=actor_id)
-                # Use the historical scan's target as the report title if
-                # the caller didn't supply one explicitly.
-                if not args.get("title"):
-                    report_title = f"{hist_scan.target} Report"
+    workspace = workspace_from_scan_dir(ctx.scan_dir)
+    source = build_report_model_from_session_jsonl(
+        workspace,
+        scan_id,
+        target=target or None,
+    )
+    model = source.model
+    _logger.info(
+        "report-html: built model from session jsonl scan=%r path=%s entries=%d "
+        "assets=%d findings=%d",
+        scan_id,
+        source.session_path,
+        source.entry_count,
+        model.summary.asset_count,
+        model.summary.finding_count,
+    )
 
     if model.is_empty():
         return SkillResult(
@@ -71,6 +69,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
                 "report_path": None,
                 "asset_count": 0,
                 "finding_count": 0,
+                "source": "session_jsonl",
+                "source_path": str(source.session_path) if source.session_path else None,
             }
         )
 
@@ -82,15 +82,13 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
 
     # Persistence is best-effort per report-meta.md §3.1: a failure here
     # MUST NOT invalidate the freshly rendered file.
-    async with get_session() as session:
-        report_id = await record_report_meta(
-            session,
-            actor_id,
-            model=model,
-            title=report_title,
-            type=report_type,
-            download_path=str(out_path),
-        )
+    report_id = await _record_meta_best_effort(
+        actor_id,
+        model=model,
+        title=report_title,
+        type=report_type,
+        download_path=str(out_path),
+    )
 
     return SkillResult(
         summary={
@@ -99,6 +97,42 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
             "asset_count": model.summary.asset_count,
             "finding_count": model.summary.finding_count,
             "report_id": report_id,
+            "source": "session_jsonl",
+            "source_path": str(source.session_path) if source.session_path else None,
         }
     )
 
+
+async def _record_meta_best_effort(
+    actor_id: str,
+    *,
+    model: ReportModel,
+    title: str,
+    type: str,
+    download_path: str,
+) -> str | None:
+    try:
+        async with get_session() as session:
+            scan = await get_scan(session, actor_id, model.scan_id)
+            if scan is None:
+                await create_scan(
+                    session,
+                    actor_id,
+                    target=model.target or model.scan_id,
+                    scan_id=model.scan_id,
+                )
+            return await record_report_meta(
+                session,
+                actor_id,
+                model=model,
+                title=title,
+                type=type,
+                download_path=download_path,
+            )
+    except Exception:
+        _logger.warning(
+            "report-html: report_meta persistence failed for scan %r",
+            model.scan_id,
+            exc_info=True,
+        )
+        return None

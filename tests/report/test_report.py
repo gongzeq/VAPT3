@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import sys
 from pathlib import Path
@@ -10,19 +9,26 @@ from types import ModuleType
 
 import pytest
 
+from secbot.agent.asset_feed import AssetFeed
+from secbot.agent.tools.skill import bind_skill_context
 from secbot.cmdb import db as cmdb_db
 from secbot.cmdb.models import Base
 from secbot.cmdb.repo import (
     create_scan,
+    get_scan,
+    list_assets,
     update_scan_status,
     upsert_asset,
     upsert_service,
     upsert_vulnerability,
 )
-from secbot.report.builder import ReportRenderError, build_report_model
+from secbot.report.builder import (
+    ReportRenderError,
+    build_report_model,
+    build_report_model_from_asset_entries,
+)
 from secbot.report.render import render_html, render_markdown
 from secbot.skills.types import SkillContext
-from secbot.agent.tools.skill import bind_skill_context
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[2] / "secbot" / "skills"
 
@@ -193,6 +199,59 @@ async def test_builder_extracts_extended_evidence_fields(cmdb_engine):
     assert "POST /api/login" in log4shell.evidence_detail
 
 
+async def test_build_report_model_from_asset_entries_groups_findings() -> None:
+    feed = AssetFeed()
+    await feed.append(
+        kind="tech",
+        agent_name="crawl_web",
+        payload={
+            "host": "111.228.2.47:8080",
+            "stack": ["PHP", "Apache", "Pikachu"],
+        },
+    )
+    await feed.append(
+        kind="vuln",
+        agent_name="vuln_scan",
+        payload={
+            "url": "http://111.228.2.47:8080/vul/sqli/sqli_id.php",
+            "param": "id (POST)",
+            "type": "sqli_boolean_blind",
+            "severity": "critical",
+            "evidence": "sqlmap-detect confirmed boolean-based blind SQL injection",
+            "payload": "id=1 AND 3327=3327",
+        },
+    )
+    await feed.append(
+        kind="vuln",
+        agent_name="vuln_detec",
+        payload={
+            "url": "http://111.228.2.47:8080/vul/xss/xss_reflected_get.php",
+            "param": "message",
+            "type": "xss-reflected",
+            "confidence": "high",
+            "evidence": "<script>alert(1)</script> reflected unsanitized",
+        },
+    )
+
+    model = build_report_model_from_asset_entries(
+        await feed.to_dict_list(),
+        scan_id="websocket_test",
+        target="http://111.228.2.47:8080",
+    )
+
+    assert model.summary.asset_count == 1
+    assert model.summary.finding_count == 2
+    assert model.summary.severity_counts["critical"] == 1
+    assert model.summary.severity_counts["high"] == 1
+    asset = model.assets[0]
+    assert asset.target == "111.228.2.47:8080"
+    assert asset.findings[0].title.startswith("sqli_boolean_blind")
+    assert asset.findings[0].category == "injection"
+    assert asset.findings[0].affected_url == "http://111.228.2.47:8080/vul/sqli/sqli_id.php"
+    assert "3327=3327" in (asset.findings[0].evidence_detail or "")
+    assert asset.findings[1].category == "xss"
+
+
 # ---------------------------------------------------------------------------
 # Skill handlers
 # ---------------------------------------------------------------------------
@@ -233,3 +292,115 @@ async def test_report_html_skill_empty_scan(cmdb_engine, tmp_path: Path):
     assert res.summary["report_path"] is None
     assert res.summary["asset_count"] == 0
     assert res.summary["finding_count"] == 0
+
+
+async def test_report_html_skill_uses_asset_feed_when_cmdb_empty(
+    cmdb_engine,
+    tmp_path: Path,
+):
+    scan_id = "websocket_111"
+    feed = AssetFeed()
+    await feed.append(
+        kind="tech",
+        agent_name="crawl_web",
+        payload={"host": "111.228.2.47:8080", "stack": ["PHP", "Apache"]},
+    )
+    await feed.append(
+        kind="vuln",
+        agent_name="vuln_scan",
+        payload={
+            "url": "http://111.228.2.47:8080/vul/sqli/sqli_id.php",
+            "param": "id (POST)",
+            "type": "sqli_boolean_blind",
+            "severity": "critical",
+            "evidence": "sqlmap-detect: AND boolean-based blind",
+            "status": "confirmed",
+        },
+    )
+    await feed.append(
+        kind="vuln",
+        agent_name="vuln_scan",
+        payload={
+            "url": "http://111.228.2.47:8080/.git/config",
+            "type": "git_repo_exposed",
+            "severity": "medium",
+            "evidence": "nuclei-template-scan: Git Configuration - Detect",
+        },
+    )
+
+    mod = _load("report-html")
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir, asset_feed=feed)
+
+    res = await mod.run(
+        {
+            "target": "http://111.228.2.47:8080",
+            "title": "Pikachu Security Report",
+            "type": "vuln",
+        },
+        ctx,
+    )
+
+    assert res.summary["status"] == "ok"
+    assert res.summary["asset_count"] == 1
+    assert res.summary["finding_count"] == 2
+    out = Path(res.summary["report_path"])
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert "111.228.2.47:8080" in text
+    assert "sqli_boolean_blind" in text
+    assert "Git Configuration" in text
+
+    async with cmdb_db.get_session() as session:
+        scan = await get_scan(session, "local", scan_id)
+        assert scan is not None
+        assert await list_assets(session, "local", scan_id=scan_id) == []
+
+
+async def test_report_html_asset_feed_wins_over_historical_scan(
+    cmdb_engine,
+    tmp_path: Path,
+):
+    target = "http://111.228.2.47:8080"
+    async with cmdb_db.get_session() as session:
+        hist_scan = await create_scan(session, "local", target=target)
+        hist_asset = await upsert_asset(
+            session,
+            "local",
+            scan_id=hist_scan.id,
+            target="111.228.2.47:8080",
+        )
+        await upsert_vulnerability(
+            session,
+            "local",
+            asset_id=hist_asset.id,
+            severity="critical",
+            category="cve",
+            title="Historical stale finding",
+            discovered_by="nuclei-template-scan",
+        )
+
+    feed = AssetFeed()
+    await feed.append(
+        kind="vuln",
+        agent_name="vuln_scan",
+        payload={
+            "url": "http://111.228.2.47:8080/current.php",
+            "type": "sqli_boolean_blind",
+            "severity": "critical",
+            "title": "Current feed finding",
+            "evidence": "current session evidence",
+        },
+    )
+
+    mod = _load("report-html")
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id="websocket_current", scan_dir=ctx.scan_dir, asset_feed=feed)
+
+    res = await mod.run({"target": target, "type": "vuln"}, ctx)
+
+    assert res.summary["status"] == "ok"
+    assert res.summary["finding_count"] == 1
+    text = Path(res.summary["report_path"]).read_text(encoding="utf-8")
+    assert "Current feed finding" in text
+    assert "Historical stale finding" not in text

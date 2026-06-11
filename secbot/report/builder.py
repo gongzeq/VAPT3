@@ -5,10 +5,12 @@ See spec §2 (ReportModel schema). All datetimes are UTC.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
+from urllib.parse import urlparse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,10 +26,173 @@ _logger = logging.getLogger(__name__)
 
 
 SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
+_SEVERITY_RANK = {severity: idx for idx, severity in enumerate(SEVERITY_ORDER)}
+
+_CATEGORY_MAP: dict[str, str] = {
+    "sqli": "injection",
+    "sqli_numeric": "injection",
+    "sqli_string": "injection",
+    "sqli_search": "injection",
+    "sqli_insert": "injection",
+    "sqli_boolean_blind": "injection",
+    "sql_injection": "injection",
+    "nosql_injection": "injection",
+    "command_injection": "injection",
+    "rce": "injection",
+    "ssti": "injection",
+    "xxe": "injection",
+    "xss": "xss",
+    "xss_reflected": "xss",
+    "reflected_xss": "xss",
+    "xss_stored": "xss",
+    "stored_xss": "xss",
+    "xss_dom": "xss",
+    "dom_xss": "xss",
+    "lfi": "exposure",
+    "rfi": "exposure",
+    "directory_traversal": "exposure",
+    "path_traversal": "exposure",
+    "git_repo_exposed": "exposure",
+    "dockerfile_disclosure": "exposure",
+    "info_leak": "exposure",
+    "info_disclosure": "exposure",
+    "sensitive_data": "exposure",
+    "file_upload": "exposure",
+    "file_inclusion": "exposure",
+    "ssrf": "misconfig",
+    "open_redirect": "misconfig",
+    "csrf": "misconfig",
+    "brute_force": "weak_password",
+    "default_credentials": "weak_password",
+    "weak_password": "weak_password",
+    "broken_auth": "auth",
+    "auth_bypass": "auth",
+    "idor": "auth",
+    "id": "auth",
+    "insecure_deserialization": "other",
+    "deserialization": "other",
+    "php_deserialization": "other",
+}
 
 
 class ReportRenderError(Exception):
     """Raised by render helpers when a template cannot be produced."""
+
+
+def _normalise_category(raw: object) -> str:
+    value = str(raw or "other").strip().lower().replace("-", "_").replace(" ", "_")
+    valid = {"injection", "auth", "xss", "misconfig", "exposure", "weak_password", "cve", "other"}
+    if value in valid:
+        return value
+    return _CATEGORY_MAP.get(value, "other")
+
+
+def _normalise_severity(raw: object, *, confidence: object = None) -> str:
+    value = str(raw or "").strip().lower()
+    if value in _SEVERITY_RANK:
+        return value
+    conf = str(confidence or "").strip().lower()
+    if conf in {"critical", "high"}:
+        return "high"
+    if conf in {"medium", "moderate"}:
+        return "medium"
+    if conf == "low":
+        return "low"
+    return "info"
+
+
+def _target_from_url(raw: str) -> str | None:
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return None
+    if not parsed.hostname:
+        return None
+    if parsed.port and parsed.port not in (80, 443):
+        return f"{parsed.hostname}:{parsed.port}"
+    return parsed.hostname
+
+
+def _target_from_payload(payload: dict[str, Any]) -> str | None:
+    explicit = payload.get("target") or payload.get("host")
+    if explicit:
+        return str(explicit)
+    url = payload.get("url")
+    if isinstance(url, str) and url:
+        return _target_from_url(url)
+    return None
+
+
+def _split_target_host(target: str) -> str:
+    if "://" in target:
+        parsed = urlparse(target)
+        return parsed.hostname or target
+    parsed = urlparse(f"//{target}")
+    return parsed.hostname or target
+
+
+def _ip_or_hostname(target: str) -> tuple[str | None, str | None]:
+    host = _split_target_host(target)
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return None, host or None
+    return host, None
+
+
+def _dt_from_ts(raw: object) -> datetime | None:
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+    return None
+
+
+def _evidence_text(payload: dict[str, Any]) -> str | None:
+    evidence = payload.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        return evidence.strip()
+    if evidence:
+        return _trunc(evidence)
+    return None
+
+
+def _finding_title(payload: dict[str, Any], affected_url: str | None) -> str:
+    if payload.get("title"):
+        return str(payload["title"])
+    raw_type = str(payload.get("type") or payload.get("category") or "vulnerability")
+    if affected_url:
+        return f"{raw_type} on {affected_url}"
+    return raw_type
+
+
+def _finding_detail(payload: dict[str, Any]) -> str | None:
+    parts: list[str] = []
+    for label, key in (
+        ("参数", "param"),
+        ("Payload", "payload"),
+        ("DBMS", "dbms"),
+        ("状态", "status"),
+        ("证据", "evidence"),
+    ):
+        value = payload.get(key)
+        if value:
+            parts.append(f"{label}: {value}")
+    return "\n".join(parts) if parts else None
+
+
+def _verification_steps(payload: dict[str, Any], affected_url: str | None) -> tuple[str, ...]:
+    raw_steps = payload.get("verification_steps") or payload.get("steps")
+    if isinstance(raw_steps, list) and raw_steps:
+        return tuple(str(step) for step in raw_steps)
+    steps: list[str] = []
+    if affected_url:
+        steps.append(f"访问目标端点: {affected_url}")
+    if payload.get("param"):
+        steps.append(f"对参数 {payload['param']} 发送测试载荷")
+    if payload.get("payload"):
+        steps.append(f"使用载荷: {payload['payload']}")
+    if payload.get("evidence"):
+        steps.append("根据响应内容或工具输出确认漏洞存在")
+    return tuple(steps)
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +430,148 @@ async def build_report_model(
         summary=summary,
         assets=assets,
         appendix=appendix,
+    )
+
+
+def build_report_model_from_asset_entries(
+    entries: list[dict[str, Any]],
+    *,
+    scan_id: str,
+    target: str | None = None,
+) -> ReportModel:
+    """Build a report model from transient asset-feed entries.
+
+    This is a read-only fallback for sessions where scan discoveries were
+    deliberately kept out of the CMDB by the Asset Auto-Management gate.
+    """
+    assets_by_target: dict[str, dict[str, Any]] = {}
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    def _asset_state(asset_target: str) -> dict[str, Any]:
+        ip, hostname = _ip_or_hostname(asset_target)
+        state = assets_by_target.get(asset_target)
+        if state is None:
+            state = {
+                "target": asset_target,
+                "ip": ip,
+                "hostname": hostname,
+                "os_guess": None,
+                "services": {},
+                "findings": [],
+            }
+            assets_by_target[asset_target] = state
+        return state
+
+    for entry in sorted(entries, key=lambda item: item.get("id", 0)):
+        payload = entry.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        created_at = _dt_from_ts(entry.get("created_at"))
+        if created_at is not None:
+            started_at = created_at if started_at is None else min(started_at, created_at)
+            finished_at = created_at if finished_at is None else max(finished_at, created_at)
+
+        kind = str(entry.get("kind", "")).lower()
+        asset_target = _target_from_payload(payload) or target
+        if not asset_target:
+            continue
+        state = _asset_state(str(asset_target))
+
+        if kind == "tech":
+            os_guess = payload.get("os") or payload.get("os_guess")
+            if os_guess and not state["os_guess"]:
+                state["os_guess"] = str(os_guess)
+            continue
+
+        if kind in {"port", "service"} and payload.get("port") is not None:
+            try:
+                port = int(payload["port"])
+            except (TypeError, ValueError):
+                continue
+            protocol = str(payload.get("protocol") or "tcp")
+            state["services"][(port, protocol)] = ReportService(
+                port=port,
+                protocol=protocol,
+                service=payload.get("service"),
+                product=payload.get("product"),
+                version=payload.get("version"),
+            )
+            continue
+
+        if kind == "vuln":
+            affected_url = payload.get("url")
+            affected_url = str(affected_url) if affected_url else None
+            severity = _normalise_severity(
+                payload.get("severity"),
+                confidence=payload.get("confidence"),
+            )
+            ev_summary = _evidence_text(payload)
+            detail = _finding_detail(payload)
+            if detail is None and ev_summary:
+                detail = ev_summary
+            state["findings"].append(
+                ReportFinding(
+                    severity=severity,
+                    category=_normalise_category(payload.get("type") or payload.get("category")),
+                    title=_finding_title(payload, affected_url),
+                    cve_id=payload.get("cve_id") or None,
+                    evidence_summary=ev_summary,
+                    discovered_by=str(entry.get("agent_name") or "asset_feed"),
+                    affected_url=affected_url,
+                    evidence_detail=detail,
+                    verification_steps=_verification_steps(payload, affected_url),
+                    remediation=payload.get("remediation")
+                    or payload.get("fix")
+                    or payload.get("recommendation"),
+                    references=tuple(payload.get("references") or ()),
+                )
+            )
+
+    assets: list[ReportAsset] = []
+    severity_counts: dict[str, int] = {severity: 0 for severity in SEVERITY_ORDER}
+    service_count = 0
+    finding_count = 0
+    for state in assets_by_target.values():
+        services = sorted(
+            state["services"].values(),
+            key=lambda service: (service.protocol, service.port),
+        )
+        findings = sorted(
+            state["findings"],
+            key=lambda finding: _SEVERITY_RANK.get(finding.severity, len(SEVERITY_ORDER)),
+        )
+        for finding in findings:
+            if finding.severity in severity_counts:
+                severity_counts[finding.severity] += 1
+        service_count += len(services)
+        finding_count += len(findings)
+        assets.append(
+            ReportAsset(
+                target=state["target"],
+                ip=state["ip"],
+                hostname=state["hostname"],
+                os_guess=state["os_guess"],
+                services=services,
+                findings=findings,
+            )
+        )
+
+    assets.sort(key=lambda asset: asset.target)
+    summary = ReportSummary(
+        asset_count=len(assets),
+        service_count=service_count,
+        finding_count=finding_count,
+        severity_counts=severity_counts,
+    )
+    return ReportModel(
+        scan_id=scan_id,
+        target=target or (assets[0].target if assets else scan_id),
+        started_at=started_at,
+        finished_at=finished_at,
+        summary=summary,
+        assets=assets,
+        appendix=ReportAppendix(),
     )
 
 
