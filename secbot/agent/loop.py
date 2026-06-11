@@ -449,10 +449,6 @@ class AgentLoop:
         session_key: str | None = None,
     ) -> None:
         """Update context for all tools that need routing info."""
-        # When the caller threads a thread-scoped session_key (e.g. slack with
-        # reply_in_thread: true), honor it so spawn announces route back to
-        # the originating thread session. Falls back to unified mode or
-        # channel:chat_id for callers that don't have a thread-scoped key.
         if session_key is not None:
             effective_key = session_key
         elif self._unified_session:
@@ -460,19 +456,18 @@ class AgentLoop:
         else:
             effective_key = f"{channel}:{chat_id}"
         self._current_chat_id = chat_id
-        for name in ("message", "create_agent", "cron", "my"):
-            if tool := self.tools.get(name):
-                if hasattr(tool, "set_context"):
-                    if name == "create_agent":
-                        tool.set_context(channel, chat_id, effective_key=effective_key)
-                        if hasattr(tool, "set_origin_message_id"):
-                            tool.set_origin_message_id(message_id)
-                    elif name == "cron":
-                        tool.set_context(channel, chat_id, metadata=metadata, session_key=session_key)
-                    elif name == "message":
-                        tool.set_context(channel, chat_id, message_id, metadata=metadata)
-                    else:
-                        tool.set_context(channel, chat_id)
+
+        # Per-tool context wiring — each tool has a distinct signature.
+        if (t := self.tools.get("create_agent")) and hasattr(t, "set_context"):
+            t.set_context(channel, chat_id, effective_key=effective_key)
+            if hasattr(t, "set_origin_message_id"):
+                t.set_origin_message_id(message_id)
+        if (t := self.tools.get("cron")) and hasattr(t, "set_context"):
+            t.set_context(channel, chat_id, metadata=metadata, session_key=session_key)
+        if (t := self.tools.get("message")) and hasattr(t, "set_context"):
+            t.set_context(channel, chat_id, message_id, metadata=metadata)
+        if (t := self.tools.get("my")) and hasattr(t, "set_context"):
+            t.set_context(channel, chat_id)
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
@@ -540,6 +535,35 @@ class AgentLoop:
             return UNIFIED_SESSION_KEY
         return msg.session_key
 
+    def _prepare_session(self, key: str) -> tuple[Session, str | None]:
+        """Restore checkpoint, compact, and return ``(session, pending_summary)``.
+
+        Shared by the system-message and user-message paths in
+        ``_process_message`` to keep session preparation DRY.
+        """
+        session = self.sessions.get_or_create(key)
+        if self._restore_runtime_checkpoint(session):
+            self.sessions.save(session)
+        if self._restore_pending_user_turn(session):
+            self.sessions.save(session)
+        session, pending = self.auto_compact.prepare_session(session, key)
+        return session, pending
+
+    def _finalize_turn(
+        self, session: Session, all_msgs: list[dict], save_skip: int,
+    ) -> None:
+        """Persist turn artifacts, usage, and schedule background consolidation.
+
+        Shared by the system-message and user-message paths after the agent
+        loop (and auto-continue) have finished.
+        """
+        self._save_turn(session, all_msgs, save_skip)
+        session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
+        self._clear_runtime_checkpoint(session)
+        self._persist_turn_usage(session)
+        self.sessions.save(session)
+        self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
+
     def _replay_token_budget(self) -> int:
         """Derive a token budget for session history replay from the context window."""
         if self.context_window_tokens <= 0:
@@ -551,6 +575,182 @@ class AgentLoop:
             reserved_output = 4096
         budget = self.context_window_tokens - max(1, reserved_output) - 1024
         return budget if budget > 0 else max(128, self.context_window_tokens // 2)
+
+    def _replay_history(self, session: Session) -> tuple[str, dict[str, Any]]:
+        """Return ``(history_text, kwargs)`` for session replay.
+
+        Consolidates the repeated ``get_history`` call (with token-budget
+        and message-cap) used by both the system-message and user-message
+        paths in ``_process_message``.
+        """
+        kwargs: dict[str, Any] = {
+            "max_messages": self._max_messages,
+            "max_tokens": self._replay_token_budget(),
+            "include_timestamps": True,
+        }
+        return session.get_history(**kwargs), kwargs
+
+    # ------------------------------------------------------------------
+    # Auto-continue when the Orchestrator hits iteration / context limits.
+    # Extracts running-subagent context so the LLM knows to re-dispatch.
+    # ------------------------------------------------------------------
+
+    _MAX_CONTINUATIONS = 5
+
+    def _build_subagent_context_block(self, session_key: str) -> str:
+        """Return a text block describing running subagents for *session_key*.
+
+        When the Orchestrator's iterations are exhausted and auto-continue
+        kicks in, the continuation prompt must mention any subagents that are
+        still running so the LLM knows to wait for / re-dispatch them.
+        """
+        if not session_key:
+            return ""
+        running = self.subagents.get_running_statuses_by_session(session_key)
+        if not running:
+            return ""
+        lines = ["\n## 运行中的子代理（中断时仍在执行）"]
+        for s in running:
+            agent_label = s.agent_name or s.label
+            lines.append(
+                f"- **{agent_label}** (task_id={s.task_id}): "
+                f"{s.task_description[:200]}"
+            )
+        lines.append(
+            "\n请等待上述子代理返回结果后再决定下一步操作。"
+            "如果子代理因中断而失败，请根据返回的摘要重新派发。"
+        )
+        return "\n".join(lines)
+
+    def _build_unconsumed_results_block(self, prior_messages: list[dict]) -> str:
+        """Render subagent results sitting in the tail of an interrupted run.
+
+        Auto-continue rebuilds the conversation from a summary, so announces
+        that arrived around the interrupt would otherwise vanish and the
+        orchestrator would never re-dispatch the unfinished task. Condense
+        them (deduped by task_id) and re-inject into the continuation prompt.
+        """
+        if not prior_messages:
+            return ""
+        seen: set[str] = set()
+        entries: list[str] = []
+        for m in prior_messages[-12:]:
+            if m.get("role") != "user" or m.get("injected_event") != "subagent_result":
+                continue
+            content = m.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            task_id = str(m.get("subagent_task_id") or "")
+            if task_id:
+                if task_id in seen:
+                    continue
+                seen.add(task_id)
+            entries.append(self._condense_subagent_result(content))
+        if not entries:
+            return ""
+        lines = ["\n## 中断前后到达的子代理结果"]
+        lines.extend(entries)
+        lines.append(
+            "\n如果上述子代理结果显示任务未完成（interrupted / not completed），"
+            "请重新派发子代理并附上其进度摘要继续该任务；否则根据结果决定下一步。"
+        )
+        return "\n".join(lines)
+
+    async def _auto_continue(
+        self,
+        *,
+        final_content: str | None,
+        stop_reason: str,
+        session: "Session",
+        channel: str,
+        chat_id: str,
+        message_id: str | None,
+        metadata: dict[str, Any] | None,
+        session_key: str,
+        pending_queue: asyncio.Queue | None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+        on_stream: Callable[[str], Awaitable[None]] | None = None,
+        on_stream_end: Callable[..., Awaitable[None]] | None = None,
+        on_retry_wait: Callable[[str], Awaitable[None]] | None = None,
+        prior_messages: list[dict] | None = None,
+    ) -> tuple[str | None, list[dict], str, bool]:
+        """Auto-continue loop: re-invoke the agent with an interrupt summary.
+
+        Returns ``(final_content, extra_messages, stop_reason, had_injections)``.
+        """
+        _continuations = 0
+        had_injections = False
+        all_extra_msgs: list[dict] = []
+
+        while (
+            stop_reason in ("max_iterations", "context_exhausted")
+            and _continuations < self._MAX_CONTINUATIONS
+        ):
+            _continuations += 1
+            _summary = final_content or f"[会话中断 — {stop_reason}]"
+
+            # Inject running-subagent context so the Orchestrator knows to
+            # wait for / re-dispatch them after continuation.
+            subagent_block = self._build_subagent_context_block(session_key)
+            unconsumed_block = self._build_unconsumed_results_block(
+                prior_messages or []
+            )
+            reason_label = (
+                "轮次耗尽" if stop_reason == "max_iterations" else "上下文窗口已满"
+            )
+            continuation_text = (
+                f"[会话中断续接 #{_continuations}]\n\n"
+                f"上一次执行因{reason_label}而中断。"
+                f"以下是中断时的进度摘要，请从断点处继续完成任务：\n\n{_summary}"
+            )
+            if subagent_block:
+                continuation_text += f"\n{subagent_block}"
+            if unconsumed_block:
+                continuation_text += f"\n{unconsumed_block}"
+
+            logger.info(
+                "Auto-continue #{}: {} — restarting agent loop with summary"
+                "{}",
+                _continuations,
+                stop_reason,
+                " (subagent context included)" if subagent_block else "",
+            )
+
+            _cont_msgs = self.context.build_messages(
+                history="",
+                current_message=continuation_text,
+                channel=channel,
+                chat_id=chat_id,
+                is_orchestrator=self.is_orchestrator,
+                agent_registry=self._agent_registry,
+            )
+            _fc, _, _cm, stop_reason, _hi = await self._run_agent_loop(
+                _cont_msgs,
+                on_progress=on_progress,
+                on_stream=on_stream,
+                on_stream_end=on_stream_end,
+                on_retry_wait=on_retry_wait,
+                session=session,
+                channel=channel,
+                chat_id=chat_id,
+                message_id=message_id,
+                metadata=metadata,
+                session_key=session_key,
+                pending_queue=pending_queue,
+            )
+            final_content = _fc or final_content
+            all_extra_msgs.extend(_cm)
+            prior_messages = _cm
+            if _hi:
+                had_injections = True
+
+        if stop_reason in ("max_iterations", "context_exhausted"):
+            logger.warning(
+                "Auto-continue exhausted after {} rounds; reporting final state",
+                self._MAX_CONTINUATIONS,
+            )
+
+        return final_content, all_extra_msgs, stop_reason, had_injections
 
     async def _run_agent_loop(
         self,
@@ -792,13 +992,6 @@ class AgentLoop:
                     self.sessions.get_asset_auto_management(active_session_key)
                 )
 
-        bind_skill_context(
-            scan_id=scan_id,
-            scan_dir=scan_dir,
-            confirm=confirm_fn,
-            asset_auto_management_enabled=asset_auto_management_enabled,
-        )
-
         # Resolve / install the chat-scoped blackboard (PRD D3). Every
         # ``self.blackboard`` reference (orchestrator tools, the Subagent
         # tools registered via callable, broadcast bind below) follows the
@@ -813,6 +1006,13 @@ class AgentLoop:
         # assignment redirects every subsequent tool invocation in this
         # turn (and any sub-agents spawned from it) to the right feed.
         self.asset_feed = await self.asset_feed_registry.get_or_create(chat_id)
+
+        bind_skill_context(
+            scan_id=scan_id,
+            scan_dir=scan_dir,
+            confirm=confirm_fn,
+            asset_auto_management_enabled=asset_auto_management_enabled,
+        )
 
         # Bind blackboard write callback for websocket channels so entries
         # are broadcast to the chat surface in real-time.
@@ -1144,13 +1344,7 @@ class AgentLoop:
             # callers route to the originating thread session, not the
             # channel-level session derived from chat_id.
             key = msg.session_key_override or f"{channel}:{chat_id}"
-            session = self.sessions.get_or_create(key)
-            if self._restore_runtime_checkpoint(session):
-                self.sessions.save(session)
-            if self._restore_pending_user_turn(session):
-                self.sessions.save(session)
-
-            session, pending = self.auto_compact.prepare_session(session, key)
+            session, pending = self._prepare_session(key)
             if pending:
                 logger.info("Memory compact triggered for session {}", key)
 
@@ -1174,12 +1368,7 @@ class AgentLoop:
                 channel, chat_id, msg.metadata.get("message_id"),
                 msg.metadata, session_key=key,
             )
-            _hist_kwargs: dict[str, Any] = {
-                "max_messages": self._max_messages,
-                "max_tokens": self._replay_token_budget(),
-                "include_timestamps": True,
-            }
-            history = session.get_history(**_hist_kwargs)
+            history, _hist_kwargs = self._replay_history(session)
             current_role = "assistant" if is_subagent else "user"
 
             # Subagent content is already in `history` above; passing it again
@@ -1202,49 +1391,21 @@ class AgentLoop:
                 session_key=key,
                 pending_queue=pending_queue,
             )
-            # Auto-continue when the main agent hits iteration/context limits:
-            # inject the interrupt summary as a continuation prompt and start a
-            # fresh loop (iteration counter resets, context window is clean).
-            _MAX_CONTINUATIONS = 5
-            _continuations = 0
-            while stop_reason in ("max_iterations", "context_exhausted") and _continuations < _MAX_CONTINUATIONS:
-                _continuations += 1
-                _summary = final_content or f"[会话中断 — {stop_reason}]"
-                logger.info(
-                    "Auto-continue #{}: {} — restarting agent loop with summary",
-                    _continuations, stop_reason,
-                )
-                _cont_msgs = self.context.build_messages(
-                    history="",
-                    current_message=(
-                        f"[会话中断续接 #{_continuations}]\n\n"
-                        f"上一次执行因{('轮次耗尽' if stop_reason == 'max_iterations' else '上下文窗口已满')}而中断。"
-                        f"以下是中断时的进度摘要，请从断点处继续完成任务：\n\n{_summary}"
-                    ),
-                    channel=channel,
-                    chat_id=chat_id,
-                    is_orchestrator=self.is_orchestrator,
-                    agent_registry=self._agent_registry,
-                )
-                final_content, _, _cont_msgs, stop_reason, _ = await self._run_agent_loop(
-                    _cont_msgs, session=session, channel=channel, chat_id=chat_id,
-                    message_id=msg.metadata.get("message_id"),
-                    metadata=msg.metadata,
-                    session_key=key,
-                    pending_queue=pending_queue,
-                )
-                all_msgs.extend(_cont_msgs)
-            if stop_reason in ("max_iterations", "context_exhausted"):
-                logger.warning(
-                    "Auto-continue exhausted after {} rounds; reporting final state",
-                    _MAX_CONTINUATIONS,
-                )
-            self._save_turn(session, all_msgs, 1 + len(history))
-            session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
-            self._clear_runtime_checkpoint(session)
-            self._persist_turn_usage(session)
-            self.sessions.save(session)
-            self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
+            # Auto-continue when the main agent hits iteration/context limits.
+            final_content, _extra, stop_reason, _ = await self._auto_continue(
+                final_content=final_content,
+                stop_reason=stop_reason,
+                session=session,
+                channel=channel,
+                chat_id=chat_id,
+                message_id=msg.metadata.get("message_id"),
+                metadata=msg.metadata,
+                session_key=key,
+                pending_queue=pending_queue,
+                prior_messages=all_msgs,
+            )
+            all_msgs.extend(_extra)
+            self._finalize_turn(session, all_msgs, 1 + len(history))
             options = ask_user_options_from_messages(all_msgs) if stop_reason == "ask_user" else []
             content, buttons = ask_user_outbound(
                 final_content or "Background task completed.",
@@ -1282,14 +1443,8 @@ class AgentLoop:
         logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
 
         key = session_key or msg.session_key
-        session = self.sessions.get_or_create(key)
+        session, pending = self._prepare_session(key)
         mark_webui_session(session, msg.metadata)
-        if self._restore_runtime_checkpoint(session):
-            self.sessions.save(session)
-        if self._restore_pending_user_turn(session):
-            self.sessions.save(session)
-
-        session, pending = self.auto_compact.prepare_session(session, key)
 
         # Slash commands
         raw = msg.content.strip()
@@ -1310,12 +1465,7 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        _hist_kwargs: dict[str, Any] = {
-            "max_messages": self._max_messages,
-            "max_tokens": self._replay_token_budget(),
-            "include_timestamps": True,
-        }
-        history = session.get_history(**_hist_kwargs)
+        history, _hist_kwargs = self._replay_history(session)
 
         pending_ask = pending_ask_user_call(history)
         pending_ask_id = pending_ask[0] if pending_ask else None
@@ -1418,66 +1568,34 @@ class AgentLoop:
             pending_queue=pending_queue,
         )
 
-        # Auto-continue when the main agent hits iteration/context limits:
-        # inject the interrupt summary as a continuation prompt and start a
-        # fresh loop (iteration counter resets, context window is clean).
-        _MAX_CONTINUATIONS = 5
-        _continuations = 0
-        while stop_reason in ("max_iterations", "context_exhausted") and _continuations < _MAX_CONTINUATIONS:
-            _continuations += 1
-            _summary = final_content or f"[会话中断 — {stop_reason}]"
-            logger.info(
-                "Auto-continue #{}: {} — restarting agent loop with summary",
-                _continuations, stop_reason,
-            )
-            _cont_msgs = self.context.build_messages(
-                history="",
-                current_message=(
-                    f"[会话中断续接 #{_continuations}]\n\n"
-                    f"上一次执行因{('轮次耗尽' if stop_reason == 'max_iterations' else '上下文窗口已满')}而中断。"
-                    f"以下是中断时的进度摘要，请从断点处继续完成任务：\n\n{_summary}"
-                ),
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                is_orchestrator=self.is_orchestrator,
-                agent_registry=self._agent_registry,
-            )
-            _fc, _, _cm, stop_reason, _hi = await self._run_agent_loop(
-                _cont_msgs,
-                on_progress=on_progress or _bus_progress,
-                on_stream=on_stream,
-                on_stream_end=on_stream_end,
-                on_retry_wait=_on_retry_wait,
-                session=session,
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                message_id=msg.metadata.get("message_id"),
-                metadata=msg.metadata,
-                session_key=key,
-                pending_queue=pending_queue,
-            )
-            final_content = _fc or final_content
-            all_msgs.extend(_cm)
-            if _hi:
-                had_injections = True
-        if stop_reason in ("max_iterations", "context_exhausted"):
-            logger.warning(
-                "Auto-continue exhausted after {} rounds; reporting final state",
-                _MAX_CONTINUATIONS,
-            )
+        # Auto-continue when the main agent hits iteration/context limits.
+        final_content, _extra, stop_reason, _had_inj = await self._auto_continue(
+            final_content=final_content,
+            stop_reason=stop_reason,
+            session=session,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            message_id=msg.metadata.get("message_id"),
+            metadata=msg.metadata,
+            session_key=key,
+            pending_queue=pending_queue,
+            on_progress=on_progress or _bus_progress,
+            on_stream=on_stream,
+            on_stream_end=on_stream_end,
+            on_retry_wait=_on_retry_wait,
+            prior_messages=all_msgs,
+        )
+        all_msgs.extend(_extra)
+        if _had_inj:
+            had_injections = True
 
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE
 
         # Skip the already-persisted user message when saving the turn
         save_skip = 1 + len(history) + (1 if user_persisted_early else 0)
-        self._save_turn(session, all_msgs, save_skip)
-        session.enforce_file_cap(on_archive=self.context.memory.raw_archive)
+        self._finalize_turn(session, all_msgs, save_skip)
         self._clear_pending_user_turn(session)
-        self._clear_runtime_checkpoint(session)
-        self._persist_turn_usage(session)
-        self.sessions.save(session)
-        self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
 
         # When follow-up messages were injected mid-turn, a later natural
         # language reply may address those follow-ups and should not be

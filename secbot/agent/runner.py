@@ -612,13 +612,9 @@ class AgentRunner:
             break
         else:
             stop_reason = "max_iterations"
-            final_content = await self._generate_interrupt_summary(
-                spec, messages, tool_events, stop_reason,
-            )
-            self._append_final_message(messages, final_content)
-            # Drain any remaining injections so they are appended to the
-            # conversation history instead of being re-published as
-            # independent inbound messages by _dispatch's finally block.
+            # Drain any remaining injections BEFORE generating the interrupt
+            # summary so late-arriving subagent results are visible to the
+            # summary (and to auto-continue) instead of being silently lost.
             # We ignore should_continue here because the for-loop has already
             # exhausted all iterations.
             drained_after_max_iterations, injection_cycles = await self._try_drain_injections(
@@ -627,6 +623,10 @@ class AgentRunner:
             )
             if drained_after_max_iterations:
                 had_injections = True
+            final_content = await self._generate_interrupt_summary(
+                spec, messages, tool_events, stop_reason,
+            )
+            self._append_final_message(messages, final_content)
 
         return AgentRunResult(
             final_content=final_content,
@@ -1374,6 +1374,27 @@ class AgentRunner:
                 lines.append(f"- **{event['name']}** 失败: {event.get('detail', '')}")
             lines.append("")
 
+        # Extract subagent context from recent messages (announce results).
+        subagent_lines: list[str] = []
+        for msg in messages[-12:]:
+            if msg.get("role") != "user":
+                continue
+            content = str(msg.get("content") or "").strip()
+            # Match subagent announce template: [Subagent 'xxx' completed/...]
+            if content.startswith("[Subagent '") or content.startswith("[Subagent "):
+                # Extract first line as status header
+                first_line = content.split("\n", 1)[0].strip()
+                subagent_lines.append(f"- {first_line}")
+            elif msg.get("injected_event") == "subagent_result":
+                # Compact subagent result — use first 200 chars
+                snippet = content[:200].replace("\n", " ").strip()
+                if snippet:
+                    subagent_lines.append(f"- {snippet}")
+        if subagent_lines:
+            lines.append("## 子代理状态")
+            lines.extend(subagent_lines)
+            lines.append("")
+
         # Last assistant message for additional context
         for msg in reversed(messages):
             if msg.get("role") == "assistant" and msg.get("content"):
@@ -1414,7 +1435,17 @@ class AgentRunner:
                     content = str(msg.get("content") or "").strip()
                     if content:
                         context_parts.append(f"Assistant: {content[:300]}")
-            work_history = "\n".join(context_parts[-20:]) if context_parts else "(no events)"
+            # Include subagent results so the LLM knows what subagents were running
+            for msg in messages[-12:]:
+                if msg.get("role") != "user":
+                    continue
+                if msg.get("injected_event") == "subagent_result" or (
+                    isinstance(msg.get("content"), str)
+                    and msg["content"].startswith("[Subagent ")
+                ):
+                    snippet = str(msg.get("content") or "")[:300]
+                    context_parts.append(f"Subagent result: {snippet}")
+            work_history = "\n".join(context_parts[-25:]) if context_parts else "(no events)"
 
             summary_prompt = _INTERRUPT_SUMMARY_PROMPT.format(context=work_history)
             resp = await self.provider.chat_with_retry(

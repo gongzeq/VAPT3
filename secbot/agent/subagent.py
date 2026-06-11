@@ -40,6 +40,12 @@ if TYPE_CHECKING:
     from secbot.agents.registry import AgentRegistry, ExpertAgentSpec
 
 
+# Max automatic re-dispatches when a subagent is interrupted by
+# max_iterations / context_exhausted. Deterministic fallback so completion
+# does not depend on the orchestrator LLM noticing the incomplete announce.
+_MAX_INTERRUPT_RETRIES = 2
+
+
 @dataclass(slots=True)
 class SubagentStatus:
     """Real-time status of a running subagent."""
@@ -54,6 +60,8 @@ class SubagentStatus:
     usage: dict = field(default_factory=dict)          # token usage
     stop_reason: str | None = None
     error: str | None = None
+    # Number of automatic re-dispatches after iteration/context interrupts.
+    retries: int = 0
     # Wall-clock timestamp (epoch seconds) of the last heartbeat — refreshed
     # on every checkpoint and lifecycle transition. Surfaced over
     # ``GET /api/agents?include_status=true`` and the ``agent_status`` event.
@@ -596,12 +604,12 @@ class SubagentManager:
             # inside the subagent still surface the WebUI approval dialog.
             parent_confirm = current_skill_confirm()
             parent_asset_auto_management = current_asset_auto_management_enabled()
-            # Inherit the parent loop's scan_id so ALL CMDB writes within a
-            # scan session (orchestrator + all subagents) share one scan
-            # record.  This is essential for report-html which queries by
-            # scan_id.  scan_dir also uses scan_id (not task_id) so all
-            # artifacts — raw logs, reports — are grouped under one folder
-            # per chat session: .secbot/scans/<scan_id>/.
+            # Inherit the parent loop's scan_id so scan artifacts and
+            # optional CMDB writes from orchestrator + subagents share one
+            # scan identity. report-html also uses this id to locate the
+            # persisted session JSONL. scan_dir uses scan_id (not task_id)
+            # so raw logs and reports are grouped under one folder per chat:
+            # .secbot/scans/<scan_id>/.
             parent_scan_id = current_scan_id()
             bind_skill_context(
                 scan_id=parent_scan_id,
@@ -636,24 +644,70 @@ class SubagentManager:
                 else self.max_iterations
             )
 
-            result = await self.runner.run(AgentRunSpec(
-                initial_messages=messages,
-                tools=tools,
-                model=self.model,
-                max_iterations=_effective_max_iter,
-                max_tool_result_chars=self.max_tool_result_chars,
-                hook=_SubagentHook(
-                    task_id,
-                    status,
-                    broadcast_fn=_broadcast_tool_event,
+            while True:
+                result = await self.runner.run(AgentRunSpec(
+                    initial_messages=messages,
+                    tools=tools,
+                    model=self.model,
+                    max_iterations=_effective_max_iter,
+                    max_tool_result_chars=self.max_tool_result_chars,
+                    hook=_SubagentHook(
+                        task_id,
+                        status,
+                        broadcast_fn=_broadcast_tool_event,
+                        agent_name=resolved_agent_name,
+                        critical_tool_names=critical_tool_names,
+                    ),
+                    max_iterations_message="Task completed but no final response was generated.",
+                    error_message=None,
+                    fail_on_tool_error=False,
+                    checkpoint_callback=_on_checkpoint,
+                ))
+                if (
+                    result.stop_reason not in ("max_iterations", "context_exhausted")
+                    or status.retries >= _MAX_INTERRUPT_RETRIES
+                ):
+                    break
+                # Deterministic auto re-dispatch: continue the interrupted
+                # task in a fresh context seeded with the interrupt summary,
+                # instead of relying on the orchestrator LLM to notice the
+                # incomplete announce and re-spawn. No announce is sent while
+                # retrying so the LLM path cannot double-dispatch.
+                status.retries += 1
+                retry_reason_label = (
+                    "工具调用轮次耗尽" if result.stop_reason == "max_iterations"
+                    else "上下文窗口已满"
+                )
+                retry_summary = (
+                    result.final_content
+                    or f"Subagent interrupted ({result.stop_reason}): "
+                       "no summary available."
+                )
+                logger.warning(
+                    "Subagent [{}] interrupted ({}); auto-retrying {}/{}",
+                    task_id, result.stop_reason,
+                    status.retries, _MAX_INTERRUPT_RETRIES,
+                )
+                status.phase = "retrying"
+                status.last_heartbeat_at = time.time()
+                await self._broadcast_agent_status(
+                    origin=origin,
                     agent_name=resolved_agent_name,
-                    critical_tool_names=critical_tool_names,
-                ),
-                max_iterations_message="Task completed but no final response was generated.",
-                error_message=None,
-                fail_on_tool_error=False,
-                checkpoint_callback=_on_checkpoint,
-            ))
+                    status="retrying",
+                    current_task_id=task_id,
+                    last_heartbeat_at=status.last_heartbeat_at,
+                )
+                continuation_task = render_template(
+                    "agent/subagent_retry.md",
+                    task=task,
+                    attempt=status.retries,
+                    reason_label=retry_reason_label,
+                    summary=retry_summary,
+                )
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": continuation_task},
+                ]
             status.phase = "done"
             status.stop_reason = result.stop_reason
 
@@ -697,12 +751,16 @@ class SubagentManager:
                     else "上下文窗口已满"
                 )
                 logger.warning(
-                    "Subagent [{}] interrupted: {} — reporting incomplete",
-                    task_id, reason_label,
+                    "Subagent [{}] interrupted: {} — reporting incomplete "
+                    "after {} auto-retries",
+                    task_id, reason_label, status.retries,
+                )
+                retried_note = (
+                    f"，已自动重试 {status.retries} 次" if status.retries else ""
                 )
                 await self._announce_result(
                     task_id, label, task,
-                    f"[任务未完成 — {reason_label}]\n\n{interrupt_summary}",
+                    f"[任务未完成 — {reason_label}{retried_note}]\n\n{interrupt_summary}",
                     origin, "incomplete", origin_message_id,
                     agent_name=resolved_agent_name,
                 )
@@ -890,3 +948,14 @@ class SubagentManager:
             1 for tid in tids
             if tid in self._running_tasks and not self._running_tasks[tid].done()
         )
+
+    def get_running_statuses_by_session(self, session_key: str) -> list[SubagentStatus]:
+        """Return *SubagentStatus* for every running subagent in *session_key*."""
+        tids = self._session_tasks.get(session_key, set())
+        return [
+            self._task_statuses[tid]
+            for tid in tids
+            if tid in self._running_tasks
+            and not self._running_tasks[tid].done()
+            and tid in self._task_statuses
+        ]
