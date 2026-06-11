@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Agent loop / subagent / runner 架构约定，改动横跨 loop.py、runner.py、subagent.py"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "重派子代理需沿用 scan_id / session 绑定，遵循扫描生命周期约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "中断/重试/兜底属于错误处理路径，需符合项目错误处理规范"}
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "续接 prompt 与 announce 模板措辞需与 orchestrator prompt 约定一致"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "自动重派/重试日志需符合日志规范"}

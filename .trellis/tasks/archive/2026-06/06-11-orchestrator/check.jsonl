@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "测试与质量门槛标准"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "校验改动是否符合 agent loop 架构约定"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "重派逻辑应复用现有 dispatch 路径而非新增平行实现"}
