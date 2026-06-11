@@ -1894,11 +1894,13 @@ class WebSocketChannel(BaseChannel):
         mime, _ = _mt.guess_type(candidate.name)
         if not mime:
             mime = "application/octet-stream"
+        # Include scan_id in filename to avoid duplicate names across scans.
+        dl_name = f"{candidate.name}_{scan_id}"
         return _http_response(
             body,
             content_type=mime,
             extra_headers=[
-                ("Content-Disposition", f'attachment; filename="{candidate.name}"'),
+                ("Content-Disposition", f'attachment; filename="{dl_name}"'),
                 ("Cache-Control", "private, max-age=3600"),
             ],
         )

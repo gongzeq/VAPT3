@@ -798,7 +798,57 @@ class SessionManager:
                     cnt = row["cnt"]
                     if sev in vuln_counts:
                         vuln_counts[sev] = cnt
+                    elif sev == "info":
+                        # Map "info" severity to "low" for display.
+                        vuln_counts["low"] += cnt
                     vuln_counts["total"] += cnt
+
+                # Fallback: if the exact-match scan has no vulnerability data,
+                # try a LIKE match on target to find a related scan that does.
+                match_target = target or rollups.get("target") or ""
+                if not match_target:
+                    # Try to extract IP/host from the CMDB scan target.
+                    scan_target_raw = best_scan["target"] or ""
+                    import re as _re_ip
+                    ip_m = _re_ip.search(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", scan_target_raw)
+                    if ip_m:
+                        match_target = ip_m.group(0)
+                if vuln_counts["total"] == 0 and match_target:
+                    # Extract bare IP/host (strip port) for broader matching.
+                    import re as _re
+                    bare_host = _re.match(r"[\d.]+|[^:/]+", match_target)
+                    like_target = bare_host.group(0) if bare_host else match_target
+                    like_pat = f"%{like_target}%"
+                    cur.execute(
+                        "SELECT s.id FROM scan s "
+                        "WHERE s.target LIKE ? AND s.id != ? "
+                        "AND EXISTS ("
+                        "  SELECT 1 FROM vulnerability v "
+                        "  JOIN asset a ON v.asset_id = a.id "
+                        "  WHERE a.scan_id = s.id"
+                        ") "
+                        "ORDER BY s.started_at DESC LIMIT 1",
+                        (like_pat, scan_id),
+                    )
+                    alt_scan = cur.fetchone()
+                    if alt_scan is not None:
+                        alt_id = alt_scan["id"]
+                        cur.execute(
+                            "SELECT v.severity, COUNT(*) as cnt "
+                            "FROM vulnerability v "
+                            "JOIN asset a ON v.asset_id = a.id "
+                            "WHERE a.scan_id = ? "
+                            "GROUP BY v.severity",
+                            (alt_id,),
+                        )
+                        for row in cur.fetchall():
+                            sev = row["severity"]
+                            cnt = row["cnt"]
+                            if sev in vuln_counts:
+                                vuln_counts[sev] = cnt
+                            elif sev == "info":
+                                vuln_counts["low"] += cnt
+                            vuln_counts["total"] += cnt
 
                 # Only replace JSONL findings if CMDB has data.
                 if vuln_counts["total"] > 0:
@@ -829,6 +879,14 @@ class SessionManager:
                         (scan_id,),
                     )
                     reports = [dict(r) for r in cur.fetchall()]
+                    # Replace raw filesystem download_path with the proper
+                    # API endpoint so the frontend can serve the file via
+                    # the scan-report download handler.
+                    for rpt in reports:
+                        if rpt.get("download_path"):
+                            rpt["download_path"] = (
+                                f"/api/scan-reports/{scan_id}/download"
+                            )
                     if reports:
                         rollups["reports"] = reports
                 except Exception:
