@@ -518,28 +518,27 @@ graph TB
 
 ### 4.6 Orchestrator — 编排中枢
 
-**路径**: `secbot/agents/orchestrator.py`（148 行）
+**路径**: `secbot/agents/orchestrator.py`
 
-**定位**: 纯提示词模块，通过 `render_orchestrator_prompt()` 生成 Orchestrator Loop 的系统提示词，由四个锁定段组成。
+**定位**: 纯提示词模块，通过 `render_orchestrator_prompt()` 生成 Orchestrator Loop 的系统提示词，由五个锁定段组成。
 
 #### 提示词结构
 
 | 段落 | 内容 |
 |---|---|
 | `# Role` | 固定角色定义："security operations assistant" |
-| `# Hard rules` | 11 条硬规则（工具使用、路由策略、流水线顺序、sqlmap 门控、报告兜底等） |
-| `# Available expert agents` | 动态生成的专家智能体表（从 AgentRegistry 渲染） |
-| `# Working style` | 工作风格指南（计划、批量消费 asset feed、语言等） |
+| `# Hard rules` | 通用规则（工具使用、`read_file` 限制、黑板复用、COMPLETENESS GATE、报告兜底、高危确认） |
+| `# Planning` | 动态规划指引：根据用户请求与 agent 描述自主决定派发顺序，用 `write_plan` 输出计划 |
+| `# Available expert agents` | 动态生成的专家智能体小节（从 AgentRegistry 渲染，含完整多行 description） |
+| `# Working style` | 工作风格指南（计划、批量消费 asset feed、`report_path` 呈现、语言等） |
 
 #### 关键编排规则
 
-1. **流水线顺序**: `asset_discovery → port_scan → crawl_web → vuln_detec → vuln_scan → (weak_password | pentest) → report`
-2. **协议感知路由**: `vuln_detec` 仅处理 HTTP/HTTPS 端点；非 HTTP 服务（Redis/FTP/SSH 等）路由到 `vuln_scan`
-3. **sqlmap 门控**: `vuln_scan` 仅在有 `vuln_detec` 的 hypotheses 时才能调用 `sqlmap-detect`
-4. **完整性门控**: 所有扫描阶段完成后才能调用 `report`
-5. **报告兜底**: 无论扫描成功/部分成功/失败，都必须生成报告
-6. **黑板复用**: 分发前 `read_blackboard` 检查已有发现，避免重复工作
-7. **单主机跳过发现**: CIDR/子网才需要 asset_discovery，单 IP/域名直接 port_scan
+1. **动态规划**: Orchestrator 根据用户请求与各 agent 的完整描述动态决定派发哪些 agent 及顺序，不再遵循固定流水线
+2. **路由知识下沉**: 各 agent 的业务路由规则（协议限制、sqlmap 门控、适用场景等）写在 YAML description 中，通过渲染完整描述传递给 Orchestrator
+3. **完整性门控**: 所有已派发的子代理 completed/error 后才进入收尾
+4. **报告兜底**: 任务涉及扫描时，无论成败都必须生成报告（除非用户明确不要）
+5. **黑板复用**: 派发前 `read_blackboard` 检查已有发现，避免重复工作
 
 ---
 
@@ -1262,100 +1261,12 @@ graph TB
 
 ---
 
-## 12. 目录结构速查
+## 12. 系统未来拓展功能
 
-```
-secbot/
-├── agent/              # 核心引擎
-│   ├── loop.py         #   AgentLoop — 产品层处理引擎 (~1737行)
-│   ├── runner.py       #   AgentRunner — LLM 工具循环
-│   ├── subagent.py     #   SubagentManager — 子智能体管理 (850行)
-│   ├── context.py      #   ContextBuilder — 上下文构建
-│   ├── blackboard.py   #   Blackboard — 黑板通信 (158行)
-│   ├── asset_feed.py   #   AssetFeed — 资产推送 (189行)
-│   ├── skills.py       #   SkillsLoader — 技能加载 (243行)
-│   ├── hook.py         #   生命周期钩子
-│   ├── memory.py       #   记忆管理
-│   ├── autocompact.py  #   自动压缩
-│   └── tools/          #   内置工具集 (24个)
-├── agents/             # 编排层
-│   ├── orchestrator.py #   Orchestrator — 编排中枢提示词 (148行)
-│   ├── registry.py     #   AgentRegistry — YAML 专家注册表 (389行)
-│   ├── high_risk.py    #   HighRiskGate — 高危门控 (150行)
-│   ├── planner.py      #   规划器
-│   ├── prompts/        #   专家智能体系统提示词 (7个)
-│   └── *.yaml          #   专家智能体定义 (7个)
-├── api/                # API 层
-│   ├── server.py       #   aiohttp 应用 + OpenAI 兼容 API
-│   ├── agents.py       #   智能体管理 REST
-│   ├── workflow_routes.py # 工作流 REST
-│   └── *_dashboard.py  #   仪表盘 API
-├── bus/                # 消息总线
-│   ├── queue.py        #   MessageBus — 双队列 (45行)
-│   └── events.py       #   InboundMessage / OutboundMessage (39行)
-├── channels/           # 通道层
-│   ├── manager.py      #   ChannelManager — 多通道路由
-│   ├── base.py         #   BaseChannel — 抽象接口
-│   ├── registry.py     #   通道自动发现 (pkgutil + entry_points)
-│   ├── websocket.py    #   WebSocket 通道
-│   └── notifications.py #  通知队列
-├── cmdb/               # 配置管理数据库
-│   ├── models.py       #   SQLAlchemy ORM (Scan/Asset/Service/Vuln/Report)
-│   ├── db.py           #   异步引擎 (aiosqlite + WAL)
-│   ├── repo.py         #   CRUD + 聚合 (~1567行)
-│   └── writes.py       #   技能结果桥接 (自动分类+批量写入)
-├── config/             # 配置
-│   └── schema.py       #   Pydantic 配置模型 (camelCase/snake_case)
-├── providers/          # LLM 提供商
-│   ├── factory.py      #   ProviderFactory — 多后端适配
-│   └── base.py         #   LLMProvider 抽象基类
-├── skills/             # 安全技能 (28 SKILL.md + 17 handler.py)
-│   ├── <name>/SKILL.md     # 技能描述 (YAML frontmatter)
-│   ├── <name>/handler.py   # Python 处理器 (async run)
-│   └── <name>/*.schema.json # I/O Schema
-├── workflow/           # 工作流引擎 (~3300行)
-│   ├── types.py        #   数据模型 (Workflow/Step/Run/StepResult)
-│   ├── service.py      #   WorkflowService 门面 (446行)
-│   ├── runner.py       #   WorkflowRunner 执行编排 (386行)
-│   ├── store.py        #   JSON + FileLock 持久化 (159行)
-│   ├── expr.py         #   AST 安全表达式引擎 (306行)
-│   ├── templates.py    #   内置模板 (钓鱼邮件/日志分析)
-│   ├── scripts.py      #   内联 Python 脚本库 (1104行)
-│   ├── skill_adapter.py #  Skill → Workflow ToolRegistry 适配
-│   └── executors/      #   4种执行器 (tool/script/agent/llm/llm_chunked)
-├── cli/                # CLI 入口 (Typer)
-├── security/           # 安全层
-├── cron/               # 定时任务
-├── report/             # 报告生成
-└── web/                # 静态资源
+1.使用sodan、quark、fofa等每天定时扫描公网资产（可自定义扫描关键词），发现可能是属于指定企业或单位的加入扫描资产列表，可以对这些资产进行一键扫描。
+2.自动化白盒测试、生成漏洞清单与复现路径。
+3.漏洞拓扑图
+4.增加一个人工智能专项检查（对智能进行专项渗透）
+5.增加网络安全知识库
 
-webui/                  # React 前端 (115+ TSX)
-└── src/
-    ├── App.tsx              # 路由 + Bootstrap
-    ├── main.tsx             # 入口
-    ├── components/          # UI 组件 (70+)
-    │   ├── Shell.tsx        #   主布局
-    │   ├── MessageBubble.tsx #  消息渲染 (523行)
-    │   ├── message/         #   ToolCallCard / AgentEventCard
-    │   ├── thread/          #   ThreadShell / ThreadComposer
-    │   ├── workflow/        #   StepEditor / RunDialog / ScheduleTab
-    │   ├── agents/          #   AgentEditor / SkillEditor
-    │   ├── dashboard/       #   AssetRiskTopology
-    │   ├── settings/        #   SettingsView
-    │   └── ui/              #   shadcn/ui 基础组件
-    ├── pages/               # 页面 (10个)
-    │   ├── DashboardPage.tsx
-    │   ├── WorkflowDetailPage.tsx
-    │   └── LogAnalysisDetailPage.tsx (813行)
-    ├── hooks/               # 自定义 Hooks (9个)
-    │   ├── useNanobotStream.ts  # WebSocket 消息流 (652行)
-    │   ├── useSessions.ts       # 会话管理 (599行)
-    │   └── useActivityStream.ts # 活动流
-    ├── lib/                 # 工具库 (14个)
-    │   ├── secbot-client.ts     # WebSocket 客户端 (396行)
-    │   ├── api.ts               # REST API 客户端 (624行)
-    │   ├── workflow-client.ts   # 工作流 API (527行)
-    │   └── types.ts             # TypeScript 类型 (575行)
-    └── providers/           # React Context
-        └── ClientProvider.tsx   # SecbotClient + Token + ModelName
-```
+6.模型接入管控（智能体蜜罐、提示词过滤、工具调用监控）

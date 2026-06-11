@@ -5,6 +5,14 @@ description: |
   (2) Detection data → query detection_results.db via detection-db-query
   for phishing / log-analysis summaries. Pass task describing which mode + params.
 
+  If the result contains {"status": "empty"} it means the CMDB has no
+  records for this scan — the report was NOT generated. The orchestrator
+  should inform the user clearly and list the findings discovered during
+  the scan (from the blackboard or asset feed) so the user at least has
+  a textual summary. For phishing-email detection summaries, log-analysis
+  results, or any report based on detection data (detection_results.db),
+  use mode=detection (the agent has detection-db-query skill).
+
 system_prompt_file: ./prompts/report.md
 
 scoped_skills:

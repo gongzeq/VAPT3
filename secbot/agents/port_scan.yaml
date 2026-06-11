@@ -1,9 +1,11 @@
 name: port_scan
 display_name: 端口与服务扫描
 description: |
-  Enumerate open ports and identify running services / banners on hosts
-  produced by asset_discovery. Use AFTER asset_discovery and BEFORE
-  vuln_scan.
+  Enumerate open ports and identify running services / banners on target
+  hosts. Input: a list of hosts (IPs / hostnames). Skip this agent when
+  the targets already carry explicit ports (e.g. a URL like
+  http://host:port/... or an IP:port pair) — the host and service port
+  are already known; re-scanning them wastes time.
 
 system_prompt_file: ./prompts/port_scan.md
 

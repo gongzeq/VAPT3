@@ -10,11 +10,12 @@ from secbot.agents.registry import load_agent_registry
 _AGENTS_DIR = Path(__file__).resolve().parents[2] / "secbot" / "agents"
 
 
-def test_render_contains_all_four_sections():
+def test_render_contains_all_sections():
     reg = load_agent_registry(_AGENTS_DIR)
     rendered = render_orchestrator_prompt(reg)
     assert rendered.startswith("# Role\n")
     assert "\n# Hard rules\n" in rendered
+    assert "\n# Planning\n" in rendered
     assert "\n# Available expert agents\n" in rendered
     assert "\n# Working style\n" in rendered
     # Role sentence must be present verbatim.
@@ -43,39 +44,51 @@ def test_render_is_deterministic():
     assert a == b
 
 
-def test_hard_rules_mention_confirmation_and_ordering():
+def test_hard_rules_mention_high_risk_confirmation():
+    """Hard rules must still contain the high-risk confirmation rule."""
     reg = load_agent_registry(_AGENTS_DIR)
     rendered = render_orchestrator_prompt(reg)
     assert "high-risk confirmation" in rendered
-    assert "asset_discovery" in rendered
-    assert "port_scan" in rendered
-    assert "crawl_web" in rendered
 
 
-def test_hard_rules_mention_protocol_routing():
-    """PR contract: vuln_detec must ONLY be used for HTTP/HTTPS endpoints;
-    non-HTTP services (Redis, FTP, SSH, etc.) must be routed to vuln_scan
-    which uses fscan-vuln-scan for generic service checks.
+def test_hard_rules_no_fixed_ordering():
+    """Hard rules must NOT contain a fixed natural ordering pipeline."""
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    # Extract the Hard rules section (between "# Hard rules" and next "# ")
+    hard_rules_start = rendered.index("\n# Hard rules\n")
+    hard_rules_end = rendered.index("\n# Planning\n")
+    hard_rules = rendered[hard_rules_start:hard_rules_end]
+    assert "natural ordering" not in hard_rules
+    assert "natural ordering" not in rendered
+
+
+def test_planning_section_present():
+    """The prompt must contain a # Planning section with dynamic planning guidance."""
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    assert "\n# Planning\n" in rendered
+    # Planning section should mention dynamic decision-making
+    planning_start = rendered.index("# Planning\n") + len("# Planning\n")
+    planning_end = rendered.index("\n# Available expert agents\n")
+    planning = rendered[planning_start:planning_end]
+    assert "Dynamically decide" in planning
+    assert "write_plan" in planning
+
+
+def test_agent_descriptions_render_full_multiline():
+    """YAML descriptions must be rendered in full (not just first line).
+    The routing knowledge that was moved into YAML descriptions should
+    appear in the rendered output.
     """
     reg = load_agent_registry(_AGENTS_DIR)
     rendered = render_orchestrator_prompt(reg)
-    assert "Protocol-aware routing" in rendered
-    assert "vuln_detec" in rendered
-    assert "ONLY for HTTP / HTTPS Web endpoints" in rendered
-    assert "NEVER route non-HTTP services" in rendered
-    assert "fscan-vuln-scan" in rendered
-
-
-def test_hard_rules_mention_stage_skip_for_vuln_scan():
-    """When the target already has an explicit port or the user requests
-    only vulnerability scanning, the orchestrator MUST skip port_scan.
-    """
-    reg = load_agent_registry(_AGENTS_DIR)
-    rendered = render_orchestrator_prompt(reg)
-    assert "stage-skip rules" in rendered
-    assert "SKIP both" in rendered
-    assert "SKIP `port_scan`" in rendered
-    assert "Port scanning is NOT part of vulnerability scanning" in rendered
+    # vuln_detec description includes routing rules
+    assert "ONLY for HTTP/HTTPS endpoints" in rendered
+    # vuln_scan description includes sqlmap gate
+    assert "sqlmap-detect is ONLY allowed when hypotheses" in rendered
+    # report description includes empty-status guidance
+    assert "status" in rendered and "empty" in rendered
 
 
 def test_prompt_requires_auto_report_after_scan():
@@ -90,7 +103,7 @@ def test_prompt_requires_auto_report_after_scan():
     assert "`report` expert" in rendered
 
 
-def test_hand_rolled_registry_orders_table_alphabetically(tmp_path: Path):
+def test_hand_rolled_registry_orders_sections_alphabetically(tmp_path: Path):
     # Build a minimal registry with two agents (name order should be sorted).
     prompts = tmp_path / "prompts"
     prompts.mkdir()
@@ -116,6 +129,6 @@ output_schema:
 
     reg = load_agent_registry(tmp_path)
     rendered = render_orchestrator_prompt(reg)
-    alpha_pos = rendered.index("`alpha`")
-    beta_pos = rendered.index("`beta`")
+    alpha_pos = rendered.index("### `alpha`")
+    beta_pos = rendered.index("### `beta`")
     assert alpha_pos < beta_pos

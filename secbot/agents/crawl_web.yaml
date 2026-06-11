@@ -5,6 +5,10 @@ description: |
   URLs, classify risky parameters and business-sensitive paths, and return
   structured vulnerability hypotheses for later vuln_scan routing.
 
+  Input must be an HTTP/HTTPS URL. Output URL candidates are consumed by
+  vuln_detec (for manual verification of suspicious/parameter-rich URLs)
+  and vuln_scan (for template-based scanning).
+
 system_prompt_file: ./prompts/crawl_web.md
 
 scoped_skills:

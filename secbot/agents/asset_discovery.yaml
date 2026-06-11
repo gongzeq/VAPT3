@@ -2,9 +2,14 @@ name: asset_discovery
 display_name: 资产探测
 description: |
   Discover live hosts, services and basic asset inventory under a target
-  CIDR / IP / domain. Use BEFORE port_scan or vuln_scan. Also exposes
-  read/write helpers for the local CMDB so the orchestrator can record
-  newly discovered assets and query historical scans.
+  CIDR / IP / domain. Also exposes read/write helpers for the local CMDB
+  so the orchestrator can record newly discovered assets and query
+  historical scans.
+
+  Applicable when the target is a CIDR range, subnet, or ambiguous scope
+  that requires host enumeration. When a single IP or URL is already
+  clearly specified, skip this agent and proceed to the next appropriate
+  one (e.g. port_scan or crawl_web).
 
 system_prompt_file: ./prompts/asset_discovery.md
 

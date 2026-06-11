@@ -5,6 +5,12 @@ description: |
   weakness checks (fscan) against services discovered by port_scan. Findings
   are written to the CMDB and surfaced in the final report.
 
+  Routing rules — sqlmap-detect is ONLY allowed when hypotheses from
+  vuln_detec are provided; standard scanning (no hypotheses) forbids
+  sqlmap. Non-HTTP services (Redis, SSH, MySQL, etc.) use fscan-vuln-scan
+  for generic service vulnerability checks. When parameterised URLs are
+  encountered, they should first go through vuln_detec for pre-screening.
+
 system_prompt_file: ./prompts/vuln_scan.md
 
 scoped_skills:

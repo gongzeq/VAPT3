@@ -8,6 +8,13 @@ description: |
   confidence ratings (low / medium / high) that the orchestrator may
   feed into vuln_scan for targeted full scanning.
 
+  Routing rules — ONLY for HTTP/HTTPS endpoints. NEVER route non-HTTP
+  services (Redis, FTP, SSH, MySQL, SMB, RDP, etc.) to this agent.
+  Pick only the most suspicious / parameter-rich URLs from crawl_web
+  results — do NOT test every discovered endpoint. The hypotheses
+  produced here should be passed to vuln_scan so it can gate
+  sqlmap-detect on them.
+
 system_prompt_file: ./prompts/vuln_detec.md
 
 scoped_skills:
