@@ -14,6 +14,8 @@ import type { UIImage, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface MessageBubbleProps {
   message: UIMessage;
+  /** When true, collapsible sections start expanded (e.g. category filter active). */
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -25,7 +27,7 @@ interface MessageBubbleProps {
  * Trace rows (tool-call hints, progress breadcrumbs) render as a subdued
  * collapsible group so intermediate steps never masquerade as replies.
  */
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, defaultExpanded = false }: MessageBubbleProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const copyResetRef = useRef<number | null>(null);
@@ -54,7 +56,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   }, [message.content]);
 
   if (message.kind === "trace") {
-    return <TraceGroup message={message} animClass={baseAnim} />;
+    return <TraceGroup message={message} animClass={baseAnim} defaultExpanded={defaultExpanded} />;
   }
 
   if (message.kind === "agent_event" && message.agentEvent) {
@@ -66,7 +68,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         <AgentAvatar agentName={message.agentName} size="md" />
         <div className="max-w-[80%] min-w-0 space-y-2">
           <AgentMeta agentName={message.agentName} />
-          <AgentEventCard payload={message.agentEvent} agentName={message.agentName} />
+          <AgentEventCard payload={message.agentEvent} agentName={message.agentName} defaultExpanded={defaultExpanded} />
         </div>
       </div>
     );
@@ -144,7 +146,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 collapsed-by-default bubble instead of N detached cards. */}
             {visibleToolCalls.length > 0 ? (
               <div className="mt-3">
-                <ToolCallGroup calls={visibleToolCalls} />
+                <ToolCallGroup calls={visibleToolCalls} defaultExpanded={defaultExpanded} />
               </div>
             ) : null}
             {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
@@ -464,6 +466,8 @@ function TypingDots() {
 interface TraceGroupProps {
   message: UIMessage;
   animClass: string;
+  /** When true, the group starts expanded (e.g. category filter active). */
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -471,11 +475,12 @@ interface TraceGroupProps {
  * default so a long trace never dominates the thread on reopen; a single
  * click expands it for detail.
  */
-function TraceGroup({ message, animClass }: TraceGroupProps) {
+function TraceGroup({ message, animClass, defaultExpanded = false }: TraceGroupProps) {
   const { t } = useTranslation();
   const lines = message.traces ?? [message.content];
   const count = lines.length;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultExpanded);
+  useEffect(() => { if (defaultExpanded) setOpen(true); }, [defaultExpanded]);
   return (
     <div className={cn("w-full", animClass)}>
       <button

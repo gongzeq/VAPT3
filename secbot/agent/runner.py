@@ -26,7 +26,6 @@ from secbot.utils.helpers import (
     strip_think,
     truncate_text,
 )
-from secbot.utils.prompt_templates import render_template
 from secbot.utils.runtime import (
     EMPTY_FINAL_RESPONSE_MESSAGE,
     build_finalization_retry_message,
@@ -355,6 +354,7 @@ class AgentRunner:
             context.usage = dict(raw_usage)
             context.tool_calls = list(response.tool_calls)
             self._accumulate_usage(usage, raw_usage)
+            context.cumulative_usage = dict(usage)
 
             if response.should_execute_tools:
                 tool_calls = list(response.tool_calls)
@@ -501,6 +501,7 @@ class AgentRunner:
                 response = await self._request_finalization_retry(spec, messages_for_model)
                 retry_usage = self._usage_dict(response.usage)
                 self._accumulate_usage(usage, retry_usage)
+                context.cumulative_usage = dict(usage)
                 raw_usage = self._merge_usage(raw_usage, retry_usage)
                 context.response = response
                 context.usage = dict(raw_usage)

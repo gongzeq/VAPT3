@@ -21,6 +21,7 @@ from secbot.agent.tools.blackboard import BlackboardReadTool, BlackboardWriteToo
 from secbot.agent.tools.curl import CurlTool
 from secbot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from secbot.agent.tools.registry import ToolRegistry
+from secbot.agent.tools.report_vulnerability import ReportVulnerabilityTool
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.shell import ExecTool
 from secbot.agent.tools.skill import (
@@ -30,6 +31,7 @@ from secbot.agent.tools.skill import (
     current_skill_confirm,
     discover_skill_tools,
 )
+from secbot.agent.vulnerability_store import VulnerabilityStore, VulnerabilityStoreRegistry
 from secbot.bus.events import InboundMessage
 from secbot.bus.queue import MessageBus
 from secbot.config.schema import AgentDefaults, ExecToolConfig, WebToolsConfig
@@ -40,10 +42,9 @@ if TYPE_CHECKING:
     from secbot.agents.registry import AgentRegistry, ExpertAgentSpec
 
 
-# Max automatic re-dispatches when a subagent is interrupted by
-# max_iterations / context_exhausted. Deterministic fallback so completion
-# does not depend on the orchestrator LLM noticing the incomplete announce.
-_MAX_INTERRUPT_RETRIES = 2
+# _MAX_INTERRUPT_RETRIES removed (v2): auto-retry with a fresh context caused
+# agents to re-run expensive tools (e.g. katana). Incomplete results are now
+# always reported to the orchestrator for intelligent re-dispatch.
 
 
 @dataclass(slots=True)
@@ -70,6 +71,10 @@ class SubagentStatus:
     # Empty for ad-hoc subagents. ``/api/agents?include_status=true`` keys
     # status off this field so the runtime row matches a registry row.
     agent_name: str = ""
+    # Effective parent session key. Kept on the retained status row after the
+    # running-task index is cleaned up so orchestration tools can still report
+    # recently completed children for the current chat/session.
+    session_key: str = ""
 
 
 class _SubagentHook(AgentHook):
@@ -264,6 +269,7 @@ class SubagentManager:
         blackboard: Blackboard | None = None,
         blackboard_registry: "BlackboardRegistry | None" = None,
         asset_feed_registry: "AssetFeedRegistry | None" = None,
+        vulnerability_store_registry: "VulnerabilityStoreRegistry | None" = None,
         parent_result_callback: Callable[[InboundMessage], Awaitable[bool]] | None = None,
     ):
         defaults = AgentDefaults()
@@ -294,6 +300,10 @@ class SubagentManager:
         # channel (URL / port / vuln / ...). When None, sub-agents still
         # boot but ``asset_push`` / ``read_assets`` are not registered.
         self.asset_feed_registry = asset_feed_registry
+        # ``vulnerability_store_registry`` is the chat-scoped structured
+        # vulnerability store. When None, ``report_vulnerability`` is not
+        # registered for sub-agents.
+        self.vulnerability_store_registry = vulnerability_store_registry
         # PR3: optional expert-agent registry. When present, ``spawn(agent=...)``
         # resolves the named spec and ``_run_subagent`` filters the skill tool
         # set down to ``spec.scoped_skills``.
@@ -424,6 +434,7 @@ class SubagentManager:
             task_description=task,
             started_at=time.monotonic(),
             agent_name=(agent or ""),
+            session_key=session_key or "",
         )
         self._task_statuses[task_id] = status
         if endpoint_key is not None:
@@ -505,6 +516,13 @@ class SubagentManager:
             )
         else:
             resolved_asset_feed = None
+        # Resolve the chat-scoped vulnerability store for report_vulnerability.
+        if self.vulnerability_store_registry is not None:
+            resolved_vuln_store: VulnerabilityStore | None = (
+                await self.vulnerability_store_registry.get_or_create(chat_id)
+            )
+        else:
+            resolved_vuln_store = None
 
         async def _on_checkpoint(payload: dict) -> None:
             status.phase = payload.get("phase", status.phase)
@@ -564,6 +582,16 @@ class SubagentManager:
                         )
                     )
                     tools.register(ReadAssetsTool(feed=resolved_asset_feed))
+                # report_vulnerability: structured vulnerability reporting
+                # writes to both VulnerabilityStore and AssetFeed (dual-write).
+                if resolved_vuln_store is not None:
+                    tools.register(
+                        ReportVulnerabilityTool(
+                            store=resolved_vuln_store,
+                            feed=resolved_asset_feed,
+                            agent_name=resolved_agent_name,
+                        )
+                    )
                 # ExecTool is gated by BOTH global exec_config.enable AND per-agent
                 # allow_exec. Default-deny: subagents without an explicit opt-in
                 # ExpertAgentSpec, or with allow_exec=False, NEVER receive exec.
@@ -616,6 +644,8 @@ class SubagentManager:
                 scan_dir=self.workspace / ".secbot" / "scans" / parent_scan_id,
                 confirm=parent_confirm,
                 asset_auto_management_enabled=parent_asset_auto_management,
+                asset_feed=resolved_asset_feed,
+                vulnerability_store=resolved_vuln_store,
             )
             system_prompt = self._build_subagent_prompt(spec)
             # D3: the shared-blackboard snapshot is NO LONGER auto-injected
@@ -644,70 +674,30 @@ class SubagentManager:
                 else self.max_iterations
             )
 
-            while True:
-                result = await self.runner.run(AgentRunSpec(
-                    initial_messages=messages,
-                    tools=tools,
-                    model=self.model,
-                    max_iterations=_effective_max_iter,
-                    max_tool_result_chars=self.max_tool_result_chars,
-                    hook=_SubagentHook(
-                        task_id,
-                        status,
-                        broadcast_fn=_broadcast_tool_event,
-                        agent_name=resolved_agent_name,
-                        critical_tool_names=critical_tool_names,
-                    ),
-                    max_iterations_message="Task completed but no final response was generated.",
-                    error_message=None,
-                    fail_on_tool_error=False,
-                    checkpoint_callback=_on_checkpoint,
-                ))
-                if (
-                    result.stop_reason not in ("max_iterations", "context_exhausted")
-                    or status.retries >= _MAX_INTERRUPT_RETRIES
-                ):
-                    break
-                # Deterministic auto re-dispatch: continue the interrupted
-                # task in a fresh context seeded with the interrupt summary,
-                # instead of relying on the orchestrator LLM to notice the
-                # incomplete announce and re-spawn. No announce is sent while
-                # retrying so the LLM path cannot double-dispatch.
-                status.retries += 1
-                retry_reason_label = (
-                    "工具调用轮次耗尽" if result.stop_reason == "max_iterations"
-                    else "上下文窗口已满"
-                )
-                retry_summary = (
-                    result.final_content
-                    or f"Subagent interrupted ({result.stop_reason}): "
-                       "no summary available."
-                )
-                logger.warning(
-                    "Subagent [{}] interrupted ({}); auto-retrying {}/{}",
-                    task_id, result.stop_reason,
-                    status.retries, _MAX_INTERRUPT_RETRIES,
-                )
-                status.phase = "retrying"
-                status.last_heartbeat_at = time.time()
-                await self._broadcast_agent_status(
-                    origin=origin,
+            result = await self.runner.run(AgentRunSpec(
+                initial_messages=messages,
+                tools=tools,
+                model=self.model,
+                max_iterations=_effective_max_iter,
+                max_tool_result_chars=self.max_tool_result_chars,
+                hook=_SubagentHook(
+                    task_id,
+                    status,
+                    broadcast_fn=_broadcast_tool_event,
                     agent_name=resolved_agent_name,
-                    status="retrying",
-                    current_task_id=task_id,
-                    last_heartbeat_at=status.last_heartbeat_at,
-                )
-                continuation_task = render_template(
-                    "agent/subagent_retry.md",
-                    task=task,
-                    attempt=status.retries,
-                    reason_label=retry_reason_label,
-                    summary=retry_summary,
-                )
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": continuation_task},
-                ]
+                    critical_tool_names=critical_tool_names,
+                ),
+                max_iterations_message="Task completed but no final response was generated.",
+                error_message=None,
+                fail_on_tool_error=False,
+                checkpoint_callback=_on_checkpoint,
+            ))
+            # No automatic retry on max_iterations / context_exhausted.
+            # The runner already generates a structured interrupt summary;
+            # we report it to the orchestrator which has full context to
+            # decide whether to re-dispatch the agent. Auto-retrying with
+            # a fresh context caused the agent to re-run expensive tools
+            # (e.g. katana) because it lacked the original tool results.
             status.phase = "done"
             status.stop_reason = result.stop_reason
 
@@ -739,8 +729,8 @@ class SubagentManager:
                     current_task_id=None,
                 )
             elif result.stop_reason in ("max_iterations", "context_exhausted"):
-                # Interrupted: report with incomplete status so parent knows
-                # the task was not finished and may choose to re-dispatch.
+                # Interrupted: report with incomplete status so the orchestrator
+                # can decide whether to re-dispatch with adjusted parameters.
                 interrupt_summary = (
                     result.final_content
                     or f"Subagent interrupted ({result.stop_reason}): "
@@ -751,23 +741,19 @@ class SubagentManager:
                     else "上下文窗口已满"
                 )
                 logger.warning(
-                    "Subagent [{}] interrupted: {} — reporting incomplete "
-                    "after {} auto-retries",
-                    task_id, reason_label, status.retries,
-                )
-                retried_note = (
-                    f"，已自动重试 {status.retries} 次" if status.retries else ""
+                    "Subagent [{}] interrupted: {} — reporting incomplete to orchestrator",
+                    task_id, reason_label,
                 )
                 await self._announce_result(
                     task_id, label, task,
-                    f"[任务未完成 — {reason_label}{retried_note}]\n\n{interrupt_summary}",
+                    f"[任务未完成 — {reason_label}]\n\n{interrupt_summary}",
                     origin, "incomplete", origin_message_id,
                     agent_name=resolved_agent_name,
                 )
                 await self._broadcast_agent_status(
                     origin=origin,
                     agent_name=resolved_agent_name,
-                    status="incomplete",
+                    status="interrupted",
                     current_task_id=None,
                 )
             else:
@@ -959,3 +945,167 @@ class SubagentManager:
             and not self._running_tasks[tid].done()
             and tid in self._task_statuses
         ]
+
+    def get_status_snapshots(
+        self,
+        *,
+        session_key: str | None = None,
+        task_id: str | None = None,
+        include_completed: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return structured status snapshots for orchestration tools.
+
+        ``_session_tasks`` only tracks currently running tasks.  Completed
+        statuses are intentionally retained in ``_task_statuses`` for a short
+        window, so session filtering also consults ``SubagentStatus.session_key``.
+        """
+        snapshots: list[dict[str, Any]] = []
+        for tid, status in self._task_statuses.items():
+            if task_id and tid != task_id:
+                continue
+            if session_key and not self._status_belongs_to_session(tid, status, session_key):
+                continue
+            state = self._status_state(tid, status)
+            if not include_completed and state != "running":
+                continue
+            snapshots.append(self._status_snapshot(tid, status, state))
+        snapshots.sort(key=lambda s: (s["state"] != "running", s["started_at_monotonic"]))
+        return snapshots
+
+    async def wait_for_subagents(
+        self,
+        *,
+        session_key: str | None = None,
+        task_id: str | None = None,
+        timeout_sec: float = 300.0,
+        wait_for: str = "any",
+    ) -> dict[str, Any]:
+        """Wait for running subagents without cancelling them on timeout."""
+        selected = self._select_running_tasks(session_key=session_key, task_id=task_id)
+        if task_id and task_id not in self._task_statuses:
+            return {
+                "status": "unknown_task",
+                "task_id": task_id,
+                "message": f"No subagent found with task_id={task_id}.",
+                "subagents": [],
+            }
+        if not selected:
+            return {
+                "status": "no_running_subagents",
+                "message": "No running subagents match the requested scope.",
+                "subagents": self.get_status_snapshots(
+                    session_key=session_key,
+                    task_id=task_id,
+                    include_completed=True,
+                ),
+            }
+
+        tasks = [task for _, task in selected]
+        timeout = max(0.0, float(timeout_sec))
+        return_when = (
+            asyncio.ALL_COMPLETED if wait_for == "all" else asyncio.FIRST_COMPLETED
+        )
+        done, pending = await asyncio.wait(
+            tasks,
+            timeout=timeout,
+            return_when=return_when,
+        )
+        snapshots = self.get_status_snapshots(
+            session_key=session_key,
+            task_id=task_id,
+            include_completed=True,
+        )
+        if done and (wait_for != "all" or not pending):
+            done_tids = {tid for tid, task in selected if task in done}
+            done_states = {
+                snap.get("state")
+                for snap in snapshots
+                if snap.get("task_id") in done_tids
+            }
+            if "interrupted" in done_states:
+                status = "interrupted"
+            elif "error" in done_states:
+                status = "error"
+            else:
+                status = "completed"
+        else:
+            status = "timeout"
+        return {
+            "status": status,
+            "wait_for": wait_for,
+            "timeout_sec": timeout,
+            "completed_count": len(done),
+            "running_count": len(pending),
+            "subagents": snapshots,
+        }
+
+    def _select_running_tasks(
+        self,
+        *,
+        session_key: str | None,
+        task_id: str | None,
+    ) -> list[tuple[str, asyncio.Task[None]]]:
+        selected: list[tuple[str, asyncio.Task[None]]] = []
+        for tid, task in self._running_tasks.items():
+            if task.done():
+                continue
+            status = self._task_statuses.get(tid)
+            if status is None:
+                continue
+            if task_id and tid != task_id:
+                continue
+            if session_key and not self._status_belongs_to_session(tid, status, session_key):
+                continue
+            selected.append((tid, task))
+        return selected
+
+    def _status_belongs_to_session(
+        self,
+        task_id: str,
+        status: SubagentStatus,
+        session_key: str,
+    ) -> bool:
+        if status.session_key == session_key:
+            return True
+        return task_id in self._session_tasks.get(session_key, set())
+
+    def _status_state(self, task_id: str, status: SubagentStatus) -> str:
+        task = self._running_tasks.get(task_id)
+        if task is not None and not task.done():
+            return "running"
+        if task is not None and task.cancelled():
+            return "cancelled"
+        if status.phase == "error" or status.stop_reason in {"error", "tool_error"}:
+            return "error"
+        if status.stop_reason in {"max_iterations", "context_exhausted"}:
+            return "interrupted"
+        if status.phase == "done":
+            return "completed"
+        return "unknown"
+
+    def _status_snapshot(
+        self,
+        task_id: str,
+        status: SubagentStatus,
+        state: str,
+    ) -> dict[str, Any]:
+        elapsed_sec = max(0.0, time.monotonic() - status.started_at)
+        heartbeat_age_sec = max(0.0, time.time() - status.last_heartbeat_at)
+        return {
+            "task_id": task_id,
+            "agent_name": status.agent_name,
+            "label": status.label,
+            "state": state,
+            "phase": status.phase,
+            "iteration": status.iteration,
+            "stop_reason": status.stop_reason,
+            "error": status.error,
+            "elapsed_sec": round(elapsed_sec, 3),
+            "last_heartbeat_age_sec": round(heartbeat_age_sec, 3),
+            "last_heartbeat_at": status.last_heartbeat_at,
+            "started_at_monotonic": status.started_at,
+            "session_key": status.session_key,
+            "task_description": status.task_description,
+            "tool_events": list(status.tool_events[-5:]),
+            "usage": dict(status.usage),
+        }

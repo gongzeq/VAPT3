@@ -8,6 +8,7 @@
     "actor_id": {"type": "string", "minLength": 1, "maxLength": 64},
     "target": {"type": "string", "minLength": 1, "maxLength": 512},
     "title": {"type": "string", "minLength": 1, "maxLength": 200},
-    "type": {"type": "string", "enum": ["custom", "asset", "port", "vuln", "weak_password", "pentest"]}
+    "type": {"type": "string", "enum": ["custom", "asset", "port", "vuln", "weak_password", "pentest"]},
+    "allow_partial": {"type": "boolean", "default": false}
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { PanelRightOpen } from "lucide-react";
@@ -72,7 +72,6 @@ export function Shell({
   const [activeKey, setActiveKey] = useState<string | null>(sessionParam);
   const [view, setView] = useState<ShellView>("chat");
   const [rightRailOpen, setRightRailOpen] = useState<boolean>(readRightRailOpen);
-  const lastSessionsLen = useRef(0);
 
   useEffect(() => {
     try {

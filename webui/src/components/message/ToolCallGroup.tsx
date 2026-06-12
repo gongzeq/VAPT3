@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, Terminal } from "lucide-react";
 
 import { ToolCallCard } from "@/components/message/ToolCallCard";
@@ -14,12 +14,14 @@ export interface ToolCallGroupProps {
   calls: AgentEventPayload[];
   /** Optional enter animation class forwarded from the host bubble. */
   animClass?: string;
+  /** When true, the group starts expanded (e.g. category filter active). */
+  defaultExpanded?: boolean;
   children?: never;
 }
 
 /** Resolve the effective status of a single tool-call payload. */
 function payloadStatus(payload: AgentEventPayload): ToolCallStatus {
-  return payload.tool_status ?? payload.status ?? "running";
+  return (payload.tool_status ?? payload.status ?? "running") as ToolCallStatus;
 }
 
 /**
@@ -73,8 +75,9 @@ const GROUP_STYLE: Record<
  * {@link ToolCallCard}. The header surfaces the command count, completed
  * progress, and the highest-signal aggregate status.
  */
-export function ToolCallGroup({ calls, animClass }: ToolCallGroupProps) {
-  const [open, setOpen] = useState(false);
+export function ToolCallGroup({ calls, animClass, defaultExpanded = false }: ToolCallGroupProps) {
+  const [open, setOpen] = useState(defaultExpanded);
+  useEffect(() => { if (defaultExpanded) setOpen(true); }, [defaultExpanded]);
   if (calls.length === 0) return null;
 
   const variant = aggregateVariant(calls);
@@ -134,7 +137,7 @@ export function ToolCallGroup({ calls, animClass }: ToolCallGroupProps) {
           )}
         >
           {calls.map((tc, i) => (
-            <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} />
+            <ToolCallCard key={`${tc.tool_call_id ?? i}-${i}`} payload={tc} defaultExpanded={defaultExpanded} />
           ))}
         </div>
       )}

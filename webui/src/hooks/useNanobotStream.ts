@@ -149,6 +149,7 @@ function isNonStreamingEvent(ev: InboundEvent): boolean {
   return (
     ev.event === "turn_end"
     || ev.event === "session_updated"
+    || ev.event === "usage_update"
     || ev.event === "error"
     || (
       ev.event === "agent_event"
@@ -234,6 +235,17 @@ export function useNanobotStream(
     turnCount: 0,
   });
   const buffer = useRef<StreamBuffer | null>(null);
+  /** Baseline cumulative usage from all *completed* turns. Updated on
+   * ``attached`` (seeded from persisted data) and ``turn_end`` (final
+   * accumulation). The live ``usage_update`` events from the current
+   * in-flight turn are *added* on top of this baseline so the bar reflects
+   * real-time consumption without double-counting. */
+  const usageBaselineRef = useRef<CumulativeUsage>({
+    promptTokens: 0,
+    completionTokens: 0,
+    cachedTokens: 0,
+    turnCount: 0,
+  });
   /** Most recent agent that emitted an ``agent_event`` or ``message``. Used
    * to tag plain assistant turns so they inherit the correct avatar colour. */
   const currentAgentRef = useRef<string>("orchestrator");
@@ -275,6 +287,7 @@ export function useNanobotStream(
       setIsStreaming(false);
       setStreamError(null);
       setCumulativeUsage({ promptTokens: 0, completionTokens: 0, cachedTokens: 0, turnCount: 0 });
+      usageBaselineRef.current = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, turnCount: 0 };
       buffer.current = null;
       currentAgentRef.current = "orchestrator";
       if (streamEndTimerRef.current !== null) {
@@ -302,12 +315,14 @@ export function useNanobotStream(
         // Seed cumulative usage from the backend's persisted turn data so
         // the token badge reflects history even on a fresh connection.
         if (ev.cumulative_usage) {
-          setCumulativeUsage({
+          const seeded: CumulativeUsage = {
             promptTokens: ev.cumulative_usage.prompt_tokens || 0,
             completionTokens: ev.cumulative_usage.completion_tokens || 0,
             cachedTokens: ev.cumulative_usage.cached_tokens || 0,
             turnCount: ev.cumulative_usage.turn_count || 0,
-          });
+          };
+          setCumulativeUsage(seeded);
+          usageBaselineRef.current = seeded;
         }
         return;
       }
@@ -397,12 +412,18 @@ export function useNanobotStream(
           return updated;
         });
         if (usage) {
-          setCumulativeUsage((prev) => ({
-            promptTokens: prev.promptTokens + (usage.prompt_tokens || 0),
-            completionTokens: prev.completionTokens + (usage.completion_tokens || 0),
-            cachedTokens: prev.cachedTokens + (usage.cached_tokens || 0),
-            turnCount: prev.turnCount + 1,
-          }));
+          setCumulativeUsage((prev) => {
+            const next: CumulativeUsage = {
+              promptTokens: prev.promptTokens + (usage.prompt_tokens || 0),
+              completionTokens: prev.completionTokens + (usage.completion_tokens || 0),
+              cachedTokens: prev.cachedTokens + (usage.cached_tokens || 0),
+              turnCount: prev.turnCount + 1,
+            };
+            // Snapshot as the new baseline so subsequent ``usage_update``
+            // events from the next turn accumulate on top of this.
+            usageBaselineRef.current = next;
+            return next;
+          });
         }
         onTurnEnd?.();
         return;
@@ -410,6 +431,20 @@ export function useNanobotStream(
 
       if (ev.event === "session_updated") {
         onTurnEnd?.();
+        return;
+      }
+
+      if (ev.event === "usage_update") {
+        // Real-time cumulative usage for the current in-flight turn.
+        // Combine with the baseline (all completed turns) so the bar shows
+        // total usage including historical turns + live current turn.
+        const base = usageBaselineRef.current;
+        setCumulativeUsage({
+          promptTokens: base.promptTokens + (ev.usage.prompt_tokens || 0),
+          completionTokens: base.completionTokens + (ev.usage.completion_tokens || 0),
+          cachedTokens: base.cachedTokens + (ev.usage.cached_tokens || 0),
+          turnCount: base.turnCount,
+        });
         return;
       }
 

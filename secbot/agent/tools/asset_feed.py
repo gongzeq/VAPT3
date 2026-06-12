@@ -100,6 +100,37 @@ def _normalise_category(raw: str) -> str:
     return _CATEGORY_MAP.get(raw.lower().replace(" ", "_"), "other")
 
 
+def _build_evidence_dict(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a structured evidence dict from the vuln payload.
+
+    Accepts two formats:
+    1. ``payload["evidence"]`` is already a dict (new structured format)
+    2. ``payload["evidence"]`` is a string (legacy) — enriched with
+       top-level ``request`` / ``response`` / ``curl_command`` fields
+
+    Returns ``None`` when no evidence data is present.
+    """
+    raw = payload.get("evidence")
+    if isinstance(raw, dict) and raw:
+        # Already structured — augment with any top-level fields missing
+        ev = dict(raw)
+        for key in ("request", "response", "curl_command", "curl", "payload", "matched_at", "url"):
+            if key not in ev or not ev[key]:
+                top = payload.get(key)
+                if top:
+                    ev[key] = top
+        return ev
+    # Legacy string evidence — build a structured dict from top-level fields
+    ev: dict[str, Any] = {}
+    if isinstance(raw, str) and raw.strip():
+        ev["description"] = raw.strip()
+    for key in ("request", "response", "curl_command", "curl", "payload", "matched_at", "url"):
+        val = payload.get(key)
+        if val:
+            ev[key] = val
+    return ev or None
+
+
 def _vuln_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Convert a ``kind=vuln`` asset payload to a CMDB vulnerability write."""
     url = payload.get("url", "")
@@ -110,6 +141,7 @@ def _vuln_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
     )
     if not target:
         return None
+    evidence = _build_evidence_dict(payload)
     return {
         "table": "vulnerabilities",
         "op": "upsert",
@@ -118,7 +150,7 @@ def _vuln_to_cmdb_write(payload: dict[str, Any]) -> dict[str, Any] | None:
             "severity": payload.get("severity", "info"),
             "category": _normalise_category(payload.get("type") or payload.get("category", "other")),
             "title": payload.get("title") or f"{payload.get('type', 'vuln')} on {url or target}",
-            "evidence": payload.get("evidence", ""),
+            "evidence": evidence,
             "cve_id": payload.get("cve_id"),
         },
     }
@@ -288,11 +320,15 @@ class AssetPushTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Append ONE concrete asset discovery to the shared asset feed "
-            "so the orchestrator and other agents can act on it in real "
-            "time. Call this once per asset (URL, open port, credential, "
-            "vulnerability, technology fingerprint). The orchestrator is "
-            "woken up after every push.\n\n"
+            "Append asset discoveries to the shared asset feed so the "
+            "orchestrator and other agents can act on them in real time.\n\n"
+            "**Single mode** — pass ``payload`` (one object):\n"
+            "  asset_push(kind=\"url\", payload={\"url\": \"https://x/y\"})\n\n"
+            "**Batch mode** — pass ``payloads`` (list of objects, same kind):\n"
+            "  asset_push(kind=\"url\", payloads=[{\"url\": \"...\"}, ...])\n\n"
+            "Use batch mode when an agent has multiple discoveries of the "
+            "same kind (e.g. crawl_web pushing all candidate URLs at once). "
+            "This saves iteration budget — one tool call instead of N.\n\n"
             "Recognised kinds (use lowercase):\n"
             "  url        — a discovered URL/path/endpoint\n"
             "  port       — an open port (host + port + optional service)\n"
@@ -301,12 +337,9 @@ class AssetPushTool(Tool):
             "  vuln       — a confirmed vulnerability with evidence\n"
             "  tech       — a detected tech stack signal "
             "(framework / CMS / language / OAuth / file-upload point)\n\n"
-            "Payload should be a small JSON object capturing only the "
-            "decision-relevant fields (e.g. {\"url\": \"https://x/y\", "
-            "\"status\": 200, \"title\": \"Login\"}). Do NOT dump raw "
-            "scanner stdout. One push per asset — do not batch a list of "
-            "assets into one call. Aggregate counts / progress summaries "
-            "go to ``blackboard_write``, not here."
+            "Payload objects should be small — only decision-relevant fields. "
+            "Do NOT dump raw scanner stdout. Aggregate counts / progress "
+            "summaries go to ``blackboard_write``, not here."
         )
 
     @property
@@ -324,49 +357,95 @@ class AssetPushTool(Tool):
                 "payload": {
                     "type": "object",
                     "description": (
-                        "Small JSON object with the asset fields. Keep it "
-                        "concise; only decision-relevant fields."
+                        "Single asset object (use for one-off pushes). "
+                        "Mutually exclusive with payloads."
+                    ),
+                },
+                "payloads": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Batch push: list of asset objects sharing the "
+                        "same kind. Preferred when pushing multiple "
+                        "discoveries at once."
                     ),
                 },
             },
-            "required": ["kind", "payload"],
+            "required": ["kind"],
         }
 
     async def execute(self, **kwargs: Any) -> str:
         kind = str(kwargs.get("kind", "")).strip().lower()
-        payload = kwargs.get("payload")
         if not kind:
             return "Error: kind cannot be empty."
-        if not isinstance(payload, dict):
-            return "Error: payload must be a JSON object."
+
+        raw_payload = kwargs.get("payload")
+        raw_payloads = kwargs.get("payloads")
+
+        # Normalise into a list of payloads.
+        items: list[dict[str, Any]] = []
+        if raw_payloads is not None:
+            if not isinstance(raw_payloads, list):
+                return "Error: payloads must be a JSON array of objects."
+            for i, p in enumerate(raw_payloads):
+                if not isinstance(p, dict):
+                    return f"Error: payloads[{i}] must be a JSON object."
+            items = raw_payloads
+        elif raw_payload is not None:
+            if not isinstance(raw_payload, dict):
+                return "Error: payload must be a JSON object."
+            items = [raw_payload]
+        else:
+            return "Error: provide either payload (single) or payloads (batch)."
+
+        if not items:
+            return "Error: payloads list is empty."
 
         feed = _resolve(self._feed)
-        entry = await feed.append(
-            kind=kind,
-            agent_name=self._agent_name,
-            payload=payload,
-        )
+        entry_ids: list[int] = []
+        flushed_count = 0
 
-        # Best-effort orchestrator wake-up. When ``bus`` / ``origin`` are
-        # not wired (e.g. unit tests with a bare feed), skip silently —
-        # the entry is still persisted and ``read_assets`` works.
-        await self._notify_bus(entry_id=entry.id, kind=kind)
+        for item in items:
+            entry = await feed.append(
+                kind=kind,
+                agent_name=self._agent_name,
+                payload=item,
+            )
+            entry_ids.append(entry.id)
 
-        # Auto-flush vuln / credential / tech discoveries to the CMDB so
-        # that ``report-html`` can render a complete report without a
-        # separate flush step.  Best-effort: never fail the push.
-        flushed = await _flush_asset_to_cmdb(
-            kind, payload, agent_name=self._agent_name
-        )
+            # Auto-flush vuln / credential / tech discoveries to the CMDB
+            # so that ``report-html`` can render a complete report without
+            # a separate flush step.  Best-effort: never fail the push.
+            if await _flush_asset_to_cmdb(
+                kind, item, agent_name=self._agent_name
+            ):
+                flushed_count += 1
+
+        # ONE bus notification for the whole batch — avoids flooding the
+        # orchestrator with N system messages for N candidates.
+        if entry_ids:
+            await self._notify_bus(
+                entry_id=entry_ids[-1],
+                kind=kind,
+                count=len(entry_ids),
+            )
 
         kinds_hint = (
             "" if kind in KNOWN_ASSET_KINDS
             else f" (note: kind '{kind}' is non-standard)"
         )
-        cmdb_hint = " +cmdb" if flushed else ""
-        return f"asset pushed (id={entry.id}, kind={kind}){cmdb_hint}{kinds_hint}"
+        cmdb_hint = f" +cmdb({flushed_count})" if flushed_count else ""
+        n = len(entry_ids)
+        if n == 1:
+            return f"asset pushed (id={entry_ids[0]}, kind={kind}){cmdb_hint}{kinds_hint}"
+        return (
+            f"{n} assets pushed (ids={entry_ids[0]}..{entry_ids[-1]}, "
+            f"kind={kind}){cmdb_hint}{kinds_hint}"
+        )
 
-    async def _notify_bus(self, *, entry_id: int, kind: str) -> None:
+    async def _notify_bus(
+        self, *, entry_id: int, kind: str, count: int = 1
+    ) -> None:
         if self._bus is None or self._origin is None:
             return
         origin = self._origin() if callable(self._origin) else self._origin
@@ -377,6 +456,7 @@ class AssetPushTool(Tool):
         if not channel or not chat_id:
             return
         session_key = origin.get("session_key") or f"{channel}:{chat_id}"
+        count_hint = f" ({count} new)" if count > 1 else ""
         try:
             await self._bus.publish_inbound(
                 InboundMessage(
@@ -384,9 +464,10 @@ class AssetPushTool(Tool):
                     sender_id=self._agent_name,
                     chat_id=f"{channel}:{chat_id}",
                     content=(
-                        f"New asset discovered (kind={kind}, id={entry_id}). "
-                        f"Call read_assets with since_id={max(entry_id - 1, 0)} "
-                        "to consume this entry, or omit since_id for a full "
+                        f"New asset{count_hint} discovered (kind={kind}, "
+                        f"latest_id={entry_id}). "
+                        f"Call read_assets with since_id={max(entry_id - count, 0)} "
+                        "to consume these entries, or omit since_id for a full "
                         "snapshot. Then decide if a downstream agent should "
                         "be dispatched."
                     ),
@@ -396,6 +477,7 @@ class AssetPushTool(Tool):
                         "asset_id": entry_id,
                         "asset_kind": kind,
                         "asset_agent": self._agent_name,
+                        "asset_count": count,
                     },
                 )
             )

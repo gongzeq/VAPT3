@@ -204,6 +204,21 @@ class TurnEventHook(AgentHook):
             parts.append(f"{k}={rendered}")
         return f"→ 调用 tool: {name}({', '.join(parts)})"
 
+    async def _broadcast_usage_update(self, cumulative_usage: dict[str, int]) -> None:
+        """Emit a ``usage_update`` frame with cumulative token stats."""
+        from secbot.channels.websocket import WebSocketChannel
+
+        channel = WebSocketChannel.get_active_instance()
+        if channel is None:
+            return
+        try:
+            await channel.broadcast_usage_update(
+                chat_id=self._chat_id,
+                cumulative_usage=cumulative_usage,
+            )
+        except Exception:
+            logger.debug("usage_update broadcast failed", exc_info=True)
+
     async def _broadcast_activity_tool_results(self, context: AgentHookContext) -> None:
         """Emit one ``tool_result`` activity_event per finished tool call."""
         from secbot.channels.websocket import WebSocketChannel
@@ -253,6 +268,10 @@ class TurnEventHook(AgentHook):
                 )
         if self._channel == "websocket" and context.tool_calls and context.tool_events:
             await self._broadcast_activity_tool_results(context)
+        # Broadcast real-time cumulative token usage so the frontend can
+        # update the usage bar live during long multi-iteration turns.
+        if self._channel == "websocket" and context.cumulative_usage:
+            await self._broadcast_usage_update(context.cumulative_usage)
         usage = context.usage or {}
         logger.debug(
             "LLM usage: prompt={} completion={} cached={}",

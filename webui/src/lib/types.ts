@@ -44,8 +44,16 @@ export type BlackboardKind = "milestone" | "blocker" | "finding" | "progress";
  * ``dashboard-aggregation.md §2.6`` enum. ``offline`` means "no manager
  * wired" or "binary missing"; ``idle`` means the manager is up but the agent
  * has no running task. ``completed`` means the agent finished its last task
- * successfully within the retention window. */
-export type AgentRuntimeStatus = "idle" | "running" | "queued" | "offline" | "completed" | "error";
+ * successfully within the retention window. ``interrupted`` means a recoverable
+ * budget/context stop produced an incomplete handoff summary. */
+export type AgentRuntimeStatus =
+  | "idle"
+  | "running"
+  | "queued"
+  | "offline"
+  | "completed"
+  | "interrupted"
+  | "error";
 
 export interface OrchestratorPlanStep {
   title: string;
@@ -71,7 +79,7 @@ export interface AgentEventPayload {
   phase?: string;
   iteration?: number;
   tool_events?: unknown[];
-  status?: ToolCallStatus;
+  status?: ToolCallStatus | AgentRuntimeStatus;
   result?: string;
   id?: string;
   agent_name?: string;
@@ -143,6 +151,7 @@ export type AssetKind =
   | "service"
   | "credential"
   | "vuln"
+  | "vulnerability_candidate"
   | "tech";
 
 /** One entry of the per-chat asset feed. ``payload`` is whatever the
@@ -497,6 +506,18 @@ export type InboundEvent =
       usage?: TurnUsage;
     }
   | { event: "session_updated"; chat_id: string }
+  | {
+      event: "usage_update";
+      chat_id: string;
+      /** Cumulative token usage for the *current in-flight turn* so far.
+       * Replaces the seeded value from ``attached`` and is superseded by the
+       * final ``turn_end`` accumulation. */
+      usage: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        cached_tokens: number;
+      };
+    }
   | {
       event: "agent_event";
       chat_id: string;

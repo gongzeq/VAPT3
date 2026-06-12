@@ -29,6 +29,7 @@ const KIND_META: Record<
   service: { icon: Server, label: "SERVICE", color: "text-alert-success" },
   credential: { icon: KeyRound, label: "CREDENTIAL", color: "text-cyan-glow" },
   vuln: { icon: Bug, label: "VULN", color: "text-destructive" },
+  vulnerability_candidate: { icon: Bug, label: "CANDIDATE", color: "text-alert-warning" },
   tech: { icon: Layers, label: "TECH", color: "text-ocean-300" },
 };
 
@@ -38,6 +39,7 @@ const KNOWN_KINDS = new Set<string>([
   "service",
   "credential",
   "vuln",
+  "vulnerability_candidate",
   "tech",
 ]);
 
@@ -90,7 +92,7 @@ function describePayload(entry: AssetEntry): string {
     const parts = [username, service, host].filter(Boolean);
     if (parts.length) return parts.join(" @ ");
   }
-  if (kind === "vuln") {
+  if (kind === "vuln" || kind === "vulnerability_candidate") {
     const cve = get("cve");
     const severity = get("severity");
     const target = get("url") ?? get("host");

@@ -32,6 +32,10 @@ _Avoid_: subagent, worker, specialist service
 A packaged security capability with metadata, schemas, and a handler that returns structured results.
 _Avoid_: tool script, command wrapper
 
+**Skill Finding**:
+A structured security observation returned by a Skill, classified as either a confirmed Vulnerability or a Vulnerability Candidate.
+_Avoid_: raw log line, narrative summary, scanner-only text
+
 **CMDB**:
 The local inventory of scans, assets, services, vulnerabilities, white-box assessment records, and report metadata.
 _Avoid_: database, asset store
@@ -116,6 +120,10 @@ _Avoid_: scan hit, duplicate CVE/CNVD node
 A possible vulnerability inferred from a Service fingerprint or vulnerability database match before active verification; its lifecycle is candidate, verified, or dismissed.
 _Avoid_: confirmed vulnerability, scan finding
 
+**Vulnerability**:
+A runtime security issue confirmed by verification evidence during a Scan.
+_Avoid_: possible issue, raw scanner hit, summary-only finding
+
 **Vulnerability Verification**:
 An LLM-assisted stage in the VAPT pipeline where an Expert Agent invokes Skills and knowledge base to reproduce candidate vulnerabilities, eliminate false positives, and confirm severity. Not a manual human pause — the Expert Agent actively probes and reports evidence.
 _Avoid_: manual verification, human review, pause-and-wait
@@ -172,6 +180,10 @@ _Avoid_: repository URL, local path, project directory
 A generated VAPT deliverable such as HTML, Markdown, DOCX, or PDF.
 _Avoid_: output file, export
 
+**Partial Report Artifact**:
+A Report Artifact generated while one or more upstream PlanNodes remain unresolved, explicitly carrying coverage and incomplete-work metadata.
+_Avoid_: complete report, silent best-effort report, failed report
+
 **ExecutionGraph**:
 A structured, validated DAG of PlanNodes produced by the Plan Compiler. Each node declares its kind, handler, dependencies, state inputs, budget class, dedupe key, success criteria, and failure policy. The Phase Graph Scheduler executes this graph deterministically.
 _Avoid_: execution plan, batch list, task list
@@ -179,6 +191,30 @@ _Avoid_: execution plan, batch list, task list
 **PlanNode**:
 One unit of work within an ExecutionGraph — represents a single agent invocation, batch tool call, evaluator gate, or report generation step.
 _Avoid_: task, step, batch item
+
+**PlanNode Attempt**:
+One execution try of a PlanNode, preserving the PlanNode identity while recording a new attempt number after redispatch.
+_Avoid_: duplicate PlanNode, new scan task, ad-hoc retry
+
+**PlanNode Budget**:
+The cumulative execution budget for a PlanNode across all PlanNode Attempts, including iteration, token, tool-call, and wall-clock limits.
+_Avoid_: per-attempt reset, unlimited retry budget, session-wide only limit
+
+**Interrupted Attempt Status**:
+The outward status for a PlanNode Attempt that stopped after a Recoverable Execution Interruption and produced a Handoff Summary while the PlanNode remains unfinished.
+_Avoid_: completed, error, failed task
+
+**Recoverable Execution Interruption**:
+A non-terminal PlanNode execution outcome where an Expert Agent exhausts its iteration or context budget after producing a handoff summary.
+_Avoid_: completed task, crashed agent, hard failure
+
+**Handoff Summary**:
+A tool-free Expert Agent summary that records completed work, evidence found, unfinished branches, blockers, and recommended continuation after a Recoverable Execution Interruption.
+_Avoid_: final report, continued probing, tool retry
+
+**Attempt Wind-Down**:
+The bounded closing phase after a PlanNode Attempt exhausts its budget, where no new Skills are started and already-running Skills are allowed to finish or time out.
+_Avoid_: immediate abort, unlimited wait, continued exploration
 
 **Phase Graph Scheduler**:
 The host-state component that receives an ExecutionGraph from the Plan Compiler, resolves dependencies, dispatches ready nodes through the Tool Gateway, evaluates phase gates, and triggers replan when needed. Reuses WorkflowRunner step-execution logic.
@@ -191,6 +227,10 @@ _Avoid_: tool executor, skill adapter, direct tool call
 **State View**:
 A typed, minimal, read-only projection of Blackboard + AssetFeed + CMDB, materialized per PlanNode before execution. Replaces the pattern of LLM calling read_blackboard / read_assets / read_file to manually gather context.
 _Avoid_: state snapshot, context dump, transcript
+
+**Progress Delta**:
+A host-observed state change that proves a PlanNode Attempt advanced the Scan, such as new structured findings, newly covered targets, new verification evidence, or new persisted result references.
+_Avoid_: repeated polling, repeated context reads, self-reported progress only
 
 ## Relationships
 
@@ -293,10 +333,40 @@ _Avoid_: state snapshot, context dump, transcript
 - A **Report Artifact** is generated from structured findings in the **CMDB**.
 - The **Orchestrator** (Plan Compiler) produces an **ExecutionGraph** rather than issuing reactive `create_agent` calls.
 - An **ExecutionGraph** contains one or more **PlanNodes** with declared dependencies forming a DAG.
+- A **PlanNode** may have one or more **PlanNode Attempts**.
+- A redispatched **PlanNode Attempt** keeps the same **PlanNode** identity and increments the attempt number.
+- A **PlanNode Budget** is cumulative across all **PlanNode Attempts** for the same **PlanNode**.
+- A redispatched **PlanNode Attempt** may have a per-attempt limit but consumes only the remaining **PlanNode Budget**.
+- A **PlanNode Attempt** with a **Recoverable Execution Interruption** is externally reported with **Interrupted Attempt Status**, not as completed or failed.
 - The **Phase Graph Scheduler** executes an **ExecutionGraph** deterministically, dispatching each ready **PlanNode** through the **Tool Gateway**.
+- A **Recoverable Execution Interruption** enters **Attempt Wind-Down** before producing a **Handoff Summary**.
+- During **Attempt Wind-Down**, no new **Skills** are invoked, and already-running **Skills** are awaited until success, failure, or their bounded timeout.
+- **Skill Findings** returned during **Attempt Wind-Down** are bridged into structured state by the host execution layer before the **Handoff Summary** is generated.
+- A **Recoverable Execution Interruption** produces a **Handoff Summary** without invoking additional Skills or tools.
+- A **Handoff Summary** is structured and includes progress, completed actions, persisted result references, unfinished actions, continuation point, blockers, recommended next action, user-input need, and confidence.
+- A **Handoff Summary** recommends one next action from redispatch, replan, or ask user, while the **Phase Graph Scheduler** makes the final decision.
+- A **Handoff Summary** references persisted result IDs or dedupe keys rather than carrying **Vulnerability**, **Asset**, or **Service** records as narrative text.
+- When a structured **Handoff Summary** cannot be produced, the host runtime generates a deterministic fallback summary with low confidence and a replan recommendation while preserving **Interrupted Attempt Status**.
+- A **Recoverable Execution Interruption** is reported to the **Phase Graph Scheduler**, which decides whether to redispatch the **PlanNode**, trigger replan, or request user input.
+- `max_iterations` and `context_exhausted` both produce a **Recoverable Execution Interruption**.
+- A `max_iterations` interruption may be automatically redispatched when a **Progress Delta** and continuation point exist.
+- A `context_exhausted` interruption defaults to context compaction or **State View** rematerialization before redispatch or replan.
+- The **Phase Graph Scheduler** automatically redispatches a **Recoverable Execution Interruption** at most once by default; a repeated interruption triggers replan or user input instead of another automatic attempt.
+- The **Phase Graph Scheduler** automatically redispatches an interrupted **PlanNode** only when a **Progress Delta** exists, the **Handoff Summary** gives an explicit continuation point, and no user-decision blocker exists.
+- A **Recoverable Execution Interruption** without meaningful progress or with repeated same-class blockers triggers replan instead of automatic redispatch.
+- Repeated context reads, repeated asset polling with no new assets, or repeated scans with no new result references are not **Progress Deltas**.
+- A **Recoverable Execution Interruption** caused by missing authorization, target scope, risk confirmation, or user-owned information triggers user input instead of automatic redispatch.
+- A downstream **PlanNode** dependency is not satisfied by an upstream **Interrupted Attempt Status** unless the **Phase Graph Scheduler** explicitly skips or dismisses that upstream work.
+- A **Report Artifact** may be generated after unresolved upstream work only as a **Partial Report Artifact**.
+- A **Partial Report Artifact** includes persisted findings that already exist, while marking unresolved **PlanNodes** and uncovered scope as incomplete.
+- An **Expert Agent** must persist confirmed **Vulnerabilities**, discovered **Assets**, and observed **Services** as structured state when they are found, before any **Handoff Summary**.
+- A **Handoff Summary** is not the source of truth for **Vulnerabilities**, **Assets**, **Services**, or **Report Artifacts**.
+- A **Skill Finding** is bridged into structured state by the **Tool Gateway** or Skill execution layer, not by waiting for an **Expert Agent** to restate it.
+- A verified or confirmed **Skill Finding** becomes a confirmed **Vulnerability**; an unverified or low-confidence **Skill Finding** becomes a **Vulnerability Candidate**.
 - The **Tool Gateway** sits between the **Phase Graph Scheduler** and **Skill** / **Expert Agent** executors; all tool invocations pass through it.
 - A **State View** is materialized per **PlanNode** before execution, replacing manual `read_blackboard` / `read_assets` / `read_file` calls.
 - The **Phase Graph Scheduler** re-invokes the **Orchestrator** (Plan Compiler) only for replan, exception recovery, or final synthesis.
+- During migration, the legacy reactive **Agent Turn Runtime** must honor the same **Recoverable Execution Interruption**, **Interrupted Attempt Status**, **Handoff Summary**, and **Skill Finding** persistence semantics as the **Phase Graph Scheduler** path.
 
 ## Example dialogue
 
@@ -306,6 +376,23 @@ _Avoid_: state snapshot, context dump, transcript
 ## Flagged ambiguities
 
 - "subagent" appears in implementation names, but domain discussion should use **Expert Agent** when referring to YAML-scoped security agents.
+- "调度" around interrupted Expert Agent work was ambiguous with the reactive Orchestrator loop; resolved: use **Phase Graph Scheduler** for redispatch decisions after a **Recoverable Execution Interruption**.
+- "总结阶段" after Expert Agent budget exhaustion was ambiguous with continued probing; resolved: produce a tool-free **Handoff Summary**, and let the **Phase Graph Scheduler** decide the next execution attempt.
+- Budget exhaustion timing was ambiguous when Skills are still running; resolved: use **Attempt Wind-Down** to wait for already-started Skills to finish or time out before summarizing.
+- Wind-down result ownership was ambiguous; resolved: **Skill Findings** produced during **Attempt Wind-Down** are still persisted by the host execution layer, not by another Expert Agent tool call.
+- "重新派发" was ambiguous with creating a new task; resolved: redispatch creates a new **PlanNode Attempt** under the same **PlanNode** identity.
+- Migration scope was ambiguous; resolved: recoverable interruption and Skill Finding persistence semantics apply to both the legacy reactive **Agent Turn Runtime** path and the future **Phase Graph Scheduler** path.
+- Automatic redispatch count was ambiguous; resolved: the default is one automatic redispatch, after which repeated interruption escalates to replan or user input.
+- Automatic redispatch conditions were ambiguous; resolved: redispatch requires meaningful progress, a clear continuation point, and no user-decision blocker.
+- Meaningful progress was ambiguous as a narrative claim; resolved: require a host-observed **Progress Delta**, and repeated no-delta reads or scans do not qualify.
+- Handoff content was ambiguous as free text; resolved: a **Handoff Summary** is structured, references persisted result identities, and only recommends redispatch, replan, or ask user.
+- Handoff generation failure was ambiguous; resolved: host runtime emits a deterministic fallback **Handoff Summary** with low confidence and replan recommendation, keeping the attempt interrupted.
+- `max_iterations` and `context_exhausted` were ambiguous as separate failure classes; resolved: both are **Recoverable Execution Interruption** outcomes, with `context_exhausted` prioritizing context compaction or **State View** rematerialization before continuation.
+- Downstream dependency behavior was ambiguous for interrupted work; resolved: **Interrupted Attempt Status** does not satisfy dependencies by default, and reports generated before resolution are **Partial Report Artifacts** with explicit incomplete metadata.
+- Redispatch budget was ambiguous; resolved: **PlanNode Budget** is cumulative and is not reset by a new **PlanNode Attempt**.
+- `max_iterations` was mapped to `completed` in some runtime status surfaces; resolved: expose **Interrupted Attempt Status** for recoverable budget exhaustion because the **PlanNode** is not complete.
+- "总结后上报" was ambiguous with extracting findings from narrative text; resolved: confirmed scan results are persisted as structured state when found, and **Handoff Summary** only carries execution continuity context.
+- Skill-returned `findings` were ambiguous because Expert Agents could fail to restate them before interruption; resolved: use **Skill Finding** and bridge structured Skill results into **Vulnerabilities** or **Vulnerability Candidates** in the host execution layer.
 - "free asset", "owned asset", and "persisted asset" were used around scan-discovered assets; resolved: use **Managed Asset** for assets accepted into the CMDB and governance views.
 - "asset import button" was used for a continuous scan behavior; resolved: use **Asset Auto-Management** because the decision applies to a session's ongoing discoveries, not a single row.
 - A disabled **Asset Auto-Management** toggle was ambiguous because some current asset feed events auto-flush to CMDB; resolved: disabled means no scan discovery updates the managed asset corpus.

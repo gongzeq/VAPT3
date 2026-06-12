@@ -155,6 +155,43 @@ describe("useAgents", () => {
     expect(result.current.agents[0].current_task_id).toBe("task-9");
   });
 
+  it("accepts interrupted agent_status WS frames", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes("/api/agents")) {
+        return Promise.resolve(
+          jsonResponse({
+            agents: [{ name: "vuln_scan", status: "running", current_task_id: "task-1" }],
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ unread_count: 0 }));
+    });
+
+    const fake = makeClient();
+    const { result } = renderHook(() => useAgents({ chatId: "chat-a" }), {
+      wrapper: wrap(fake.client),
+    });
+    await waitFor(() => expect(result.current.agents).toHaveLength(1));
+
+    act(() => {
+      fake.emit("chat-a", {
+        event: "agent_event",
+        chat_id: "chat-a",
+        type: "agent_status",
+        payload: {
+          type: "agent_status",
+          agent_name: "vuln_scan",
+          agent_status: "interrupted",
+          current_task_id: null,
+        },
+        timestamp: "2026-05-13T01:30:00Z",
+      });
+    });
+
+    expect(result.current.agents[0].status).toBe("interrupted");
+    expect(result.current.agents[0].current_task_id).toBeNull();
+  });
+
   it("ignores agent_status frames whose name is not in the registry", async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes("/api/agents")) {

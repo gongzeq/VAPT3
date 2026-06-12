@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "Verify interrupted status rollups across API and WebSocket surfaces"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Verify Skill result persistence and structured finding behavior"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check cross-layer propagation from Skill output to status and report"}
+{"file": ".trellis/spec/backend/report-pipeline.md", "reason": "Verify report data source and partial report expectations"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality gate for iteration budgets, grace exits, and backend forbidden patterns"}

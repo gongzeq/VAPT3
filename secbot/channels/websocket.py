@@ -1007,8 +1007,13 @@ class WebSocketChannel(BaseChannel):
         # Override status for sessions with an in-flight turn: the rollup
         # layer only sees persisted state and defaults to "finished", but
         # ``_active_turns`` is the live authoritative source of truth.
+        # ``_active_turns`` stores bare chat_ids while row keys carry the
+        # full ``websocket:<chat_id>`` form — extract the chat_id before
+        # comparing so the override actually fires.
         for row in cleaned:
-            if row.get("key") in self._active_turns:
+            key = row.get("key", "")
+            chat_id = key.split(":", 1)[1] if ":" in key else key
+            if chat_id in self._active_turns:
                 row["status"] = "running"
 
         # R2 extensions (P1). Existing clients that don't pass any of ``q /
@@ -1944,7 +1949,8 @@ class WebSocketChannel(BaseChannel):
             # SubagentManager. Tests construct the channel without one — keep
             # the documented ``offline`` fallback so the UI surface stays
             # stable until the wiring lands. Spec: dashboard-aggregation.md
-            # §2.6 (status enum: idle | running | queued | offline | completed | error).
+            # §2.6 (status enum: idle | running | queued | offline | completed | error)
+            # plus recoverable interruption compatibility (interrupted).
             statuses_by_agent: dict[str, dict[str, Any]] = {}
             if self._subagent_manager is not None:
                 try:
@@ -1962,7 +1968,9 @@ class WebSocketChannel(BaseChannel):
                     if prev is not None and prev.get("_hb", 0.0) >= last_hb:
                         continue
                     stop_reason = getattr(sub_status, "stop_reason", None)
-                    if stop_reason in ("completed", "empty_final_response", "max_iterations"):
+                    if stop_reason in ("max_iterations", "context_exhausted"):
+                        status_str = "interrupted"
+                    elif stop_reason in ("completed", "empty_final_response"):
                         status_str = "completed"
                     elif stop_reason in ("error", "tool_error"):
                         status_str = "error"
@@ -1970,7 +1978,9 @@ class WebSocketChannel(BaseChannel):
                         status_str = "running"
                     statuses_by_agent[agent_name] = {
                         "status": status_str,
-                        "current_task_id": sub_status.task_id,
+                        "current_task_id": (
+                            sub_status.task_id if status_str == "running" else None
+                        ),
                         "last_heartbeat_at": _format_heartbeat(last_hb),
                         "_hb": last_hb,
                     }
@@ -2279,6 +2289,29 @@ class WebSocketChannel(BaseChannel):
         }
         if duration_ms is not None:
             body["duration_ms"] = int(duration_ms)
+        return await self._broadcast_frame(body, chat_id=chat_id)
+
+    async def broadcast_usage_update(
+        self,
+        *,
+        chat_id: str,
+        cumulative_usage: dict[str, int],
+    ) -> bool:
+        """Emit a ``usage_update`` frame with real-time cumulative token usage.
+
+        Sent after each LLM iteration so the frontend can display live token
+        counts and cache-hit ratios while a long turn (e.g. multi-step scan)
+        is still in progress.
+        """
+        body: dict[str, Any] = {
+            "event": "usage_update",
+            "chat_id": chat_id,
+            "usage": {
+                "prompt_tokens": cumulative_usage.get("prompt_tokens", 0),
+                "completion_tokens": cumulative_usage.get("completion_tokens", 0),
+                "cached_tokens": cumulative_usage.get("cached_tokens", 0),
+            },
+        }
         return await self._broadcast_frame(body, chat_id=chat_id)
 
     async def broadcast_agent_event(

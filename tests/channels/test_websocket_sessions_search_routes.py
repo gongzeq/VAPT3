@@ -135,6 +135,30 @@ async def test_sessions_list_filters_non_websocket_prefix(
     assert keys == {"websocket:alpha"}
 
 
+async def test_sessions_list_active_turns_overrides_status_to_running(
+    channel_factory, tmp_path: Path
+) -> None:
+    """A session whose chat_id is in ``_active_turns`` must be reported as
+    ``running`` regardless of the persisted rollup status (which defaults to
+    ``finished``). Regression guard: ``_active_turns`` stores bare chat_ids
+    while session keys carry the full ``websocket:<chat_id>`` form — the
+    override must extract the chat_id before comparing."""
+    sm = _seed(
+        tmp_path,
+        ["websocket:scan-001", "websocket:scan-002"],
+    )
+    channel = channel_factory(sm)
+    # Simulate an in-flight turn for scan-001 only.
+    channel._active_turns.add("scan-001")
+
+    resp = channel._handle_sessions_list(_Req("/api/sessions"))
+    body = _body(resp)
+    status_by_key = {s["key"]: s.get("status") for s in body["sessions"]}
+    assert status_by_key["websocket:scan-001"] == "running"
+    # scan-002 has no active turn — its rollup status is preserved as-is.
+    assert status_by_key["websocket:scan-002"] != "running"
+
+
 async def test_sessions_list_archived_filter_zero_returns_active_only(
     channel_factory, tmp_path: Path
 ) -> None:

@@ -51,6 +51,16 @@ def test_hard_rules_mention_high_risk_confirmation():
     assert "high-risk confirmation" in rendered
 
 
+def test_prompt_uses_subagent_lifecycle_tools_not_asset_polling():
+    """The orchestrator should wait on subagent lifecycle, not asset deltas."""
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    assert "`check_subagents`" in rendered
+    assert "`wait_subagent`" in rendered
+    assert "never poll `read_assets` to wait for a subagent" in rendered
+    assert "If there are no new assets, stop reading assets" in rendered
+
+
 def test_hard_rules_no_fixed_ordering():
     """Hard rules must NOT contain a fixed natural ordering pipeline."""
     reg = load_agent_registry(_AGENTS_DIR)

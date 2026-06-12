@@ -37,7 +37,7 @@ const SCENARIOS: ScenarioDef[] = [
     descFallback: "资产 + 端口 + 漏洞 + 弱口令 + 报告",
     templateKey: "home.scan.full.template",
     templateFallback:
-      "请对目标 {target} 执行全量安全扫描，包含资产探测、端口与服务识别、漏洞检测、弱口令爆破，并在最后生成 HTML 报告。",
+      "请对目标 {target} 执行全量安全扫描，包含资产探测、端口扫描、漏洞检测、弱口令爆破等，并在最后生成 HTML 报告。",
     icon: Crosshair,
     iconBgClass: "bg-primary/15 text-primary",
   },
@@ -46,10 +46,10 @@ const SCENARIOS: ScenarioDef[] = [
     titleKey: "home.scan.vuln.label",
     titleFallback: "漏洞扫描",
     descKey: "home.scan.vuln.desc",
-    descFallback: "OWASP Top 10 + 已知 CVE 检测 + 手工验证",
+    descFallback: "OWASP Top 10 + 已知 CVE 检测 + 验证",
     templateKey: "home.scan.vuln.template",
     templateFallback:
-      "请对目标 {target} 仅执行漏洞扫描（OWASP Top 10 与已知 CVE 检测），跳过端口扫描；对发现的高危漏洞进行手工验证（构造 PoC 复现、剔除误报），完成后生成 HTML 报告。",
+      "请对目标 {target} 跳过端口扫描，仅执行漏洞扫描和漏洞手工验证，完成后生成 HTML 报告。",
     icon: Bug,
     iconBgClass: "bg-destructive/15 text-destructive",
   },

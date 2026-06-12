@@ -16,6 +16,7 @@ const STATUS_STYLE: Record<
   idle: { dot: "bg-status-idle", label: "空闲", text: "text-status-idle" },
   offline: { dot: "bg-status-off", label: "离线", text: "text-status-off" },
   completed: { dot: "bg-alert-success", label: "已完成", text: "text-alert-success" },
+  interrupted: { dot: "bg-alert-warning", label: "已中断", text: "text-alert-warning" },
   error: { dot: "bg-destructive", label: "失败", text: "text-destructive" },
 };
 

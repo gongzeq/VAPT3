@@ -60,7 +60,7 @@ def test_vuln_to_cmdb_write_with_url() -> None:
     assert data["severity"] == "critical"
     assert data["category"] == "injection"  # rce → injection
     assert "rce_ping" in data["title"].lower() or "rce" in data["title"].lower()
-    assert "www-data" in data["evidence"]
+    assert "www-data" in str(data["evidence"])
 
 
 def test_vuln_to_cmdb_write_with_explicit_target() -> None:

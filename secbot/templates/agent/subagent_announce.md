@@ -21,9 +21,9 @@ Decide the next action according to the system routing rules:
   in the pipeline should run. Do NOT skip to the report until ALL
   stages have finished or errored.
 - If the subagent failed but the pipeline should continue (e.g. a scan
-  stage errored out), proceed to the next stage or generate the report
-  with whatever findings are available. A partial report is always
-  better than no report.
+  stage errored out), proceed to the next stage when dependencies are
+  satisfied. Generate a partial report only when the user explicitly asks
+  for current results or the remaining work is clearly blocked/skipped.
 - If another stage or the final report is still required, call the
   appropriate tool now. Do not stop with only a user-facing summary.
 - If no further action is required, summarize this naturally for the

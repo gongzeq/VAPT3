@@ -320,6 +320,13 @@ async def apply_cmdb_writes(
                 target_to_asset[target] = asset
             asset = target_to_asset[target]
             evidence = data.get("evidence")
+            # Preserve structured evidence dicts as-is; wrap legacy strings.
+            if isinstance(evidence, dict):
+                evidence_payload = evidence
+            elif evidence:
+                evidence_payload = {"raw": evidence, "description": str(evidence)}
+            else:
+                evidence_payload = None
             await upsert_vulnerability(
                 session,
                 actor_id or DEFAULT_ACTOR,
@@ -330,7 +337,7 @@ async def apply_cmdb_writes(
                 discovered_by=discovered_by,
                 service_id=None,
                 cve_id=data.get("cve_id") or None,
-                evidence={"raw": evidence} if evidence else None,
+                evidence=evidence_payload,
                 raw_log_path=data.get("raw_log_path") or None,
             )
 

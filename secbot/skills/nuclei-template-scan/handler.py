@@ -123,6 +123,8 @@ def _parse(raw_log: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                     "host": host,
                     "matched_at": matched_at,
                     "name": name,
+                    "status": "confirmed",
+                    "verification": "automated_template_match",
                 }
             )
             cmdb_writes.append(

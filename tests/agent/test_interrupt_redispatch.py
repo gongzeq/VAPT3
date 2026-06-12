@@ -47,48 +47,17 @@ def _run_result(stop_reason, final_content="partial summary"):
     )
 
 
-class TestSubagentAutoRedispatch:
-    @pytest.mark.asyncio
-    async def test_interrupted_subagent_is_retried_then_succeeds(self, tmp_path):
-        mgr = _make_subagent_manager(tmp_path)
-        mgr._announce_result = AsyncMock()
-
-        captured_specs = []
-
-        async def fake_run(spec):
-            captured_specs.append(spec)
-            if len(captured_specs) == 1:
-                return _run_result("max_iterations", "got halfway through")
-            return _run_result("completed", "all done")
-
-        mgr.runner.run = AsyncMock(side_effect=fake_run)
-        status = _status()
-        await mgr._run_subagent(
-            "sub-1", "do task", "label",
-            {"channel": "test", "chat_id": "c1"}, status,
-        )
-
-        assert mgr.runner.run.await_count == 2
-        assert status.retries == 1
-        # Single announce, with the successful result.
-        mgr._announce_result.assert_awaited_once()
-        args = mgr._announce_result.await_args.args
-        assert args[3] == "all done"
-        assert args[5] == "ok"
-        # Retry context is a fresh [system, user] seeded with the summary.
-        retry_messages = captured_specs[1].initial_messages
-        assert [m["role"] for m in retry_messages] == ["system", "user"]
-        assert "got halfway through" in retry_messages[1]["content"]
-        assert "do task" in retry_messages[1]["content"]
+class TestSubagentNoAutoRetry:
+    """After removing the auto-retry loop (v2), interrupted subagents must
+    report incomplete to the orchestrator in a single runner.run() call.
+    The orchestrator decides whether to re-dispatch."""
 
     @pytest.mark.asyncio
-    async def test_retries_exhausted_announces_incomplete_once(self, tmp_path):
-        from secbot.agent.subagent import _MAX_INTERRUPT_RETRIES
-
+    async def test_interrupted_subagent_announces_incomplete_without_retry(self, tmp_path):
         mgr = _make_subagent_manager(tmp_path)
         mgr._announce_result = AsyncMock()
         mgr.runner.run = AsyncMock(
-            side_effect=lambda spec: _run_result("max_iterations", "still stuck"),
+            return_value=_run_result("max_iterations", "got halfway through"),
         )
 
         status = _status()
@@ -97,15 +66,34 @@ class TestSubagentAutoRedispatch:
             {"channel": "test", "chat_id": "c1"}, status,
         )
 
-        # Initial attempt + capped retries, then exactly one incomplete announce.
-        assert mgr.runner.run.await_count == 1 + _MAX_INTERRUPT_RETRIES
-        assert status.retries == _MAX_INTERRUPT_RETRIES
+        # Exactly one runner.run call — no auto-retry.
+        assert mgr.runner.run.await_count == 1
+        assert status.retries == 0
         mgr._announce_result.assert_awaited_once()
         args = mgr._announce_result.await_args.args
         assert args[5] == "incomplete"
         assert "任务未完成" in args[3]
-        assert f"已自动重试 {_MAX_INTERRUPT_RETRIES} 次" in args[3]
-        assert "still stuck" in args[3]
+        assert "got halfway through" in args[3]
+
+    @pytest.mark.asyncio
+    async def test_context_exhausted_also_announces_incomplete(self, tmp_path):
+        mgr = _make_subagent_manager(tmp_path)
+        mgr._announce_result = AsyncMock()
+        mgr.runner.run = AsyncMock(
+            return_value=_run_result("context_exhausted", "context full"),
+        )
+
+        status = _status()
+        await mgr._run_subagent(
+            "sub-1", "do task", "label",
+            {"channel": "test", "chat_id": "c1"}, status,
+        )
+
+        assert mgr.runner.run.await_count == 1
+        mgr._announce_result.assert_awaited_once()
+        args = mgr._announce_result.await_args.args
+        assert args[5] == "incomplete"
+        assert "上下文窗口已满" in args[3]
 
     @pytest.mark.asyncio
     async def test_completed_subagent_does_not_retry(self, tmp_path):

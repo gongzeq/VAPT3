@@ -82,8 +82,11 @@ def _parse(raw_log: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         finding = {
             "host": host,
             "port": port,
+            "url": url,
             "title": title,
             "severity": "high",
+            "status": "confirmed",
+            "verification": "automated_poc_match",
         }
         findings.append(finding)
         writes.append(

@@ -71,8 +71,12 @@ export function useAgents({ chatId }: UseAgentsOptions = {}): {
             ? {
                 ...row,
                 status,
-                current_task_id: p.current_task_id ?? row.current_task_id,
-                last_heartbeat_at: p.last_heartbeat_at ?? row.last_heartbeat_at,
+                current_task_id: Object.prototype.hasOwnProperty.call(p, "current_task_id")
+                  ? p.current_task_id ?? null
+                  : row.current_task_id,
+                last_heartbeat_at: Object.prototype.hasOwnProperty.call(p, "last_heartbeat_at")
+                  ? p.last_heartbeat_at ?? null
+                  : row.last_heartbeat_at,
               }
             : row,
         ),

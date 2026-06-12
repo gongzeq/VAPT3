@@ -31,6 +31,7 @@ KNOWN_ASSET_KINDS: tuple[str, ...] = (
     "service",
     "credential",
     "vuln",
+    "vulnerability_candidate",
     "tech",
 )
 

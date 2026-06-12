@@ -10,13 +10,20 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from secbot.agent.tools.skill import current_scan_id, current_vulnerability_store
 from secbot.cmdb.db import get_session
 from secbot.cmdb.models import DEFAULT_ACTOR
 from secbot.cmdb.repo import create_scan, get_scan
-from secbot.report.builder import ReportModel, record_report_meta
+from secbot.report.builder import (
+    ReportModel,
+    build_report_model_from_vulnerabilities,
+    merge_report_models,
+    record_report_meta,
+)
 from secbot.report.render import render_html
 from secbot.report.session_source import (
     build_report_model_from_session_jsonl,
+    load_interrupted_subagents_from_session_jsonl,
     workspace_from_scan_dir,
 )
 from secbot.skills.types import SkillContext, SkillResult
@@ -37,13 +44,41 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
     # scan_id is always inherited from the parent agent loop via
     # bind_skill_context (set in loop.py / subagent.py). This maps directly
     # to ``<workspace>/sessions/<scan_id>.jsonl`` for WebUI sessions.
-    from secbot.agent.tools.skill import current_scan_id
-
     scan_id: str = current_scan_id()
     actor_id: str = args.get("actor_id", DEFAULT_ACTOR)
     report_title: str = args.get("title") or f"Scan {scan_id} report"
     report_type: str = _REPORT_META_TYPE_MAP.get(args.get("type", "custom"), "custom")
     target: str = args.get("target") or ""
+    allow_partial: bool = bool(args.get("allow_partial"))
+
+    # ------------------------------------------------------------------
+    # Data sources are merged rather than treated as exclusive:
+    # VulnerabilityStore carries structured report_vulnerability / bridged
+    # Skill findings, while session JSONL preserves legacy asset_push
+    # discoveries plus service/tech context.
+    # ------------------------------------------------------------------
+    model: ReportModel | None = None
+    data_sources: list[str] = []
+    session_path_str: str | None = None
+
+    store = current_vulnerability_store()
+    if store is not None:
+        entries = await store.to_dict_list()
+        if entries:
+            model = build_report_model_from_vulnerabilities(
+                entries,
+                scan_id=scan_id,
+                target=target or None,
+            )
+            data_sources.append("vulnerability_store")
+            _logger.info(
+                "report-html: built model from VulnerabilityStore scan=%r "
+                "entries=%d assets=%d findings=%d",
+                scan_id,
+                len(entries),
+                model.summary.asset_count,
+                model.summary.finding_count,
+            )
 
     workspace = workspace_from_scan_dir(ctx.scan_dir)
     source = build_report_model_from_session_jsonl(
@@ -51,16 +86,47 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
         scan_id,
         target=target or None,
     )
-    model = source.model
+    session_path_str = str(source.session_path) if source.session_path else None
+    interrupted_agents = load_interrupted_subagents_from_session_jsonl(
+        source.session_path
+    )
+    if interrupted_agents and not allow_partial:
+        return SkillResult(
+            summary={
+                "status": "blocked_interrupted_dependencies",
+                "report_path": None,
+                "asset_count": 0,
+                "finding_count": 0,
+                "source": "+".join(data_sources) if data_sources else "session_jsonl",
+                "source_path": session_path_str,
+                "interrupted_agents": interrupted_agents,
+                "message": (
+                    "Report generation is blocked because upstream scan work "
+                    "is interrupted. Re-dispatch or pass allow_partial=true."
+                ),
+            }
+        )
+    if not source.model.is_empty():
+        data_sources.append("session_jsonl")
+        model = (
+            source.model
+            if model is None
+            else merge_report_models(model, source.model)
+        )
     _logger.info(
         "report-html: built model from session jsonl scan=%r path=%s entries=%d "
         "assets=%d findings=%d",
         scan_id,
         source.session_path,
         source.entry_count,
-        model.summary.asset_count,
-        model.summary.finding_count,
+        source.model.summary.asset_count,
+        source.model.summary.finding_count,
     )
+
+    if model is None:
+        model = source.model
+
+    data_source = "+".join(data_sources) if data_sources else "session_jsonl"
 
     if model.is_empty():
         return SkillResult(
@@ -69,8 +135,8 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
                 "report_path": None,
                 "asset_count": 0,
                 "finding_count": 0,
-                "source": "session_jsonl",
-                "source_path": str(source.session_path) if source.session_path else None,
+                "source": data_source,
+                "source_path": session_path_str,
             }
         )
 
@@ -97,8 +163,10 @@ async def run(args: dict[str, Any], ctx: SkillContext) -> SkillResult:
             "asset_count": model.summary.asset_count,
             "finding_count": model.summary.finding_count,
             "report_id": report_id,
-            "source": "session_jsonl",
-            "source_path": str(source.session_path) if source.session_path else None,
+            "source": data_source,
+            "source_path": session_path_str,
+            "partial": bool(interrupted_agents),
+            "interrupted_agents": interrupted_agents,
         }
     )
 

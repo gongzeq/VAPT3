@@ -31,6 +31,7 @@ import sys
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Optional
+from urllib.parse import urlparse
 
 from secbot.agent.tools.base import Tool
 from secbot.agents.high_risk import HighRiskGate
@@ -68,6 +69,47 @@ _progress_var: ContextVar[Optional[Callable[[float, str], Awaitable[None]]]] = C
 _asset_auto_management_var: ContextVar[bool] = ContextVar(
     "skill_asset_auto_management", default=False
 )
+_asset_feed_var: ContextVar[Optional[Any]] = ContextVar(
+    "skill_asset_feed", default=None
+)
+# VulnerabilityStore ContextVar — lets report-html read from the in-memory
+# store without threading it through every tool call.
+_vulnerability_store_var: ContextVar[Optional[Any]] = ContextVar(
+    "skill_vulnerability_store", default=None
+)
+
+_VALID_FINDING_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info"})
+_VALID_FINDING_CATEGORIES = frozenset({
+    "injection",
+    "auth",
+    "xss",
+    "misconfig",
+    "exposure",
+    "weak_password",
+    "cve",
+    "other",
+})
+_FINDING_CATEGORY_MAP = {
+    "sqli": "injection",
+    "sql_injection": "injection",
+    "sql error probe": "injection",
+    "time-based sqli": "injection",
+    "numeric arithmetic": "injection",
+    "command injection": "injection",
+    "template injection": "injection",
+    "rce": "injection",
+    "ssti": "injection",
+    "xss reflection": "xss",
+    "xss": "xss",
+    "special character handling": "xss",
+    "weak_password": "weak_password",
+    "default_credentials": "weak_password",
+    "cve": "cve",
+    "exposure": "exposure",
+    "info_leak": "exposure",
+    "misconfig": "misconfig",
+    "ssrf": "misconfig",
+}
 
 
 def bind_skill_context(
@@ -77,6 +119,8 @@ def bind_skill_context(
     confirm: Callable[[Mapping[str, Any]], Awaitable[bool]] | None = None,
     progress: Callable[[float, str], Awaitable[None]] | None = None,
     asset_auto_management_enabled: bool = False,
+    asset_feed: Any | None = None,
+    vulnerability_store: Any | None = None,
 ) -> None:
     """Bind per-turn skill context so every SkillTool.execute sees fresh values."""
     _scan_id_var.set(scan_id)
@@ -84,6 +128,8 @@ def bind_skill_context(
     _confirm_var.set(confirm)
     _progress_var.set(progress)
     _asset_auto_management_var.set(bool(asset_auto_management_enabled))
+    _asset_feed_var.set(asset_feed)
+    _vulnerability_store_var.set(vulnerability_store)
 
 
 def current_skill_confirm() -> Callable[[Mapping[str, Any]], Awaitable[bool]] | None:
@@ -110,6 +156,21 @@ def current_asset_auto_management_enabled() -> bool:
     """Return whether this turn may persist scan discoveries to Managed Assets."""
 
     return bool(_asset_auto_management_var.get())
+
+
+def current_asset_feed() -> Any | None:
+    """Return the currently-bound AssetFeed, if any."""
+
+    return _asset_feed_var.get()
+
+
+def current_vulnerability_store() -> Any | None:
+    """Return the currently-bound VulnerabilityStore, if any.
+
+    Used by report-html to read structured vulnerabilities from the
+    in-memory store (primary data source) before falling back to JSONL.
+    """
+    return _vulnerability_store_var.get()
 
 
 def _current_scan_dir(default_workspace: Path) -> Path:
@@ -211,6 +272,8 @@ class SkillTool(Tool):
             _LOG.exception("SkillTool %s crashed", self._meta.name)
             return _error_payload(self._meta.name, "internal_error", str(exc))
 
+        await self._bridge_skill_findings(result, kwargs)
+
         # Persist skill-generated CMDB writes only when this Session opted into
         # Managed Asset ingestion. The WebUI switch is advisory; this backend
         # ContextVar is the enforcement point for parent and subagent skills.
@@ -221,28 +284,27 @@ class SkillTool(Tool):
                         "SkillTool %s: skipped cmdb_writes because asset auto-management is disabled",
                         self._meta.name,
                     )
-                    return _result_payload(self._meta, result)
+                else:
+                    from secbot.cmdb.db import get_session as _get_cmdb_session
+                    from secbot.cmdb.models import DEFAULT_ACTOR
+                    from secbot.cmdb.repo import create_scan, get_scan
+                    from secbot.cmdb.writes import apply_cmdb_writes
 
-                from secbot.cmdb.db import get_session as _get_cmdb_session
-                from secbot.cmdb.models import DEFAULT_ACTOR
-                from secbot.cmdb.repo import create_scan, get_scan
-                from secbot.cmdb.writes import apply_cmdb_writes
-
-                actor_id = DEFAULT_ACTOR
-                async with _get_cmdb_session() as session:
-                    scan = await get_scan(session, actor_id, scan_id)
-                    if scan is None:
-                        target = kwargs.get("target") or scan_id
-                        await create_scan(
-                            session, actor_id, target=target, scan_id=scan_id
+                    actor_id = DEFAULT_ACTOR
+                    async with _get_cmdb_session() as session:
+                        scan = await get_scan(session, actor_id, scan_id)
+                        if scan is None:
+                            target = kwargs.get("target") or scan_id
+                            await create_scan(
+                                session, actor_id, target=target, scan_id=scan_id
+                            )
+                        await apply_cmdb_writes(
+                            session,
+                            actor_id,
+                            scan_id,
+                            result.cmdb_writes,
+                            discovered_by=self._meta.name,
                         )
-                    await apply_cmdb_writes(
-                        session,
-                        actor_id,
-                        scan_id,
-                        result.cmdb_writes,
-                        discovered_by=self._meta.name,
-                    )
             except Exception as exc:  # noqa: BLE001
                 _LOG.warning(
                     "SkillTool %s: cmdb_writes persistence failed: %s",
@@ -251,6 +313,351 @@ class SkillTool(Tool):
                 )
 
         return _result_payload(self._meta, result)
+
+    async def _bridge_skill_findings(
+        self,
+        result: SkillResult,
+        kwargs: Mapping[str, Any],
+    ) -> None:
+        """Bridge SkillResult.findings into host-owned structured state."""
+        if not result.findings:
+            return
+
+        store = current_vulnerability_store()
+        feed = current_asset_feed()
+        if store is None and feed is None:
+            return
+
+        for raw_finding in result.findings:
+            if not isinstance(raw_finding, Mapping):
+                continue
+            finding = dict(raw_finding)
+            normalized = _normalize_skill_finding(
+                finding,
+                skill_name=self._meta.name,
+                raw_log_path=result.raw_log_path,
+                args=kwargs,
+            )
+            try:
+                if _is_confirmed_skill_finding(finding):
+                    if store is not None:
+                        await store.report(
+                            agent_name=self._meta.name,
+                            title=normalized["title"],
+                            severity=normalized["severity"],
+                            description=normalized["description"],
+                            exploitation_proof=normalized["evidence_text"],
+                            verification_method="automated_scan",
+                            endpoint=normalized.get("endpoint"),
+                            poc_description=normalized.get("poc_description"),
+                            remediation_steps=normalized.get("remediation"),
+                        )
+                    if feed is not None:
+                        await feed.append(
+                            kind="vuln",
+                            agent_name=self._meta.name,
+                            payload=normalized["payload"],
+                        )
+                    continue
+
+                if feed is not None:
+                    candidate_payload = dict(normalized["payload"])
+                    candidate_payload["status"] = "candidate"
+                    candidate_payload["candidate"] = True
+                    await feed.append(
+                        kind="vulnerability_candidate",
+                        agent_name=self._meta.name,
+                        payload=candidate_payload,
+                    )
+                if current_asset_auto_management_enabled():
+                    await _persist_skill_finding_candidate(
+                        normalized,
+                        skill_name=self._meta.name,
+                        scan_id=_scan_id_var.get(),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _LOG.warning(
+                    "SkillTool %s: skill finding bridge failed: %s",
+                    self._meta.name,
+                    exc,
+                )
+
+
+def _is_confirmed_skill_finding(finding: Mapping[str, Any]) -> bool:
+    if finding.get("verified") is True or finding.get("confirmed") is True:
+        return True
+    status = str(finding.get("status") or "").strip().lower()
+    result = str(finding.get("result") or "").strip().lower()
+    confidence = str(finding.get("confidence") or finding.get("confidence_level") or "").strip().lower()
+    verification = str(finding.get("verification") or finding.get("verification_status") or "").strip().lower()
+
+    if status in {"verified", "confirmed", "true_positive"}:
+        return True
+    if verification in {"verified", "confirmed", "true_positive"}:
+        return True
+    if confidence in {"verified", "confirmed"}:
+        return True
+    return confidence == "high" and result in {"positive", "vulnerable", "confirmed"}
+
+
+def _normalize_skill_finding(
+    finding: Mapping[str, Any],
+    *,
+    skill_name: str,
+    raw_log_path: str | None,
+    args: Mapping[str, Any],
+) -> dict[str, Any]:
+    endpoint = _finding_endpoint(finding)
+    target = _finding_target(finding, args)
+    title = _finding_title(finding)
+    category = _finding_category(finding)
+    severity = _finding_severity(finding, confirmed=_is_confirmed_skill_finding(finding))
+    evidence_text = _finding_evidence_text(finding, raw_log_path=raw_log_path)
+    description = _finding_description(finding, title=title, evidence_text=evidence_text)
+    payload = _finding_payload(
+        finding,
+        skill_name=skill_name,
+        target=target,
+        endpoint=endpoint,
+        title=title,
+        category=category,
+        severity=severity,
+        evidence_text=evidence_text,
+        description=description,
+        raw_log_path=raw_log_path,
+    )
+    return {
+        "target": target,
+        "endpoint": endpoint,
+        "title": title,
+        "category": category,
+        "severity": severity,
+        "description": description,
+        "evidence_text": evidence_text,
+        "poc_description": _optional_str(finding.get("poc_description")),
+        "remediation": _optional_str(
+            finding.get("remediation")
+            or finding.get("fix")
+            or finding.get("recommendation")
+        ),
+        "cve_id": _optional_str(finding.get("cve_id") or finding.get("cve")),
+        "cnvd_id": _optional_str(finding.get("cnvd_id") or finding.get("cnvd")),
+        "payload": payload,
+    }
+
+
+def _finding_title(finding: Mapping[str, Any]) -> str:
+    for key in ("title", "name", "test_name", "template_id", "template-id"):
+        value = _optional_str(finding.get(key))
+        if value:
+            return value[:256]
+    return "Skill finding"
+
+
+def _finding_category(finding: Mapping[str, Any]) -> str:
+    raw = (
+        finding.get("category")
+        or finding.get("type")
+        or finding.get("test_name")
+        or finding.get("template_id")
+        or finding.get("template-id")
+        or ""
+    )
+    value = str(raw or "").strip().lower().replace("_", " ")
+    if value.replace(" ", "_") in _VALID_FINDING_CATEGORIES:
+        return value.replace(" ", "_")
+    return _FINDING_CATEGORY_MAP.get(value, "other")
+
+
+def _finding_severity(finding: Mapping[str, Any], *, confirmed: bool) -> str:
+    raw = str(finding.get("severity") or "").strip().lower()
+    if raw in _VALID_FINDING_SEVERITIES:
+        return raw
+    confidence = str(finding.get("confidence") or "").strip().lower()
+    if confirmed and confidence == "high":
+        return "high"
+    if confidence == "medium":
+        return "medium"
+    if confidence == "low":
+        return "low"
+    return "info"
+
+
+def _finding_endpoint(finding: Mapping[str, Any]) -> str | None:
+    for key in ("url", "endpoint", "matched_at", "matched-at"):
+        value = _optional_str(finding.get(key))
+        if value:
+            return value
+    return None
+
+
+def _finding_target(finding: Mapping[str, Any], args: Mapping[str, Any]) -> str:
+    for key in ("target", "host", "hostname", "ip"):
+        value = _optional_str(finding.get(key))
+        if value:
+            port = finding.get("port")
+            if key == "host" and port not in (None, "", 0):
+                return f"{value}:{port}"
+            return value
+    endpoint = _finding_endpoint(finding)
+    if endpoint:
+        return _host_from_url(endpoint)
+    arg_target = args.get("target")
+    if isinstance(arg_target, str) and arg_target.strip():
+        return arg_target.strip()
+    targets = args.get("targets")
+    if isinstance(targets, list) and targets:
+        first = targets[0]
+        if isinstance(first, str) and first.strip():
+            return first.strip()
+        if isinstance(first, Mapping):
+            value = _optional_str(first.get("url") or first.get("target") or first.get("host"))
+            if value:
+                return _host_from_url(value)
+    return "unknown-target"
+
+
+def _finding_evidence_text(
+    finding: Mapping[str, Any],
+    *,
+    raw_log_path: str | None,
+) -> str:
+    evidence = finding.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        return evidence.strip()[:2000]
+    if isinstance(evidence, Mapping) and evidence:
+        return json.dumps(dict(evidence), ensure_ascii=False, default=str)[:2000]
+    for key in ("matched_at", "matched-at", "url", "endpoint", "payload", "response"):
+        value = _optional_str(finding.get(key))
+        if value:
+            return value[:2000]
+    if raw_log_path:
+        return f"See raw log: {raw_log_path}"
+    return _finding_title(finding)
+
+
+def _finding_description(
+    finding: Mapping[str, Any],
+    *,
+    title: str,
+    evidence_text: str,
+) -> str:
+    for key in ("description", "summary", "detail", "name"):
+        value = _optional_str(finding.get(key))
+        if value:
+            return value[:2000]
+    return f"{title}: {evidence_text}"[:2000]
+
+
+def _finding_payload(
+    finding: Mapping[str, Any],
+    *,
+    skill_name: str,
+    target: str,
+    endpoint: str | None,
+    title: str,
+    category: str,
+    severity: str,
+    evidence_text: str,
+    description: str,
+    raw_log_path: str | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "title": title,
+        "type": category,
+        "category": category,
+        "severity": severity,
+        "target": target,
+        "description": description,
+        "evidence": evidence_text,
+        "source_skill": skill_name,
+    }
+    if endpoint:
+        payload["url"] = endpoint
+    if raw_log_path:
+        payload["raw_log_path"] = raw_log_path
+    for key in (
+        "confidence",
+        "status",
+        "result",
+        "template_id",
+        "template-id",
+        "cve_id",
+        "cve",
+        "cnvd_id",
+        "cnvd",
+        "request",
+        "response",
+        "curl_command",
+        "payload",
+        "matched_at",
+        "matched-at",
+    ):
+        value = finding.get(key)
+        if value not in (None, ""):
+            payload[key.replace("-", "_")] = value
+    return payload
+
+
+def _host_from_url(value: str) -> str:
+    try:
+        parsed = urlparse(value)
+        if parsed.hostname:
+            if parsed.port and parsed.port not in (80, 443):
+                return f"{parsed.hostname}:{parsed.port}"
+            return parsed.hostname
+    except Exception:
+        pass
+    return value
+
+
+def _optional_str(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+async def _persist_skill_finding_candidate(
+    normalized: Mapping[str, Any],
+    *,
+    skill_name: str,
+    scan_id: str,
+) -> None:
+    target = _optional_str(normalized.get("target"))
+    if not target or target == "unknown-target":
+        return
+    from secbot.cmdb.db import get_session as _get_cmdb_session
+    from secbot.cmdb.models import DEFAULT_ACTOR
+    from secbot.cmdb.repo import (
+        create_scan,
+        get_scan,
+        upsert_asset,
+        upsert_vulnerability_candidate,
+    )
+
+    actor_id = DEFAULT_ACTOR
+    async with _get_cmdb_session() as session:
+        scan = await get_scan(session, actor_id, scan_id)
+        if scan is None:
+            await create_scan(session, actor_id, target=target, scan_id=scan_id)
+        asset = await upsert_asset(
+            session,
+            actor_id,
+            scan_id=scan_id,
+            target=target,
+        )
+        await upsert_vulnerability_candidate(
+            session,
+            actor_id,
+            asset_id=asset.id,
+            category=str(normalized.get("category") or "other"),
+            title=str(normalized.get("title") or "Skill finding"),
+            source=skill_name,
+            cve_id=_optional_str(normalized.get("cve_id")),
+            cnvd_id=_optional_str(normalized.get("cnvd_id")),
+            evidence=dict(normalized.get("payload") or {}),
+            status="candidate",
+        )
 
 
 # ---------------------------------------------------------------------------

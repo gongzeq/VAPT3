@@ -226,7 +226,7 @@ Backward-compatible extension: without the flag, response is unchanged (static Y
       "display_name": "资产发现智能体",
       "description": "…",
       "scoped_skills": ["…"],
-      "status": "idle|running|queued|offline",
+      "status": "idle|running|queued|offline|completed|interrupted|error",
       "current_task_id": "TASK-2026-0510-014",
       "progress": null,
       "last_heartbeat_at": "2026-05-10T04:38:00+00:00"
@@ -237,9 +237,67 @@ Backward-compatible extension: without the flag, response is unchanged (static Y
 
 Rules:
 - `status` default `offline` when the runtime is not wired (no `SubagentManager` attached, or the binary is missing); else `idle` when there is no in-flight task.
+- `status='interrupted'` is the outward state for recoverable budget/context exhaustion (`stop_reason in {'max_iterations','context_exhausted'}`). It MUST NOT be mapped to `completed`.
+- `current_task_id` is set only while `status='running'`; retained terminal rows (`completed`, `interrupted`, `error`) MUST emit `null` so clients clear stale task labels.
 - `progress` is **always `null`** in this endpoint today. A future `ScanProgress` aggregator may populate it when `status='running'`; until then the field is emitted so the schema stays stable. (Historical prototype in webui `dashboard.ts` assumed a 0..1 float — **do not** infer that shape from this handler.)
 - `last_heartbeat_at` is an **ISO-8601 UTC timestamp** (`+00:00` suffix). Client-side time-zone display is the frontend's responsibility. Sourced from the last `SubagentStatus.updated_at`; falls back to `HeartbeatService` when available.
 - HTTP and WebSocket surfaces MUST stay consistent: see `secbot/channels/websocket.py::WebSocketChannel.broadcast_agent_event` — the `agent_event.agent_status` frame (§3.3 below) carries the same tuple.
+
+### 2.6.1 Scenario: Recoverable Agent Interruption Status
+
+#### 1. Scope / Trigger
+
+- Trigger: an Expert Agent attempt stops because `max_iterations` or `context_exhausted` fires after useful work may already have been persisted.
+
+#### 2. Signatures
+
+- HTTP: `GET /api/agents?include_status=true`
+- WebSocket: `agent_event.agent_status`
+- Runtime input: `SubagentStatus.stop_reason`
+
+#### 3. Contracts
+
+- `stop_reason in {'max_iterations','context_exhausted'}` maps to `status='interrupted'`.
+- `status='interrupted'` is terminal for the attempt but recoverable for the workflow.
+- `current_task_id` is `null` for interrupted snapshots/events.
+- `last_heartbeat_at` remains the last runtime transition timestamp.
+
+#### 4. Validation & Error Matrix
+
+| Runtime state | HTTP/WS status | `current_task_id` |
+|---------------|----------------|-------------------|
+| no manager | `offline` | `null` |
+| manager, no status row | `idle` | `null` |
+| running status row | `running` | task id |
+| `stop_reason='completed'` or `empty_final_response` | `completed` | `null` |
+| `stop_reason='max_iterations'` or `context_exhausted` | `interrupted` | `null` |
+| `stop_reason='error'` or `tool_error` | `error` | `null` |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: a `vuln_scan` row with `stop_reason='max_iterations'` returns `status='interrupted'`, `current_task_id=null`, and a non-null `last_heartbeat_at`.
+- Base: a running `port_scan` row returns `status='running'` and its task id.
+- Bad: treating `max_iterations` as `completed`, or leaving the old running task id attached to an interrupted row.
+
+#### 6. Tests Required
+
+- API route test for `context_exhausted` or `max_iterations` -> `interrupted`.
+- WebSocket-channel route test for the same mapping.
+- Frontend hook test proving `agent_status: interrupted` is accepted and clears `current_task_id`.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+
+```json
+{"status": "completed", "current_task_id": "task-1"}
+```
+
+Correct:
+
+```json
+{"status": "interrupted", "current_task_id": null}
+```
 
 ### 2.7 `GET /api/events`
 
@@ -363,7 +421,7 @@ Frame shape (standard `agent_event` envelope used by `broadcast_agent_event`):
   "payload": {
     "type": "agent_status",
     "agent_name": "port_scan",
-    "agent_status": "idle|running|queued|offline",
+    "agent_status": "idle|running|queued|offline|completed|interrupted|error",
     "current_task_id": "task-42",
     "last_heartbeat_at": "2026-05-10T04:38:00+00:00"
   },

@@ -39,6 +39,7 @@ from secbot.agent.tools.message import MessageTool
 from secbot.agent.tools.notebook import NotebookEditTool
 from secbot.agent.tools.plan import WritePlanTool
 from secbot.agent.tools.registry import ToolRegistry
+from secbot.agent.tools.report_vulnerability import ReportVulnerabilityTool
 from secbot.agent.tools.search import GlobTool, GrepTool
 from secbot.agent.tools.self import MyTool
 
@@ -47,7 +48,9 @@ from secbot.agent.tools.self import MyTool
 # _register_operational_tools and subagent.py for the matching policy.
 from secbot.agent.tools.skill import bind_skill_context, discover_skill_tools
 from secbot.agent.tools.spawn import SpawnTool
+from secbot.agent.tools.subagents import CheckSubagentsTool, WaitSubagentTool
 from secbot.agent.turn_events import TurnEventHook, _extract_report_media
+from secbot.agent.vulnerability_store import VulnerabilityStore, VulnerabilityStoreRegistry
 from secbot.agents.high_risk import HighRiskGate
 from secbot.bus.events import InboundMessage, OutboundMessage
 from secbot.bus.queue import MessageBus
@@ -185,6 +188,11 @@ class AgentLoop:
         # ``lambda: self.asset_feed`` callable always resolve to a valid
         # instance even before the first turn rebinds it.
         self.asset_feed: AssetFeed = AssetFeed()
+        # VulnerabilityStore: chat-scoped structured vulnerability store
+        # for report-html. Sub-agents call ``report_vulnerability`` to write
+        # entries here; report-html reads from this as primary data source.
+        self.vulnerability_store_registry = VulnerabilityStoreRegistry()
+        self.vulnerability_store: VulnerabilityStore = VulnerabilityStore()
         # PR3: lazy-load the expert-agent registry so SpawnTool can validate
         # ``agent=`` and SubagentManager can filter scoped skills. A broken
         # YAML MUST NOT crash the loop — we log and fall through to ``None``,
@@ -221,6 +229,7 @@ class AgentLoop:
             blackboard=self.blackboard,
             blackboard_registry=self.blackboard_registry,
             asset_feed_registry=self.asset_feed_registry,
+            vulnerability_store_registry=self.vulnerability_store_registry,
             parent_result_callback=self._route_subagent_result_to_pending,
         )
         self._unified_session = unified_session
@@ -342,6 +351,8 @@ class AgentLoop:
     def _register_orchestrator_tools(self) -> None:
         """Register the orchestrator's coordination + message tool surface."""
         self.tools.register(SpawnTool(manager=self.subagents))
+        self.tools.register(CheckSubagentsTool(manager=self.subagents))
+        self.tools.register(WaitSubagentTool(manager=self.subagents))
         self.tools.register(BlackboardReadTool(blackboard=lambda: self.blackboard))
         self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
         self.tools.register(RequestApprovalTool())
@@ -403,6 +414,15 @@ class AgentLoop:
             )
         )
         self.tools.register(ReadAssetsTool(feed=lambda: self.asset_feed))
+        # VulnerabilityStore: report_vulnerability tool writes structured
+        # vulnerabilities to both the store and the asset feed (dual-write).
+        self.tools.register(
+            ReportVulnerabilityTool(
+                store=lambda: self.vulnerability_store,
+                feed=lambda: self.asset_feed,
+                agent_name="operational",
+            )
+        )
         # Register every valid secbot skill as a first-class tool so the LLM
         # can invoke qscan / fscan / hydra / nuclei etc. with typed parameters
         # instead of synthesising shell commands via ``exec``. Skills whose
@@ -458,10 +478,12 @@ class AgentLoop:
         self._current_chat_id = chat_id
 
         # Per-tool context wiring — each tool has a distinct signature.
-        if (t := self.tools.get("create_agent")) and hasattr(t, "set_context"):
-            t.set_context(channel, chat_id, effective_key=effective_key)
-            if hasattr(t, "set_origin_message_id"):
-                t.set_origin_message_id(message_id)
+        for _tool_name in ("create_agent", "check_subagents", "wait_subagent"):
+            t = self.tools.get(_tool_name)
+            if t and hasattr(t, "set_context"):
+                t.set_context(channel, chat_id, effective_key=effective_key)
+        if (t := self.tools.get("create_agent")) and hasattr(t, "set_origin_message_id"):
+            t.set_origin_message_id(message_id)
         if (t := self.tools.get("cron")) and hasattr(t, "set_context"):
             t.set_context(channel, chat_id, metadata=metadata, session_key=session_key)
         if (t := self.tools.get("message")) and hasattr(t, "set_context"):
@@ -1007,11 +1029,17 @@ class AgentLoop:
         # turn (and any sub-agents spawned from it) to the right feed.
         self.asset_feed = await self.asset_feed_registry.get_or_create(chat_id)
 
+        # Rebind the active vulnerability store for the current chat.
+        # report_vulnerability resolves via ``lambda: self.vulnerability_store``.
+        self.vulnerability_store = await self.vulnerability_store_registry.get_or_create(chat_id)
+
         bind_skill_context(
             scan_id=scan_id,
             scan_dir=scan_dir,
             confirm=confirm_fn,
             asset_auto_management_enabled=asset_auto_management_enabled,
+            asset_feed=self.asset_feed,
+            vulnerability_store=self.vulnerability_store,
         )
 
         # Bind blackboard write callback for websocket channels so entries

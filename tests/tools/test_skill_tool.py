@@ -321,3 +321,253 @@ def test_execute_persists_cmdb_writes(tmp_path: Path) -> None:
 
     asyncio.run(_verify())
     asyncio.run(cmdb_db.dispose_engine())
+
+
+def test_execute_bridges_confirmed_findings_to_vulnerability_store_and_feed(tmp_path: Path) -> None:
+    """Host bridge captures confirmed SkillResult.findings even when CMDB writes are gated off."""
+    from secbot.agent.asset_feed import AssetFeed
+    from secbot.agent.vulnerability_store import VulnerabilityStore
+
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "finding-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(
+                    summary={"ok": True},
+                    findings=[
+                        {
+                            "test_name": "SQL Error Probe",
+                            "result": "positive",
+                            "confidence": "high",
+                            "url": "http://example.test/login?id=1",
+                            "evidence": "database error marker reflected",
+                        }
+                    ],
+                    cmdb_writes=[
+                        {
+                            "table": "vulnerabilities",
+                            "op": "upsert",
+                            "data": {
+                                "target": "example.test",
+                                "severity": "high",
+                                "category": "injection",
+                                "title": "SQL Error Probe detected",
+                            },
+                        }
+                    ],
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    feed = AssetFeed()
+    store = VulnerabilityStore()
+    bind_skill_context(
+        scan_id="unit-finding",
+        scan_dir=tmp_path,
+        asset_auto_management_enabled=False,
+        asset_feed=feed,
+        vulnerability_store=store,
+    )
+
+    raw = asyncio.run(tools["finding-skill"].execute(target="example.test"))
+    payload = json.loads(raw)
+    assert payload["summary"] == {"ok": True}
+    assert len(store) == 1
+
+    stored = asyncio.run(store.to_dict_list())
+    assert stored[0]["title"] == "SQL Error Probe"
+    assert stored[0]["severity"] == "high"
+    assert stored[0]["verification_method"] == "automated_scan"
+
+    entries = asyncio.run(feed.since())
+    assert [entry.kind for entry in entries] == ["vuln"]
+    assert entries[0].payload["category"] == "injection"
+
+
+def test_execute_bridges_all_confirmed_findings_without_context_payload_cap(
+    tmp_path: Path,
+) -> None:
+    """Host persistence must not inherit the model-facing 50-finding payload cap."""
+    from secbot.agent.asset_feed import AssetFeed
+    from secbot.agent.vulnerability_store import VulnerabilityStore
+
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "many-findings-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(
+                    summary={"ok": True},
+                    findings=[
+                        {
+                            "title": f"Confirmed finding {i}",
+                            "result": "positive",
+                            "confidence": "high",
+                            "url": f"http://example.test/item/{i}",
+                            "evidence": f"proof {i}",
+                        }
+                        for i in range(55)
+                    ],
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    feed = AssetFeed()
+    store = VulnerabilityStore()
+    bind_skill_context(
+        scan_id="unit-many-findings",
+        scan_dir=tmp_path,
+        asset_auto_management_enabled=False,
+        asset_feed=feed,
+        vulnerability_store=store,
+    )
+
+    raw = asyncio.run(tools["many-findings-skill"].execute(target="example.test"))
+    payload = json.loads(raw)
+    assert len(payload["findings"]) == 50
+    assert len(store) == 55
+    assert len(asyncio.run(feed.since())) == 55
+
+
+def test_execute_bridges_unverified_findings_as_candidates_not_confirmed(tmp_path: Path) -> None:
+    """Passive scanner hits must not enter the confirmed vulnerability store."""
+    from secbot.agent.asset_feed import AssetFeed
+    from secbot.agent.vulnerability_store import VulnerabilityStore
+
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "candidate-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(
+                    summary={"ok": True},
+                    findings=[
+                        {
+                            "template_id": "cve-passive-template",
+                            "severity": "medium",
+                            "host": "example.test",
+                            "matched_at": "http://example.test/",
+                            "name": "Passive scanner match",
+                        }
+                    ],
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    feed = AssetFeed()
+    store = VulnerabilityStore()
+    bind_skill_context(
+        scan_id="unit-candidate",
+        scan_dir=tmp_path,
+        asset_auto_management_enabled=False,
+        asset_feed=feed,
+        vulnerability_store=store,
+    )
+
+    raw = asyncio.run(tools["candidate-skill"].execute(target="example.test"))
+    payload = json.loads(raw)
+    assert payload["summary"] == {"ok": True}
+    assert len(store) == 0
+
+    entries = asyncio.run(feed.since())
+    assert [entry.kind for entry in entries] == ["vulnerability_candidate"]
+    assert entries[0].payload["candidate"] is True
+    assert entries[0].payload["status"] == "candidate"
+
+
+def test_execute_persists_unverified_findings_as_cmdb_candidates_when_enabled(
+    tmp_path: Path,
+) -> None:
+    """Asset Auto-Management persists unverified Skill findings as CMDB candidates."""
+    from secbot.agent.asset_feed import AssetFeed
+    from secbot.agent.vulnerability_store import VulnerabilityStore
+    from secbot.cmdb import db as cmdb_db
+    from secbot.cmdb.models import Base
+
+    db_file = tmp_path / "cmdb.sqlite3"
+    cmdb_db.init_engine(f"sqlite+aiosqlite:///{db_file}")
+
+    async def _setup() -> None:
+        async with cmdb_db.get_engine().begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.run(_setup())
+
+    root = tmp_path / "skills"
+    root.mkdir()
+    _write_skill(
+        root,
+        "candidate-cmdb-skill",
+        handler_body=textwrap.dedent(
+            """\
+            from secbot.skills.types import SkillContext, SkillResult
+
+            async def run(args, ctx: SkillContext) -> SkillResult:
+                return SkillResult(
+                    summary={"ok": True},
+                    findings=[
+                        {
+                            "template_id": "passive-candidate-template",
+                            "severity": "medium",
+                            "host": "example.test",
+                            "matched_at": "http://example.test/",
+                            "name": "Passive scanner match",
+                        }
+                    ],
+                )
+            """
+        ),
+    )
+    tools = {t.name: t for t in discover_skill_tools(root, workspace=tmp_path)}
+    feed = AssetFeed()
+    store = VulnerabilityStore()
+    bind_skill_context(
+        scan_id="unit-candidate-cmdb",
+        scan_dir=tmp_path,
+        asset_auto_management_enabled=True,
+        asset_feed=feed,
+        vulnerability_store=store,
+    )
+
+    raw = asyncio.run(tools["candidate-cmdb-skill"].execute(target="example.test"))
+    payload = json.loads(raw)
+    assert payload["summary"] == {"ok": True}
+    assert len(store) == 0
+
+    entries = asyncio.run(feed.since())
+    assert [entry.kind for entry in entries] == ["vulnerability_candidate"]
+
+    async def _verify() -> None:
+        from secbot.cmdb.repo import list_assets, list_vulnerability_candidates
+
+        async with cmdb_db.get_session() as session:
+            assets = await list_assets(session, "local", scan_id="unit-candidate-cmdb")
+            candidates = await list_vulnerability_candidates(session, "local")
+            assert len(assets) == 1
+            assert assets[0].target == "example.test"
+            assert len(candidates) == 1
+            assert candidates[0].title == "Passive scanner match"
+            assert candidates[0].status == "candidate"
+            assert candidates[0].source == "candidate-cmdb-skill"
+
+    asyncio.run(_verify())
+    asyncio.run(cmdb_db.dispose_engine())

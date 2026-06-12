@@ -1,0 +1,12 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index for selecting runtime, agent, skill, report, and status contracts"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Iteration budgets, grace exits, tool result budgets, and backend forbidden patterns"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Agent Turn Runtime, Orchestrator, Expert Agent, Skill boundaries"}
+{"file": ".trellis/spec/backend/skill-contract.md", "reason": "Skill result schemas, cmdb_writes, and host-owned Skill Finding bridge rules"}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Expert Agent YAML constraints and scoped skill/runtime surface behavior"}
+{"file": ".trellis/spec/backend/context-trimming.md", "reason": "context_exhausted handling, raw log preview budgets, and compaction constraints"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "Event contract for subagent status and interrupted attempt surfaces"}
+{"file": ".trellis/spec/backend/dashboard-aggregation.md", "reason": "Agent runtime status rollups and WebSocket/API consistency requirements"}
+{"file": ".trellis/spec/backend/report-pipeline.md", "reason": "Report Artifact data sources and partial report behavior constraints"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "Scan lifecycle, cancellation, and terminal state semantics"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data flow from Skill results through stores, status APIs, and reports"}

@@ -211,6 +211,10 @@ async def test_nuclei_template_scan_happy(make_ctx, fake_run_command):
     assert res.summary["findings_count"] == 2
     ids = {f["template_id"] for f in res.findings}
     assert ids == {"CVE-2021-44228", "exposed-git"}
+    assert {f["status"] for f in res.findings} == {"confirmed"}
+    assert {f["verification"] for f in res.findings} == {
+        "automated_template_match"
+    }
     assert all(w["table"] == "vulnerabilities" for w in res.cmdb_writes)
 
 
@@ -277,6 +281,13 @@ async def test_fscan_vuln_scan_happy(make_ctx, fake_run_command):
     assert res.summary["findings_count"] == 2
     hosts = {f["host"] for f in res.findings}
     assert hosts == {"10.0.0.1", "10.0.0.7"}
+    urls = {f["url"] for f in res.findings}
+    assert urls == {
+        "http://10.0.0.1:8080",
+        "http://10.0.0.7:7001",
+    }
+    assert {f["status"] for f in res.findings} == {"confirmed"}
+    assert {f["verification"] for f in res.findings} == {"automated_poc_match"}
     assert res.cmdb_writes[0]["table"] == "vulnerabilities"
 
 

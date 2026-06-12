@@ -10,16 +10,16 @@ rendering via WeasyPrint. DOCX is built programmatically from the
 from __future__ import annotations
 
 import html as _html_mod
-from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from secbot.report.builder import ReportModel, ReportRenderError, SEVERITY_ORDER
+from secbot.report.builder import SEVERITY_ORDER, ReportModel, ReportRenderError
 
 
 def _esc(s: str) -> str:
     """HTML-escape a string (short alias to keep render lines readable)."""
     return _html_mod.escape(str(s), quote=True)
+
 
 if TYPE_CHECKING:  # pragma: no cover
     pass
@@ -46,7 +46,7 @@ def _fmt_dt(dt) -> str:
 def render_markdown(model: ReportModel) -> str:
     """Render *model* to Markdown (canonical)."""
     out: list[str] = []
-    out.append(f"# 安全扫描报告")
+    out.append("# 安全扫描报告")
     out.append("")
     out.append(f"- **扫描 ID**: `{model.scan_id}`")
     out.append(f"- **目标**: {model.target}")
@@ -120,7 +120,7 @@ def render_markdown(model: ReportModel) -> str:
                             out.append(f"{i}. {step}")
                         out.append("")
                     if f.evidence_detail:
-                        out.append("**证据详情**:")
+                        out.append("**PoC 证据详情**:")
                         out.append("")
                         out.append("```")
                         out.append(f.evidence_detail)
@@ -244,7 +244,7 @@ def render_html(model: ReportModel) -> str:
     .finding-refs { font-size: 12px; }
     .finding-refs a { color: #2563eb; text-decoration: none; }
     .finding-refs a:hover { text-decoration: underline; }
-    pre.evidence { background: #0f172a; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; margin: 0; }
+    pre.evidence { background: #0f172a; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 600px; overflow: auto; margin: 0; }
     @media print {
       .toolbar { display: none !important; }
       body { background: #fff; }
@@ -405,8 +405,52 @@ def render_html(model: ReportModel) -> str:
                         lines.append(f'<li>{_esc(step)}</li>')
                     lines.append('</ol>')
                     lines.append('</div>')
-                # Evidence detail (request/response/curl)
-                if f.evidence_detail:
+                # Evidence detail (structured PoC: request/response/curl)
+                if f.evidence_raw and isinstance(f.evidence_raw, dict):
+                    ev = f.evidence_raw
+                    # Description
+                    ev_desc = ev.get("description") or ev.get("raw")
+                    if ev_desc and not f.evidence_summary:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">漏洞描述</div>')
+                        lines.append(f'<div class="finding-detail">{_esc(ev_desc)}</div>')
+                        lines.append('</div>')
+                    # Matched location
+                    ev_matched = ev.get("matched_at") or ev.get("url")
+                    if ev_matched:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">匹配位置</div>')
+                        lines.append(f'<code>{_esc(ev_matched)}</code>')
+                        lines.append('</div>')
+                    # Payload
+                    ev_payload = ev.get("payload")
+                    if ev_payload:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">攻击载荷</div>')
+                        lines.append(f'<pre class="evidence">{_esc(ev_payload)}</pre>')
+                        lines.append('</div>')
+                    # PoC Request
+                    ev_req = ev.get("request")
+                    if ev_req:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">PoC 请求</div>')
+                        lines.append(f'<pre class="evidence">{_esc(str(ev_req))}</pre>')
+                        lines.append('</div>')
+                    # System Response
+                    ev_resp = ev.get("response")
+                    if ev_resp:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">系统响应 (证据)</div>')
+                        lines.append(f'<pre class="evidence">{_esc(str(ev_resp))}</pre>')
+                        lines.append('</div>')
+                    # Curl command
+                    ev_curl = ev.get("curl_command") or ev.get("curl")
+                    if ev_curl:
+                        lines.append('<div class="finding-section">')
+                        lines.append('<div class="finding-section-title">复现命令</div>')
+                        lines.append(f'<pre class="evidence">{_esc(ev_curl)}</pre>')
+                        lines.append('</div>')
+                elif f.evidence_detail:
                     lines.append('<div class="finding-section">')
                     lines.append('<div class="finding-section-title">证据详情</div>')
                     lines.append(f'<pre class="evidence">{_esc(f.evidence_detail)}</pre>')
@@ -541,7 +585,7 @@ def render_docx(model: ReportModel, out_path: Path) -> Path:
                         for i, step in enumerate(f.verification_steps, 1):
                             doc.add_paragraph(f"{i}. {step}", style="List Number")
                     if f.evidence_detail:
-                        doc.add_paragraph("证据详情:").bold = True
+                        doc.add_paragraph("PoC 证据详情:").bold = True
                         doc.add_paragraph(f.evidence_detail, style="No Spacing")
                     if f.remediation:
                         p4 = doc.add_paragraph()

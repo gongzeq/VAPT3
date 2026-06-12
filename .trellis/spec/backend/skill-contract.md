@@ -68,7 +68,7 @@ async def run(args: dict, ctx: SkillContext) -> SkillResult:
     return SkillResult(
         summary={"hosts_up": [...], "elapsed_sec": 12},   # MUST satisfy output.schema.json
         raw_log_path="/abs/path/to/raw.log",              # absolute path under ~/.secbot/scans/
-        findings=[                                        # optional, persisted to `findings` table
+        findings=[                                        # optional, bridged by host runtime
             {"severity": "high", "title": "...", "payload": {...}},
         ],
         cmdb_writes=[                                     # optional, declared mutations
@@ -85,6 +85,68 @@ async def run(args: dict, ctx: SkillContext) -> SkillResult:
 | `ctx.confirm(prompt)` | Async user-confirmation gate; required for `risk_level=critical`. |
 | `ctx.write_progress(pct, message)` | Optional streaming progress (rendered as shadcn `<Progress>`). |
 | `ctx.cancel_token` | `asyncio.Event`; skill MUST poll and abort within 1s of being set. |
+
+### 3.2 Scenario: Host-Owned Skill Finding Bridge
+
+#### 1. Scope / Trigger
+
+- Trigger: a Skill returns `SkillResult.findings`, including during an agent wind-down after `max_iterations` or `context_exhausted`.
+
+#### 2. Signatures
+
+- Input: `SkillResult.findings: list[dict]`
+- Runtime context: `bind_skill_context(asset_feed=..., vulnerability_store=..., asset_auto_management_enabled=...)`
+- Outputs: `VulnerabilityStore.report(...)`, `AssetFeed.append(kind='vuln'|'vulnerability_candidate')`, and optional CMDB `vulnerability_candidate` upsert.
+
+#### 3. Contracts
+
+- Finding persistence is host-owned; Expert Agents do not need to restate every scanner hit in their final text.
+- Confirmed, verified, or high-confidence positive findings become confirmed vulnerabilities in `VulnerabilityStore` and `AssetFeed(kind='vuln')`.
+- Passive, unverified, or low-confidence findings become `AssetFeed(kind='vulnerability_candidate')`.
+- CMDB `vulnerability_candidate` rows are written only when Asset Auto-Management is enabled.
+- Legacy `cmdb_writes` remain gated by Asset Auto-Management, but this gate MUST NOT suppress the in-memory finding bridge.
+- Built-in active vulnerability Skills that also emit `cmdb_writes` for the `vulnerabilities` table MUST mark corresponding `findings` with `status='confirmed'` and a `verification` method.
+
+#### 4. Validation & Error Matrix
+
+| Finding input | Host result |
+|---------------|-------------|
+| `verified=true` or `confirmed=true` | confirmed vulnerability + `vuln` feed row |
+| `status='verified'|'confirmed'|'true_positive'` | confirmed vulnerability + `vuln` feed row |
+| `confidence='high'` and `result='positive'|'vulnerable'|'confirmed'` | confirmed vulnerability + `vuln` feed row |
+| no verification signal | `vulnerability_candidate` feed row only |
+| candidate + Asset Auto-Management enabled | candidate feed row + CMDB candidate upsert |
+| malformed finding item | skipped, skill result still returned |
+| bridge persistence failure | warning log, skill result still returned |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: a SQL probe with high confidence and positive result reaches the report data source even if the agent is interrupted before final narration.
+- Base: a passive template match is visible as a candidate but not counted as a confirmed report vulnerability.
+- Bad: gating all findings behind `cmdb_writes`, or promoting every scanner hit to a confirmed vulnerability.
+
+#### 6. Tests Required
+
+- Confirmed `SkillResult.findings` bridge to `VulnerabilityStore` and `AssetFeed(kind='vuln')` when Asset Auto-Management is disabled.
+- Unverified findings bridge to `AssetFeed(kind='vulnerability_candidate')` and do not enter `VulnerabilityStore`.
+- Candidate CMDB persistence is covered when Asset Auto-Management is enabled.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+
+```python
+if not asset_auto_management_enabled:
+    return skill_result
+```
+
+Correct:
+
+```python
+await bridge_skill_findings(skill_result)
+if asset_auto_management_enabled:
+    await apply_cmdb_writes(skill_result.cmdb_writes)
+```
 
 ---
 

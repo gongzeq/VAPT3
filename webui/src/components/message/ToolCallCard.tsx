@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -86,17 +86,20 @@ function toolStatusLabel(variant: ToolCardVariant, durationMs?: number): string 
 export function ToolCallCard({
   payload,
   animClass,
+  defaultExpanded = false,
 }: {
   payload: AgentEventPayload;
   animClass?: string;
+  defaultExpanded?: boolean;
 }) {
-  const status: ToolCallStatus = payload.tool_status ?? payload.status ?? "running";
+  const status = (payload.tool_status ?? payload.status ?? "running") as ToolCallStatus;
   const variant: ToolCardVariant =
     status === "error" && payload.reason && DENIED_REASONS.has(payload.reason)
       ? "denied"
       : status;
   const style = TOOL_STATUS_STYLE[variant];
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultExpanded);
+  useEffect(() => { if (defaultExpanded) setOpen(true); }, [defaultExpanded]);
   const args = toolCallArgs(payload);
   const hasArgs = args && Object.keys(args).length > 0;
   const argsSummary = hasArgs ? JSON.stringify(args).slice(0, 90) : "";

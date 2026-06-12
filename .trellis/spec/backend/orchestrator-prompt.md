@@ -16,6 +16,8 @@ expert agents to fulfil the user's security task.
 
 # Hard rules
 - You DO NOT execute scans yourself. You route to expert agents via tool calls.
+- You use `wait_subagent` / `check_subagents` for expert-agent lifecycle
+  decisions; never poll `read_assets` to wait for a subagent to finish.
 - You MUST respect the natural ordering: asset_discovery → port_scan → crawl_web
   → vuln_scan → (weak_password | pentest) → report. Skip a stage ONLY when the user has
   already provided the data it would produce, or explicitly opts out.
@@ -49,7 +51,7 @@ expert agents to fulfil the user's security task.
 
 ## 2. Multi-Turn Strategy
 
-The Orchestrator runs the standard ReAct loop in `agent/loop.py`. Three project-specific behaviours apply:
+The Orchestrator runs the standard ReAct loop in `agent/loop.py`. Four project-specific behaviours apply:
 
 ### 2.1 Stage ordering
 
@@ -72,7 +74,19 @@ The Orchestrator MUST emit a single `plan` message at the start with the project
 | `summary.user_denied: true` | Treat as deliberate stop for that expert; ask user for an alternative path. Do NOT retry the same skill in the same turn. |
 | `summary.cancelled: true` | Stop the entire scan; emit a final summary of what completed. |
 
-### 2.3 Token budget
+### 2.3 Subagent lifecycle waiting
+
+The Orchestrator MUST distinguish lifecycle control from asset ingestion:
+
+- `wait_subagent` waits for one or more spawned expert agents to reach a
+  terminal state, with a bounded timeout.
+- `check_subagents` returns the current session's running and recently
+  completed/error/incomplete expert-agent snapshots.
+- `read_assets` is only for structured asset deltas after an expert has
+  produced or completed work. A `No new assets.` result is not a wait signal;
+  stop reading assets and use `check_subagents`, `wait_subagent`, or replan.
+
+### 2.4 Token budget
 
 The Orchestrator MUST respect [context-trimming.md](./context-trimming.md). When approaching the model's context limit:
 

@@ -138,6 +138,38 @@ Correct: Keep the CMDB ingestion gate default-off, and let `report-html` use the
 
 ---
 
+## 8. Scenario: Interrupted Work and Partial Reports
+
+### 1. Scope / Trigger
+
+- Trigger: `report-html` is invoked while the persisted session contains a latest `subagent_done` event with `status='incomplete'` or `status='interrupted'`.
+- Scope: legacy Agent Turn Runtime compatibility path until Phase Graph Scheduler owns PlanNode dependency resolution.
+
+### 2. Contracts
+
+- Normal report generation MUST block when upstream Expert Agent work is still interrupted.
+- `report-html` may generate a partial report only when the caller passes `allow_partial=true`.
+- Partial reports MUST include all already persisted findings and return interrupted-work metadata in the skill summary.
+- `report-html` MUST merge structured VulnerabilityStore findings with session JSONL / asset-feed discoveries instead of treating either source as exclusive.
+
+### 3. Validation & Error Matrix
+
+| Condition | Result |
+|-----------|--------|
+| latest upstream agent status is interrupted and `allow_partial` is false | Return `status='blocked_interrupted_dependencies'`, no file written |
+| latest upstream agent status is interrupted and `allow_partial` is true | Render report with `partial=true` and `interrupted_agents` summary metadata |
+| VulnerabilityStore has findings and session JSONL has additional findings/services | Merge and dedupe both sources |
+| Session JSONL has batch `asset_push(payloads=[...])` | Include each payload as a report entry |
+
+### 4. Tests Required
+
+- Skill test for blocked normal report when a latest persisted upstream agent result is interrupted.
+- Skill test for explicit partial report generation with interrupted metadata.
+- Skill test that VulnerabilityStore and session JSONL findings are merged.
+- Session-source test or report test for batch `asset_push(payloads=[...])` entries.
+
+---
+
 ## Origin
 
 Source: `.trellis/tasks/05-07-cybersec-agent-platform/prd.md` §"Report" + ADR-005 (Markdown-canonical pipeline).

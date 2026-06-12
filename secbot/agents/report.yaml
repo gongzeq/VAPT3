@@ -19,7 +19,7 @@ scoped_skills:
   - report-html
   - detection-db-query
 
-max_iterations: 2
+max_iterations: 5
 emit_plan_steps: false
 minimal_tools: true
 

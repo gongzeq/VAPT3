@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bot, ChevronRight, ClipboardList, Lightbulb, ListChecks } from "lucide-react";
 
 import { resolveAgent } from "@/components/AgentAvatar";
@@ -11,6 +11,8 @@ interface AgentEventCardProps {
   payload: AgentEventPayload;
   agentName?: string;
   animClass?: string;
+  /** When true, collapsible sections start expanded (e.g. category filter active). */
+  defaultExpanded?: boolean;
 }
 
 /** @description Determine whether an agent event should be visible in the UI. */
@@ -40,8 +42,9 @@ function agentEventDisplayName(payload: AgentEventPayload, fallbackAgentName?: s
 }
 
 /** @description Renders agent lifecycle events (thought, subagent, plan, etc.). */
-export function AgentEventCard({ payload, agentName, animClass }: AgentEventCardProps) {
-  const [open, setOpen] = useState(false);
+export function AgentEventCard({ payload, agentName, animClass, defaultExpanded = false }: AgentEventCardProps) {
+  const [open, setOpen] = useState(defaultExpanded);
+  useEffect(() => { if (defaultExpanded) setOpen(true); }, [defaultExpanded]);
   const lifecycleAgentName = agentEventDisplayName(payload, agentName);
 
   switch (payload.type) {
@@ -244,7 +247,7 @@ export function AgentEventCard({ payload, agentName, animClass }: AgentEventCard
     }
     case "tool_call":
       if (isHiddenFrontendToolName(payload.tool_name)) return null;
-      return <ToolCallCard payload={payload} animClass={animClass} />;
+      return <ToolCallCard payload={payload} animClass={animClass} defaultExpanded={defaultExpanded} />;
     case "blackboard_entry":
       return (
         <div

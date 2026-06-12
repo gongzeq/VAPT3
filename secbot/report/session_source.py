@@ -95,15 +95,17 @@ def load_asset_entries_from_session_jsonl(path: Path) -> list[dict[str, Any]]:
 
                 tool_name = event.get("tool_name")
                 if tool_name == "asset_push":
-                    entry = _entry_from_asset_push_event(row, event, len(entries) + 1)
-                    if entry is None:
+                    new_entries = _entries_from_asset_push_event(
+                        row, event, len(entries) + 1
+                    )
+                    if not new_entries:
                         continue
                     tool_call_id = str(event.get("tool_call_id") or "")
                     if tool_call_id:
                         if tool_call_id in seen_tool_call_ids:
                             continue
                         seen_tool_call_ids.add(tool_call_id)
-                    entries.append(entry)
+                    entries.extend(new_entries)
                 elif tool_name == "read_assets":
                     snapshot = _read_assets_snapshot(event)
                     if snapshot:
@@ -147,32 +149,99 @@ def build_report_model_from_session_jsonl(
     )
 
 
-def _entry_from_asset_push_event(
+def load_interrupted_subagents_from_session_jsonl(path: Path | None) -> list[dict[str, Any]]:
+    """Return latest interrupted subagent rows from a persisted session JSONL."""
+    if path is None:
+        return []
+
+    latest_by_agent: dict[str, dict[str, Any]] = {}
+    try:
+        with path.open(encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    _logger.warning(
+                        "report session source skipped invalid JSON: path=%s line=%d",
+                        path,
+                        line_no,
+                    )
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                event = row.get("agent_event") if row.get("_kind") == "agent_event" else None
+                if not isinstance(event, dict) or event.get("type") != "subagent_done":
+                    continue
+                agent_name = str(
+                    event.get("agent_name")
+                    or event.get("label")
+                    or row.get("sender_id")
+                    or "unknown"
+                )
+                latest_by_agent[agent_name] = {
+                    "agent_name": agent_name,
+                    "task_id": event.get("task_id"),
+                    "status": str(event.get("status") or "").strip().lower(),
+                    "label": event.get("label"),
+                    "timestamp": row.get("timestamp"),
+                }
+    except FileNotFoundError:
+        return []
+    except OSError:
+        _logger.warning("report session source failed to read %s", path, exc_info=True)
+        return []
+
+    return [
+        item
+        for item in latest_by_agent.values()
+        if item["status"] in {"incomplete", "interrupted"}
+    ]
+
+
+def _entries_from_asset_push_event(
     row: dict[str, Any],
     event: dict[str, Any],
     fallback_id: int,
-) -> dict[str, Any] | None:
+) -> list[dict[str, Any]]:
     tool_args = event.get("tool_args")
     if not isinstance(tool_args, dict):
-        return None
+        return []
 
     kind = str(tool_args.get("kind") or "").strip().lower()
-    payload = tool_args.get("payload")
-    if not kind or not isinstance(payload, dict):
-        return None
+    if not kind:
+        return []
 
-    return {
-        "id": _asset_push_id(event.get("detail")) or fallback_id,
-        "kind": kind,
-        "agent_name": str(
-            event.get("agent_name")
-            or event.get("agent")
-            or row.get("sender_id")
-            or "session_jsonl"
-        ),
-        "payload": payload,
-        "created_at": _timestamp_to_epoch(row.get("timestamp")),
-    }
+    payloads: list[dict[str, Any]] = []
+    payload = tool_args.get("payload")
+    if isinstance(payload, dict):
+        payloads.append(payload)
+    raw_payloads = tool_args.get("payloads")
+    if isinstance(raw_payloads, list):
+        payloads.extend(item for item in raw_payloads if isinstance(item, dict))
+    if not payloads:
+        return []
+
+    first_id = _asset_push_id(event.get("detail")) or fallback_id
+    agent_name = str(
+        event.get("agent_name")
+        or event.get("agent")
+        or row.get("sender_id")
+        or "session_jsonl"
+    )
+    created_at = _timestamp_to_epoch(row.get("timestamp"))
+    return [
+        {
+            "id": first_id + idx,
+            "kind": kind,
+            "agent_name": agent_name,
+            "payload": item,
+            "created_at": created_at,
+        }
+        for idx, item in enumerate(payloads)
+    ]
 
 
 def _read_assets_snapshot(event: dict[str, Any]) -> list[dict[str, Any]]:

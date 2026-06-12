@@ -21,7 +21,7 @@ scoped_skills:
   - sqlmap-detect
   - sqlmap-dump
 
-max_iterations: 6
+max_iterations: 10
 emit_plan_steps: true
 
 legacy_input_schema:

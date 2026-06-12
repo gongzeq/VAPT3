@@ -185,3 +185,108 @@ def test_read_assets_is_read_only() -> None:
     """Orchestrator may inspect the feed without consent prompts."""
     tool = ReadAssetsTool(feed=AssetFeed())
     assert tool.read_only is True
+
+
+# ---------------------------------------------------------------------------
+# Batch mode tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_writes_all_entries() -> None:
+    """Batch mode: payloads=[...] must persist every item in one call."""
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed, agent_name="crawl_web")
+    out = await tool.execute(
+        kind="url",
+        payloads=[
+            {"url": "/login", "params": ["redirect"]},
+            {"url": "/upload", "params": ["file"]},
+            {"url": "/export", "params": ["format"]},
+        ],
+    )
+    assert "3 assets pushed" in out
+    assert "ids=1..3" in out
+    assert "kind=url" in out
+    rows = await feed.since()
+    assert len(rows) == 3
+    assert [r.payload["url"] for r in rows] == ["/login", "/upload", "/export"]
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_single_item_equivalent_to_single_mode() -> None:
+    """A batch with one item must behave identically to single payload mode."""
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed)
+    out = await tool.execute(kind="port", payloads=[{"host": "h", "port": 22}])
+    assert "asset pushed" in out
+    assert "id=1" in out
+    rows = await feed.since()
+    assert len(rows) == 1
+    assert rows[0].payload == {"host": "h", "port": 22}
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_emits_single_bus_notification() -> None:
+    """Batch must emit exactly ONE bus notification, not N."""
+    feed = AssetFeed()
+    bus = MessageBus()
+    tool = AssetPushTool(
+        feed=feed,
+        bus=bus,
+        origin={"channel": "websocket", "chat_id": "batch-test"},
+        agent_name="crawl_web",
+    )
+    await tool.execute(
+        kind="url",
+        payloads=[
+            {"url": "/a"},
+            {"url": "/b"},
+            {"url": "/c"},
+        ],
+    )
+    msg = await bus.consume_inbound()
+    assert msg.metadata.get("injected_event") == "asset_discovered"
+    assert msg.metadata.get("asset_count") == 3
+    assert msg.metadata.get("asset_id") == 3  # latest id
+    assert "(3 new)" in msg.content
+    # No second notification
+    assert bus.inbound.empty()
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_rejects_non_list_payloads() -> None:
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed)
+    out = await tool.execute(kind="url", payloads="not a list")
+    assert out.startswith("Error")
+    assert len(feed) == 0
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_rejects_non_dict_item() -> None:
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed)
+    out = await tool.execute(kind="url", payloads=[{"url": "/ok"}, "bad"])
+    assert "payloads[1]" in out
+    assert out.startswith("Error")
+    assert len(feed) == 0
+
+
+@pytest.mark.asyncio
+async def test_asset_push_batch_rejects_empty_list() -> None:
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed)
+    out = await tool.execute(kind="url", payloads=[])
+    assert out.startswith("Error")
+    assert len(feed) == 0
+
+
+@pytest.mark.asyncio
+async def test_asset_push_rejects_neither_payload_nor_payloads() -> None:
+    feed = AssetFeed()
+    tool = AssetPushTool(feed=feed)
+    out = await tool.execute(kind="url")
+    assert "Error" in out
+    assert "payload" in out
+    assert len(feed) == 0

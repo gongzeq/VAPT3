@@ -14,14 +14,12 @@ import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from aiohttp import web
 
 from secbot.agent.subagent import SubagentStatus
 from secbot.api.agents import handle_list_agents
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — minimal stand-ins for ExpertAgentSpec / AgentRegistry. We keep
@@ -184,6 +182,36 @@ async def test_include_status_running_propagates_task_and_heartbeat() -> None:
     assert by_name["alpha"]["last_heartbeat_at"].endswith("+00:00")
     # Other agents fall back to idle (manager attached but no matching status).
     assert by_name["beta"]["status"] == "idle"
+
+
+@pytest.mark.asyncio
+async def test_include_status_interrupted_when_budget_exhausted() -> None:
+    """Recoverable budget/context exhaustion must not surface as completed."""
+    now = time.time()
+    status = SubagentStatus(
+        task_id="task-interrupted",
+        label="alpha interrupted",
+        task_description="...",
+        started_at=time.monotonic(),
+        phase="done",
+        stop_reason="context_exhausted",
+        agent_name="alpha",
+        last_heartbeat_at=now,
+    )
+    registry = _FakeRegistry([_FakeSpec(name="alpha")])
+    request = _StubRequest(
+        app={
+            "agent_registry": registry,
+            "subagent_manager": _StubManager({"task-interrupted": status}),
+        },
+        query={"include_status": "true"},
+    )
+
+    [entry] = _body(await handle_list_agents(request))["agents"]  # type: ignore[arg-type]
+
+    assert entry["status"] == "interrupted"
+    assert entry["status"] != "completed"
+    assert entry["current_task_id"] is None
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """Tests for subagent tool registration and wiring."""
 
 import asyncio
+import json
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -358,6 +359,27 @@ def test_agent_loop_passes_max_iterations_to_subagents(tmp_path):
     assert loop.subagents.max_iterations == 42
 
 
+def test_agent_loop_registers_subagent_lifecycle_tools(tmp_path):
+    """The orchestrator should expose explicit subagent wait/check tools."""
+    from secbot.agent.loop import AgentLoop
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    loop = AgentLoop(
+        bus=bus,
+        provider=provider,
+        workspace=tmp_path,
+        model="test-model",
+        is_orchestrator=True,
+    )
+
+    assert loop.tools.get("check_subagents") is not None
+    assert loop.tools.get("wait_subagent") is not None
+
+
 @pytest.mark.asyncio
 async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
     """Runtime max_iterations changes should be reflected before tool execution."""
@@ -397,6 +419,255 @@ async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
     await loop._run_agent_loop([])
 
     loop.runner.run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_subagents_tool_filters_current_session(tmp_path):
+    """check_subagents should report only the active session's retained statuses."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agent.tools.subagents import CheckSubagentsTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+
+    async def _hang_forever():
+        await asyncio.Event().wait()
+
+    running_task = asyncio.create_task(_hang_forever())
+    mgr._running_tasks["sub-1"] = running_task
+    mgr._session_tasks.setdefault("test:c1", set()).add("sub-1")
+    mgr._task_statuses["sub-1"] = SubagentStatus(
+        task_id="sub-1",
+        label="running",
+        task_description="do running work",
+        started_at=time.monotonic(),
+        agent_name="vuln_scan",
+        session_key="test:c1",
+    )
+    mgr._task_statuses["sub-2"] = SubagentStatus(
+        task_id="sub-2",
+        label="completed",
+        task_description="done work",
+        started_at=time.monotonic(),
+        phase="done",
+        stop_reason="completed",
+        agent_name="report",
+        session_key="test:c1",
+    )
+    mgr._task_statuses["other"] = SubagentStatus(
+        task_id="other",
+        label="other",
+        task_description="other work",
+        started_at=time.monotonic(),
+        agent_name="crawl_web",
+        session_key="test:c2",
+    )
+
+    tool = CheckSubagentsTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    payload = json.loads(await tool.execute())
+
+    assert payload["status"] == "ok"
+    assert payload["running_count"] == 1
+    assert {s["task_id"] for s in payload["subagents"]} == {"sub-1", "sub-2"}
+
+    running_only = json.loads(await tool.execute(include_completed=False))
+    assert [s["task_id"] for s in running_only["subagents"]] == ["sub-1"]
+
+    running_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running_task
+
+
+@pytest.mark.asyncio
+async def test_check_subagents_reports_interrupted_snapshot(tmp_path):
+    """Runtime snapshots should not map recoverable interruption to completed."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agent.tools.subagents import CheckSubagentsTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+    mgr._task_statuses["sub-interrupted"] = SubagentStatus(
+        task_id="sub-interrupted",
+        label="interrupted",
+        task_description="budget exhausted",
+        started_at=time.monotonic(),
+        phase="done",
+        stop_reason="context_exhausted",
+        agent_name="vuln_scan",
+        session_key="test:c1",
+    )
+
+    tool = CheckSubagentsTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    payload = json.loads(await tool.execute())
+
+    assert payload["subagents"][0]["state"] == "interrupted"
+    assert payload["subagents"][0]["state"] != "completed"
+
+
+@pytest.mark.asyncio
+async def test_wait_for_subagents_timeout_does_not_cancel_running_task(tmp_path):
+    """Manager wait timeouts must not cancel the underlying subagent."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+
+    async def _hang_forever():
+        await asyncio.Event().wait()
+
+    running_task = asyncio.create_task(_hang_forever())
+    mgr._running_tasks["sub-wait"] = running_task
+    mgr._session_tasks.setdefault("test:c1", set()).add("sub-wait")
+    mgr._task_statuses["sub-wait"] = SubagentStatus(
+        task_id="sub-wait",
+        label="waiting",
+        task_description="long task",
+        started_at=time.monotonic(),
+        session_key="test:c1",
+    )
+
+    result = await mgr.wait_for_subagents(
+        session_key="test:c1",
+        task_id="sub-wait",
+        timeout_sec=0.01,
+    )
+
+    assert result["status"] == "timeout"
+    assert not running_task.done()
+
+    running_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running_task
+
+
+@pytest.mark.asyncio
+async def test_wait_subagent_tool_returns_completed_snapshot(tmp_path):
+    """wait_subagent should block until the selected subagent reaches terminal state."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agent.tools.subagents import WaitSubagentTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+
+    release = asyncio.Event()
+    status = SubagentStatus(
+        task_id="sub-complete",
+        label="complete soon",
+        task_description="short task",
+        started_at=time.monotonic(),
+        agent_name="crawl_web",
+        session_key="test:c1",
+    )
+
+    async def _complete_after_release():
+        await release.wait()
+        status.phase = "done"
+        status.stop_reason = "completed"
+
+    running_task = asyncio.create_task(_complete_after_release())
+    mgr._running_tasks["sub-complete"] = running_task
+    mgr._session_tasks.setdefault("test:c1", set()).add("sub-complete")
+    mgr._task_statuses["sub-complete"] = status
+
+    tool = WaitSubagentTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    wait_task = asyncio.create_task(
+        tool.execute(task_id="sub-complete", timeout_sec=300)
+    )
+
+    await asyncio.sleep(0)
+    release.set()
+    payload = json.loads(await asyncio.wait_for(wait_task, timeout=2.0))
+
+    assert payload["status"] == "completed"
+    assert payload["completed_count"] == 1
+    assert payload["subagents"][0]["task_id"] == "sub-complete"
+    assert payload["subagents"][0]["state"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_wait_subagent_tool_returns_interrupted_for_budget_exhaustion(tmp_path):
+    """wait_subagent aggregate status mirrors interrupted child status."""
+    from secbot.agent.subagent import SubagentManager, SubagentStatus
+    from secbot.agent.tools.subagents import WaitSubagentTool
+    from secbot.bus.queue import MessageBus
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+
+    release = asyncio.Event()
+    status = SubagentStatus(
+        task_id="sub-interrupt",
+        label="interrupt soon",
+        task_description="short task",
+        started_at=time.monotonic(),
+        agent_name="vuln_scan",
+        session_key="test:c1",
+    )
+
+    async def _interrupt_after_release():
+        await release.wait()
+        status.phase = "done"
+        status.stop_reason = "max_iterations"
+
+    running_task = asyncio.create_task(_interrupt_after_release())
+    mgr._running_tasks["sub-interrupt"] = running_task
+    mgr._session_tasks.setdefault("test:c1", set()).add("sub-interrupt")
+    mgr._task_statuses["sub-interrupt"] = status
+
+    tool = WaitSubagentTool(mgr)
+    tool.set_context("test", "c1", "test:c1")
+    wait_task = asyncio.create_task(
+        tool.execute(task_id="sub-interrupt", timeout_sec=300)
+    )
+
+    await asyncio.sleep(0)
+    release.set()
+    payload = json.loads(await asyncio.wait_for(wait_task, timeout=2.0))
+
+    assert payload["status"] == "interrupted"
+    assert payload["subagents"][0]["state"] == "interrupted"
 
 
 @pytest.mark.asyncio

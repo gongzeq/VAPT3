@@ -25,6 +25,10 @@ class AgentHookContext:
     final_content: str | None = None
     stop_reason: str | None = None
     error: str | None = None
+    # Cumulative token usage across all iterations in the current turn so far.
+    # Populated by the runner after each LLM call so hooks can emit real-time
+    # usage updates (e.g. to a WebSocket frontend).
+    cumulative_usage: dict[str, int] = field(default_factory=dict)
 
 
 class AgentHook:

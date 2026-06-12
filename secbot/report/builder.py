@@ -201,23 +201,51 @@ def _verification_steps(payload: dict[str, Any], affected_url: str | None) -> tu
 
 
 def _build_evidence_detail(ev: dict) -> Optional[str]:
-    """Compose a human-readable evidence detail from request/response/curl.
+    """Compose a human-readable evidence detail from structured PoC data.
 
+    Extracts and formats request/response/curl/payload/matched_at fields
+    into a readable PoC section for the report.
     Returns ``None`` when no useful evidence is present.
     """
     parts: list[str] = []
+
+    # Handle legacy {"raw": "..."} format — promote raw to description
+    if "raw" in ev and not ev.get("description"):
+        raw = ev["raw"]
+        if isinstance(raw, str) and raw.strip():
+            ev = dict(ev)
+            ev.setdefault("description", raw.strip())
+
     desc = ev.get("description")
     if desc:
-        parts.append(str(desc))
+        parts.append(f"漏洞描述: {desc}")
+
+    matched = ev.get("matched_at") or ev.get("url") or ev.get("endpoint")
+    if matched:
+        parts.append(f"匹配位置: {matched}")
+
+    payload_val = ev.get("payload")
+    if payload_val:
+        parts.append(f"攻击载荷: {payload_val}")
+
     req = ev.get("request")
     if req:
-        parts.append(f"请求:\n{req}" if isinstance(req, str) else f"请求:\n{_trunc(req)}")
+        parts.append(
+            f"PoC 请求:\n{_trunc_evidence(req)}" if isinstance(req, str)
+            else f"PoC 请求:\n{_trunc_evidence(req)}"
+        )
+
     resp = ev.get("response")
     if resp:
-        parts.append(f"响应:\n{resp}" if isinstance(resp, str) else f"响应:\n{_trunc(resp)}")
+        parts.append(
+            f"系统响应 (证据):\n{_trunc_evidence(resp)}" if isinstance(resp, str)
+            else f"系统响应 (证据):\n{_trunc_evidence(resp)}"
+        )
+
     curl_cmd = ev.get("curl_command") or ev.get("curl")
     if curl_cmd:
         parts.append(f"复现命令:\n{curl_cmd}")
+
     return "\n\n".join(parts) if parts else None
 
 
@@ -226,7 +254,7 @@ def _extract_verification_steps(ev: dict) -> tuple[str, ...]:
 
     Priority:
     1. ``verification_steps`` list already present
-    2. Synthesise from ``curl_command`` / ``request`` / ``matched_at``
+    2. Synthesise from ``curl_command`` / ``request`` / ``matched_at`` / ``payload``
     """
     raw = ev.get("verification_steps") or ev.get("steps")
     if isinstance(raw, list) and raw:
@@ -237,13 +265,16 @@ def _extract_verification_steps(ev: dict) -> tuple[str, ...]:
     url = ev.get("matched_at") or ev.get("url") or ev.get("endpoint")
     if url:
         steps.append(f"访问目标端点: {url}")
+    payload_val = ev.get("payload")
+    if payload_val:
+        steps.append(f"构造并发送攻击载荷: {payload_val}")
     curl_cmd = ev.get("curl_command") or ev.get("curl")
     if curl_cmd:
         steps.append(f"执行复现命令: {curl_cmd}")
     elif ev.get("request"):
-        steps.append("发送构造的 HTTP 请求（见下方证据详情）")
+        steps.append("发送构造的 HTTP 请求（见下方 PoC 请求）")
     if ev.get("response"):
-        steps.append("检查响应内容以确认漏洞存在")
+        steps.append("检查系统响应内容以确认漏洞存在（见下方系统响应）")
     return tuple(steps)
 
 
@@ -251,6 +282,12 @@ def _trunc(value, max_chars: int = 512) -> str:
     """Safely stringify and truncate a value."""
     s = str(value)
     return s if len(s) <= max_chars else s[:max_chars] + "…"
+
+
+def _trunc_evidence(value, max_chars: int = 2048) -> str:
+    """Safely stringify and truncate evidence content (larger limit for PoC)."""
+    s = str(value)
+    return s if len(s) <= max_chars else s[:max_chars] + "…(truncated)"
 
 
 @dataclass(frozen=True)
@@ -267,6 +304,8 @@ class ReportFinding:
     verification_steps: tuple[str, ...] = ()
     remediation: Optional[str] = None
     references: tuple[str, ...] = ()
+    # Raw evidence dict for structured PoC rendering in HTML.
+    evidence_raw: Optional[dict] = None
 
 
 @dataclass(frozen=True)
@@ -314,6 +353,144 @@ class ReportModel:
 
     def is_empty(self) -> bool:
         return self.summary.asset_count == 0
+
+
+def merge_report_models(
+    primary: ReportModel,
+    secondary: ReportModel,
+) -> ReportModel:
+    """Merge two report models while de-duplicating assets and findings.
+
+    The primary model wins for top-level target wording and conflicting
+    asset metadata. This lets report-html combine the structured
+    VulnerabilityStore with session JSONL / AssetFeed discoveries instead of
+    treating either source as exclusive.
+    """
+    if primary.is_empty():
+        return secondary
+    if secondary.is_empty():
+        return primary
+
+    assets_by_target: dict[str, ReportAsset] = {}
+
+    def _merge_asset(incoming: ReportAsset) -> None:
+        existing = assets_by_target.get(incoming.target)
+        if existing is None:
+            assets_by_target[incoming.target] = ReportAsset(
+                target=incoming.target,
+                ip=incoming.ip,
+                hostname=incoming.hostname,
+                os_guess=incoming.os_guess,
+                services=list(incoming.services),
+                findings=list(incoming.findings),
+            )
+            return
+
+        services_by_key = {
+            (service.port, service.protocol): service for service in existing.services
+        }
+        for service in incoming.services:
+            services_by_key.setdefault((service.port, service.protocol), service)
+
+        finding_keys = {_finding_dedupe_key(finding) for finding in existing.findings}
+        findings = list(existing.findings)
+        for finding in incoming.findings:
+            key = _finding_dedupe_key(finding)
+            if key in finding_keys:
+                continue
+            finding_keys.add(key)
+            findings.append(finding)
+
+        assets_by_target[incoming.target] = ReportAsset(
+            target=existing.target,
+            ip=existing.ip or incoming.ip,
+            hostname=existing.hostname or incoming.hostname,
+            os_guess=existing.os_guess or incoming.os_guess,
+            services=sorted(
+                services_by_key.values(),
+                key=lambda service: (service.protocol, service.port),
+            ),
+            findings=sorted(
+                findings,
+                key=lambda finding: _SEVERITY_RANK.get(
+                    finding.severity, len(SEVERITY_ORDER)
+                ),
+            ),
+        )
+
+    for model in (primary, secondary):
+        for asset in model.assets:
+            _merge_asset(asset)
+
+    assets = sorted(assets_by_target.values(), key=lambda asset: asset.target)
+    severity_counts: dict[str, int] = {severity: 0 for severity in SEVERITY_ORDER}
+    service_count = 0
+    finding_count = 0
+    for asset in assets:
+        service_count += len(asset.services)
+        finding_count += len(asset.findings)
+        for finding in asset.findings:
+            if finding.severity in severity_counts:
+                severity_counts[finding.severity] += 1
+
+    return ReportModel(
+        scan_id=primary.scan_id,
+        target=primary.target or secondary.target,
+        started_at=_min_dt(primary.started_at, secondary.started_at),
+        finished_at=_max_dt(primary.finished_at, secondary.finished_at),
+        summary=ReportSummary(
+            asset_count=len(assets),
+            service_count=service_count,
+            finding_count=finding_count,
+            severity_counts=severity_counts,
+        ),
+        assets=assets,
+        appendix=ReportAppendix(
+            raw_log_paths=_dedupe_strs(
+                primary.appendix.raw_log_paths + secondary.appendix.raw_log_paths
+            ),
+            scope_opt_outs=_dedupe_strs(
+                primary.appendix.scope_opt_outs + secondary.appendix.scope_opt_outs
+            ),
+        ),
+    )
+
+
+def _finding_dedupe_key(finding: ReportFinding) -> tuple[str, str, str, str, str]:
+    return (
+        finding.title.strip().lower(),
+        finding.severity,
+        (finding.affected_url or "").strip().lower(),
+        (finding.cve_id or "").strip().lower(),
+        (finding.evidence_summary or "").strip().lower()[:160],
+    )
+
+
+def _min_dt(a: datetime | None, b: datetime | None) -> datetime | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return min(a, b)
+
+
+def _max_dt(a: datetime | None, b: datetime | None) -> datetime | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return max(a, b)
+
+
+def _dedupe_strs(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
 
 
 async def build_report_model(
@@ -366,7 +543,9 @@ async def build_report_model(
             ev = v.evidence if isinstance(v.evidence, dict) else {}
 
             evidence_summary = (
-                ev.get("summary")
+                ev.get("description")
+                or ev.get("summary")
+                or ev.get("raw")
                 or ev.get("matched_at")
                 or (str(v.evidence)[:256] if v.evidence else None)
             )
@@ -398,6 +577,7 @@ async def build_report_model(
                     verification_steps=verification_steps,
                     remediation=remediation,
                     references=references,
+                    evidence_raw=ev if ev else None,
                 )
             )
         total_services += len(services)
@@ -510,6 +690,19 @@ def build_report_model_from_asset_entries(
             detail = _finding_detail(payload)
             if detail is None and ev_summary:
                 detail = ev_summary
+            # Build evidence_raw dict for structured PoC rendering
+            ev_raw = payload.get("evidence")
+            if isinstance(ev_raw, dict):
+                evidence_raw = ev_raw
+            elif isinstance(ev_raw, str) and ev_raw.strip():
+                evidence_raw = {"description": ev_raw.strip()}
+            else:
+                evidence_raw = None
+            # Augment ev_raw with top-level fields if available
+            if evidence_raw is not None:
+                for _k in ("request", "response", "curl_command", "payload", "matched_at"):
+                    if _k not in evidence_raw and payload.get(_k):
+                        evidence_raw[_k] = payload[_k]
             state["findings"].append(
                 ReportFinding(
                     severity=severity,
@@ -525,8 +718,164 @@ def build_report_model_from_asset_entries(
                     or payload.get("fix")
                     or payload.get("recommendation"),
                     references=tuple(payload.get("references") or ()),
+                    evidence_raw=evidence_raw,
                 )
             )
+
+    assets: list[ReportAsset] = []
+    severity_counts: dict[str, int] = {severity: 0 for severity in SEVERITY_ORDER}
+    service_count = 0
+    finding_count = 0
+    for state in assets_by_target.values():
+        services = sorted(
+            state["services"].values(),
+            key=lambda service: (service.protocol, service.port),
+        )
+        findings = sorted(
+            state["findings"],
+            key=lambda finding: _SEVERITY_RANK.get(finding.severity, len(SEVERITY_ORDER)),
+        )
+        for finding in findings:
+            if finding.severity in severity_counts:
+                severity_counts[finding.severity] += 1
+        service_count += len(services)
+        finding_count += len(findings)
+        assets.append(
+            ReportAsset(
+                target=state["target"],
+                ip=state["ip"],
+                hostname=state["hostname"],
+                os_guess=state["os_guess"],
+                services=services,
+                findings=findings,
+            )
+        )
+
+    assets.sort(key=lambda asset: asset.target)
+    summary = ReportSummary(
+        asset_count=len(assets),
+        service_count=service_count,
+        finding_count=finding_count,
+        severity_counts=severity_counts,
+    )
+    return ReportModel(
+        scan_id=scan_id,
+        target=target or (assets[0].target if assets else scan_id),
+        started_at=started_at,
+        finished_at=finished_at,
+        summary=summary,
+        assets=assets,
+        appendix=ReportAppendix(),
+    )
+
+
+def build_report_model_from_vulnerabilities(
+    entries: list[dict[str, Any]],
+    *,
+    scan_id: str,
+    target: str | None = None,
+) -> ReportModel:
+    """Build a :class:`ReportModel` from VulnerabilityStore entries.
+
+    Each entry is a dict with the VulnerabilityEntry schema (title,
+    severity, description, exploitation_proof, verification_method,
+    cvss, endpoint, poc_description, poc_script_code, remediation_steps).
+    """
+    assets_by_target: dict[str, dict[str, Any]] = {}
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    def _asset_state(asset_target: str) -> dict[str, Any]:
+        ip, hostname = _ip_or_hostname(asset_target)
+        state = assets_by_target.get(asset_target)
+        if state is None:
+            state = {
+                "target": asset_target,
+                "ip": ip,
+                "hostname": hostname,
+                "os_guess": None,
+                "services": {},
+                "findings": [],
+            }
+            assets_by_target[asset_target] = state
+        return state
+
+    for entry in sorted(entries, key=lambda item: item.get("id", 0)):
+        created_at = _dt_from_ts(entry.get("created_at"))
+        if created_at is not None:
+            started_at = created_at if started_at is None else min(started_at, created_at)
+            finished_at = created_at if finished_at is None else max(finished_at, created_at)
+
+        endpoint = entry.get("endpoint") or ""
+        asset_target = _target_from_url(endpoint) if endpoint else None
+        asset_target = asset_target or target or "unknown"
+        state = _asset_state(str(asset_target))
+
+        severity = _normalise_severity(entry.get("severity"))
+        title = entry.get("title") or "Unknown vulnerability"
+        description = entry.get("description") or ""
+        exploitation_proof = entry.get("exploitation_proof") or ""
+        verification_method = entry.get("verification_method") or ""
+        cvss = entry.get("cvss")
+
+        # Build evidence_detail from the structured fields.
+        evidence_parts: list[str] = []
+        if description:
+            evidence_parts.append(f"Description: {description}")
+        if verification_method:
+            evidence_parts.append(f"Verification method: {verification_method}")
+        if cvss is not None:
+            evidence_parts.append(f"CVSS: {cvss}")
+        if exploitation_proof:
+            evidence_parts.append(f"Exploitation proof:\n{_trunc_evidence(exploitation_proof)}")
+        poc_desc = entry.get("poc_description")
+        if poc_desc:
+            evidence_parts.append(f"PoC description: {poc_desc}")
+        poc_code = entry.get("poc_script_code")
+        if poc_code:
+            evidence_parts.append(f"PoC script:\n{_trunc_evidence(poc_code)}")
+        evidence_detail = "\n\n".join(evidence_parts) if evidence_parts else None
+
+        # Build evidence_raw dict for structured PoC rendering.
+        evidence_raw: dict[str, Any] = {
+            "description": description,
+        }
+        if exploitation_proof:
+            evidence_raw["response"] = exploitation_proof
+        if poc_code:
+            evidence_raw["curl_command"] = poc_code
+        if endpoint:
+            evidence_raw["matched_at"] = endpoint
+        if poc_desc:
+            evidence_raw["payload"] = poc_desc
+
+        # Synthesise verification_steps from the available data.
+        verification_steps: list[str] = []
+        if endpoint:
+            verification_steps.append(f"Access endpoint: {endpoint}")
+        if exploitation_proof:
+            verification_steps.append("Review exploitation proof below")
+        if poc_code:
+            verification_steps.append(f"Run PoC script: {poc_code[:80]}")
+
+        remediation = entry.get("remediation_steps")
+
+        state["findings"].append(
+            ReportFinding(
+                severity=severity,
+                category=_normalise_category(entry.get("type") or "other"),
+                title=title,
+                cve_id=entry.get("cve_id"),
+                evidence_summary=exploitation_proof[:256] if exploitation_proof else description[:256],
+                discovered_by=str(entry.get("agent_name") or "vulnerability_store"),
+                affected_url=endpoint or None,
+                evidence_detail=evidence_detail,
+                verification_steps=tuple(verification_steps),
+                remediation=remediation,
+                references=(),
+                evidence_raw=evidence_raw,
+            )
+        )
 
     assets: list[ReportAsset] = []
     severity_counts: dict[str, int] = {severity: 0 for severity in SEVERITY_ORDER}

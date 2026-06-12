@@ -253,6 +253,7 @@ async def test_runner_returns_max_iterations_fallback():
     assert "工具调用轮次已耗尽" in result.final_content
     assert result.messages[-1]["role"] == "assistant"
     assert result.messages[-1]["content"] == result.final_content
+    assert provider.chat_with_retry.await_args_list[-1].kwargs["tools"] is None
 
 
 @pytest.mark.asyncio

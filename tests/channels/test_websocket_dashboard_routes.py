@@ -566,6 +566,41 @@ async def test_agents_include_status_running_when_subagent_active(
     assert entry["last_heartbeat_at"].endswith("+00:00")
 
 
+async def test_agents_include_status_interrupted_when_budget_exhausted(
+    channel: WebSocketChannel,
+) -> None:
+    """Recoverable budget exhaustion must not surface as completed."""
+    import time as _time
+
+    from secbot.agent.subagent import SubagentStatus
+
+    status = SubagentStatus(
+        task_id="t-interrupt",
+        label="vuln_scan run",
+        task_description="...",
+        started_at=_time.monotonic(),
+        phase="done",
+        stop_reason="max_iterations",
+        agent_name="vuln_scan",
+        last_heartbeat_at=_time.time(),
+    )
+
+    class _StubManager:
+        def __init__(self) -> None:
+            self._task_statuses = {"t-interrupt": status}
+
+    channel._subagent_manager = _StubManager()
+    resp = channel._handle_agents(_Req("/api/agents?include_status=true"))
+    body = _body(resp)
+    by_name = {entry["name"]: entry for entry in body["agents"]}
+    if "vuln_scan" not in by_name:
+        return
+    entry = by_name["vuln_scan"]
+    assert entry["status"] == "interrupted"
+    assert entry["status"] != "completed"
+    assert entry["current_task_id"] is None
+
+
 async def test_agents_handler_with_injected_empty_registry_returns_empty_list(
     channel: WebSocketChannel,
 ) -> None:
