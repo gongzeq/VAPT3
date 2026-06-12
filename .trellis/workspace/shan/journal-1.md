@@ -809,3 +809,36 @@ Implemented session-scoped Asset Auto-Management, CMDB-backed managed asset dedu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Recoverable expert agent interruption handling
+
+**Date**: 2026-06-13
+**Task**: Recoverable expert agent interruption handling
+**Branch**: `main`
+
+### Summary
+
+Implemented recoverable interrupted expert-agent handling: exposed interrupted status, added wait/check subagent lifecycle tools, bridged skill findings into structured vulnerability state, merged report-html sources with partial-report blocking, and updated frontend status/usage handling with targeted tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e18e4535d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
