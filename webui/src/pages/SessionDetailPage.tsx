@@ -23,6 +23,7 @@ import {
   Play,
   Radar,
   ShieldAlert,
+  StopCircle,
   Trash2,
   Wrench,
   XCircle,
@@ -36,6 +37,7 @@ import { MessageBubble } from "@/components/MessageBubble";
 import { Button } from "@/components/ui/button";
 import { useSessionsList } from "@/hooks/useSessionsList";
 import { useSessionHistory } from "@/hooks/useSessions";
+import { useClient } from "@/providers/ClientProvider";
 import { cn } from "@/lib/utils";
 import type {
   ReportRow,
@@ -510,6 +512,12 @@ const ERROR_KEYWORDS = [
 ];
 
 function isErrorMessage(msg: UIMessage): boolean {
+  // 思考类消息不应归入错误列表，即使内容中包含错误关键词
+  if (msg.kind === "agent_event" && msg.agentEvent) {
+    const t = msg.agentEvent.type;
+    if (t === "thought" || t === "orchestrator_plan" || t === "blackboard_entry")
+      return false;
+  }
   if (msg.kind === "agent_event" && msg.agentEvent) {
     const evt = msg.agentEvent;
     if (evt.type === "llm_retry") return true;
@@ -628,6 +636,9 @@ function SessionMessagesPanel({ sessionKey }: { sessionKey: string }) {
 
   const classified = useMemo(() => classifyMessages(messages), [messages]);
   const activeMessages = classified[activeTab];
+  // Auto-expand all collapsible entries when a specific category is active,
+  // so users see full detail immediately upon clicking a filter tab.
+  const defaultExpanded = activeTab !== "all";
 
   return (
     <div className="flex flex-col rounded-2xl border border-border/60 bg-card/30 overflow-hidden">
@@ -694,7 +705,7 @@ function SessionMessagesPanel({ sessionKey }: { sessionKey: string }) {
         ) : (
           <div className="flex flex-col gap-4 p-5">
             {activeMessages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble key={msg.id} message={msg} defaultExpanded={defaultExpanded} />
             ))}
           </div>
         )}
@@ -745,6 +756,7 @@ export function SessionDetailPage() {
   const navigate = useNavigate();
   const { key } = useParams<{ key: string }>();
   const { sessions, loading } = useSessionsList();
+  const { client } = useClient();
   const locale = i18n.resolvedLanguage ?? "zh-CN";
 
   const row = useMemo(
@@ -875,6 +887,19 @@ export function SessionDetailPage() {
                   })}
                   <ArrowUpRight className="h-3 w-3" />
                 </Button>
+                {row.status === "running" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                    onClick={() => client.stopChat(row.chatId)}
+                  >
+                    <StopCircle className="h-3.5 w-3.5" />
+                    {t("sessionDetail.interrupt", {
+                      defaultValue: "中断会话",
+                    })}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
