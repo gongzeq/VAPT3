@@ -95,15 +95,6 @@ export function Shell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionParam]);
 
-  // First-load fallback: when no `?session=` is provided, auto-select the
-  // most recent thread once the session list has loaded for the first time.
-  useEffect(() => {
-    if (activeKey || sessionParam) return;
-    if (sessions.length > 0 && lastSessionsLen.current === 0) {
-      setActiveKey(sessions[0].key);
-    }
-    lastSessionsLen.current = sessions.length;
-  }, [sessions, activeKey, sessionParam]);
 
   const activeSession = useMemo<ChatSummary | null>(() => {
     if (!activeKey) return null;
