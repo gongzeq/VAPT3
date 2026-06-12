@@ -24,6 +24,16 @@ for weak / default credentials.
    `user_list` / `pass_list` (or the skill's built-in defaults when
    omitted). Never invent credentials.
 
+**Safe log reading** — skill results already contain structured data (valid
+credentials, service info). Prefer them first. If you must inspect a raw log
+to extract something specific (e.g. a service response, a connection error):
+- **Use `grep`** with a targeted regex (e.g. `valid|success|login` for
+  credential hits, `error|refused|timeout` for connection issues).
+- **Or use `read_file` with `limit`** — e.g. `read_file(path, limit=50)` or
+  `read_file(path, offset=200, limit=30)` for a specific section.
+- **NEVER call `read_file` on a scanner output file without `limit`** — these
+  files can have tens of thousands of lines and will exhaust the context window.
+
 ## Output
 
 Return `{"findings": [...]}`. NEVER include passwords in the LLM-visible

@@ -25,6 +25,17 @@ CMDB is written by the platform — you do NOT call CMDB skills directly.
    once to gather HTTP fingerprints in a single pass.
 4. Stop as soon as the live-host list is stable. Do not re-scan.
 
+**Safe log reading** — skill results already contain structured data (hosts,
+ports, services). Prefer them first. If you must inspect a raw log or output
+file to extract something specific (e.g. a port number, a missed host, an
+error):
+- **Use `grep`** with a targeted regex (e.g. `\d+\.\d+\.\d+\.\d+` for IPs,
+  `open|filtered` for port states).
+- **Or use `read_file` with `limit`** — e.g. `read_file(path, limit=50)` or
+  `read_file(path, offset=200, limit=30)` for a specific section.
+- **NEVER call `read_file` on a scanner output file without `limit`** — these
+  files can have tens of thousands of lines and will exhaust the context window.
+
 ## Output
 
 Return `{"assets": [...]}` matching the agent's `output_schema`. Truncate any

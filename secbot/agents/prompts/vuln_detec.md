@@ -77,6 +77,17 @@ If `vuln-detec-manual` returns no HIGH-confidence findings and you suspect
 a CTF-style challenge, read the `ctf-web` SKILL.md with `read_file` and
 invoke it if appropriate.
 
+**Safe log reading** — skill results already contain structured data (findings,
+evidence, payloads). Prefer them first. If you must inspect a raw log or HTTP
+response dump to extract something specific (e.g. a response header, a timing
+value, an error snippet):
+- **Use `grep`** with a targeted regex (e.g. `HTTP/\d|status|timing` for HTTP
+  response details, `error|vulnerable|positive` for test outcomes).
+- **Or use `read_file` with `limit`** — e.g. `read_file(path, limit=50)` or
+  `read_file(path, offset=200, limit=30)` for a specific section.
+- **NEVER call `read_file` on a scanner output file without `limit`** — these
+  files can have tens of thousands of lines and will exhaust the context window.
+
 ## Output
 
 The `vuln-detec-manual` skill returns a `findings` array. Relay the key
@@ -91,10 +102,42 @@ results in your final report. Each finding contains:
 
 You have **two complementary write channels** — use the right one:
 
-- **`asset_push(kind="vuln", payload=...)`** — call this **once per
-  positive / high-confidence finding** so the orchestrator can pivot
-  to vuln_scan / weak_password / report in real time.
-  - `asset_push(kind="vuln", payload={"url": "https://t/page?id=1", "type": "sqli", "confidence": "high", "payload": "1' AND SLEEP(3)--"})`
+- **`report_vulnerability(...)`** — call this **once per positive /
+  high-confidence finding** so the orchestrator can pivot to
+  vuln_scan / weak_password / report in real time. This writes to the
+  shared `VulnerabilityStore` which `report_html` reads to build the
+  final vulnerability table. It also dual-writes to `AssetFeed` for
+  the frontend asset list.
+
+  **Required parameters:**
+  - `title` (string) — descriptive vulnerability title
+  - `severity` (string) — HackerOne CVSS: `critical`, `high`, `medium`, `low`, `info`
+  - `description` (string) — detailed technical description and risk
+  - `exploitation_proof` (string) — actual command output, HTTP response, or other verification evidence
+  - `verification_method` (string) — one of: `automated_scan`, `manual_test`, `code_review`, `exploit_reproduction`, `configuration_audit`
+  - `cvss` (float, optional) — CVSS score; auto-assigned from severity when omitted
+
+  **Optional parameters:**
+  - `endpoint` (string) — affected endpoint URL / path
+  - `poc_description` (string) — proof-of-concept description
+  - `poc_script_code` (string) — PoC script / curl command
+  - `remediation_steps` (string) — fix recommendation
+
+  **Example:**
+  ```
+  report_vulnerability(
+    title="Time-based blind SQL injection in 'id' parameter",
+    severity="high",
+    description="Time-based blind SQL injection confirmed on /page endpoint. Injecting SLEEP(5) into the 'id' parameter caused a measurable 5-second response delay compared to the 0.12s baseline, confirming the application concatenates user input directly into SQL queries without parameterisation.",
+    exploitation_proof="Request: GET /page?id=1' AND SLEEP(5)-- HTTP/1.1\nHost: target\n\nResponse: HTTP/1.1 200 OK (response time: 5.03s vs baseline 0.12s)",
+    verification_method="manual_test",
+    endpoint="https://target/page?id=1",
+    poc_description="Inject SLEEP(5) payload into id parameter and compare response time against baseline",
+    poc_script_code="curl -v 'https://target/page?id=1%27%20AND%20SLEEP(5)--'",
+    remediation_steps="Use parameterised queries or an ORM that handles escaping. Apply input validation and WAF rules as defence-in-depth."
+  )
+  ```
+
 - **`read_assets(kind="url")`** — pull the URL catalogue produced by
   crawl_web before probing; do NOT re-discover endpoints.
 - **`blackboard_write`** — one phase-level summary or strategic

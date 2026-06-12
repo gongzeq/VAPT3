@@ -18,6 +18,16 @@ fingerprint services on hosts produced by `asset_discovery`.
 3. Honour `rate`: `slow` → `-T2`, `normal` → `-T3`, `fast` → `-T4`. Never
    exceed `-T4` from this agent — `-T5` is reserved for the user.
 
+**Safe log reading** — skill results already contain structured data (ports,
+services, versions). Prefer them first. If you must inspect a raw log to
+extract something specific (e.g. an exact service banner, a missed port):
+- **Use `grep`** with a targeted regex (e.g. `open\s+\w+` for open ports,
+  `version|banner` for service info).
+- **Or use `read_file` with `limit`** — e.g. `read_file(path, limit=50)` or
+  `read_file(path, offset=200, limit=30)` for a specific section.
+- **NEVER call `read_file` on a scanner output file without `limit`** — these
+  files can have tens of thousands of lines and will exhaust the context window.
+
 ## Output
 
 Return `{"services": [...]}`. Cap the list at 500 entries; raw output is on

@@ -21,6 +21,15 @@ scans (`nuclei-template-scan`), fingerprint-based weakness checks
 - Never dump more rows than the user requested. When `action=dump` and
   `limit` is omitted, pick the smallest value that still demonstrates the
   exposure (typically 10).
+- **Safe log reading** — skill results already contain structured data
+  (findings, severity, evidence). Prefer them first. If you must inspect a raw
+  log to extract something specific (e.g. a template match detail, an error):
+  - **Use `grep`** with a targeted regex (e.g. `\[(critical|high|medium)\]`
+    for severity, `matched-at|matched_at` for hit locations).
+  - **Or use `read_file` with `limit`** — e.g. `read_file(path, limit=50)` or
+    `read_file(path, offset=200, limit=30)` for a specific section.
+  - **NEVER call `read_file` on a scanner output file without `limit`** — these
+    files can have tens of thousands of lines and will exhaust the context window.
 
 ## Procedure
 
@@ -80,10 +89,42 @@ to 512 chars before returning.
 
 You have **two complementary write channels** — use the right one:
 
-- **`asset_push(kind, payload)`** — call this **once per confirmed
+- **`report_vulnerability(...)`** — call this **once per confirmed
   vulnerability** so the orchestrator can decide on exploitation,
-  reporting, or escalation in real time.
-  - `asset_push(kind="vuln", payload={"url": "http://10.0.0.5/api/user", "param": "id", "type": "sqli", "severity": "critical", "evidence": "..."})`
+  reporting, or escalation in real time. This writes to the shared
+  `VulnerabilityStore` which `report_html` reads to build the final
+  vulnerability table. It also dual-writes to `AssetFeed` for the
+  frontend asset list.
+
+  **Required parameters:**
+  - `title` (string) — descriptive vulnerability title
+  - `severity` (string) — HackerOne CVSS: `critical`, `high`, `medium`, `low`, `info`
+  - `description` (string) — detailed technical description and risk
+  - `exploitation_proof` (string) — actual command output, HTTP response, or other verification evidence
+  - `verification_method` (string) — one of: `automated_scan`, `manual_test`, `code_review`, `exploit_reproduction`, `configuration_audit`
+  - `cvss` (float, optional) — CVSS score; auto-assigned from severity when omitted
+
+  **Optional parameters:**
+  - `endpoint` (string) — affected endpoint URL / path
+  - `poc_description` (string) — proof-of-concept description
+  - `poc_script_code` (string) — PoC script / curl command
+  - `remediation_steps` (string) — fix recommendation
+
+  **Example:**
+  ```
+  report_vulnerability(
+    title="SQL Injection in id parameter",
+    severity="critical",
+    description="Boolean-based blind SQL injection in the 'id' parameter of /api/user endpoint. The application does not sanitise user input before concatenating it into the SQL query, allowing an attacker to extract arbitrary data from the database.",
+    exploitation_proof="GET /api/user?id=1' AND SLEEP(3)-- HTTP/1.1\nHost: 10.0.0.5\n\nResponse delayed by 3 seconds confirming SLEEP() execution.",
+    verification_method="automated_scan",
+    endpoint="http://10.0.0.5/api/user?id=1",
+    poc_description="Inject SLEEP(3) payload into id parameter and measure response time delta",
+    poc_script_code="curl -v 'http://10.0.0.5/api/user?id=1%27%20AND%20SLEEP(3)--'",
+    remediation_steps="Use parameterised queries or a prepared statement API. Never concatenate user input directly into SQL strings."
+  )
+  ```
+
 - **`read_assets(kind="url")` / `read_assets(kind="port")`** — before
   scanning, pull the upstream URL/port catalogue so you target only
   what crawl_web / port_scan already produced; do NOT re-discover.
@@ -93,6 +134,6 @@ You have **two complementary write channels** — use the right one:
   - `[blocker]   vuln_scan: sqlmap-dump denied by user — cannot prove exposure.`
   - `[finding]   vuln_scan: pattern of authenticated-only endpoints — recommend orchestrator pivot to weak_password.`
 
-Per-vulnerability entries MUST go to `asset_push`. Never inline the
-raw nuclei/sqlmap blob into either channel — summarise. Full detail
-stays in `summary_json`.
+Per-vulnerability entries MUST go to `report_vulnerability`. Never inline the
+raw nuclei/sqlmap blob — extract the key PoC request/response into the
+structured fields above.
