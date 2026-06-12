@@ -87,6 +87,55 @@ Each report format is a separate skill so the Orchestrator can request them à l
 | Template render error | Skill raises `ReportRenderError`, NOT caught — Orchestrator surfaces a `tool_error` event. |
 | weasyprint missing system dep (cairo / pango) | At startup, `secbot doctor` prints actionable hint; skill itself fails fast with `MissingDependencyError`. |
 
+## 7. Scenario: Transient Asset Feed Fallback
+
+### 1. Scope / Trigger
+
+- Trigger: `report-html` is invoked for the current scan/session and the CMDB model is empty because Asset Auto-Management is disabled.
+- Scope: current in-process `AssetFeed` only. This fallback is for rendering the current session's discoveries, not for promoting scan discoveries into Managed Assets.
+
+### 2. Signatures
+
+- Context binding: `bind_skill_context(scan_id, scan_dir, ..., asset_feed=<AssetFeed>)`.
+- Report builder: `build_report_model_from_asset_entries(entries, *, scan_id, target=None) -> ReportModel`.
+- `report-html` input may include optional `target: string`; when omitted, the builder infers target from feed payload URLs/hosts.
+
+### 3. Contracts
+
+- `report-html` MUST query CMDB first and use the CMDB model when it has assets.
+- If the CMDB model is empty and an asset feed is bound, `report-html` reads `await asset_feed.to_dict_list()` and builds a normal `ReportModel`.
+- The fallback MUST NOT insert `asset`, `service`, or `vulnerability` rows. It may still record `report_meta` after a successful render.
+- Supported feed kinds: `url` creates/keeps the asset, `tech` enriches asset metadata, `port`/`service` create report services, `vuln` creates report findings.
+- Severity/category values from free-form `asset_push(kind="vuln")` payloads are normalized into the standard report vocabularies.
+
+### 4. Validation & Error Matrix
+
+| Condition | Result |
+|-----------|--------|
+| CMDB has assets | Render from CMDB; ignore asset-feed fallback. |
+| CMDB empty + bound asset feed has entries | Render HTML from asset-feed-derived model. |
+| CMDB empty + no bound asset feed or empty feed | Return `status="empty"` with `report_path=null`. |
+| Asset feed read raises | Log warning and continue as empty fallback. |
+| Feed entry has invalid/non-object payload | Skip that entry. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: WebSocket scan with Asset Auto-Management disabled pushes `url`, `tech`, and `vuln` entries; `report-html` generates `report.html` without CMDB asset rows.
+- Base: A CMDB-backed scan exists; `report-html` renders the CMDB data exactly as before.
+- Bad: Enabling report generation silently promotes transient discoveries into Managed Assets.
+
+### 6. Tests Required
+
+- Unit test for `build_report_model_from_asset_entries()` grouping host-level assets and normalizing vulnerability severity/category.
+- Skill test where CMDB is empty but a bound `AssetFeed` has vuln entries; assert `status="ok"` and HTML contains findings.
+- Persistence assertion: after fallback render, `list_assets(..., scan_id)` remains empty.
+
+### 7. Wrong vs Correct
+
+Wrong: Turn Asset Auto-Management on by default so `report-html` has CMDB rows.
+
+Correct: Keep the CMDB ingestion gate default-off, and let `report-html` use the current session's read-only asset-feed snapshot as a render-only fallback.
+
 ---
 
 ## Origin
