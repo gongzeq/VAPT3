@@ -893,25 +893,20 @@ class SubagentManager:
           blocker + return)
         - untrusted-content snippet
         - SKILL.md self-inspection hint
-        - **spec.system_prompt** (when an expert-agent spec is resolved)
 
-        The scaffold owns the *how* (safety + tool-discovery guidance); the
-        per-agent system_prompt owns the *what* (test steps, parameter shapes,
-        output format).  Both are needed because the orchestrator's ``task``
-        is typically too short to replace the full agent role description.
+        Expert-specific routing and execution instructions are NOT appended
+        here. The Orchestrator owns prompt composition and must pass the full
+        task body as the subagent's user message.
         """
         from secbot.agent.context import ContextBuilder
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
-        base = render_template(
+        return render_template(
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(self.workspace),
             skills_dir=str(BUILTIN_SKILLS_DIR),
         )
-        if spec is not None and spec.system_prompt:
-            base = base.rstrip() + "\n\n" + spec.system_prompt.strip() + "\n"
-        return base
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

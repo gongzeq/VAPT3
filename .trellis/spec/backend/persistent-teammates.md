@@ -127,7 +127,7 @@ shutdown_teammate
 
 ### 5. Good / Base / Bad Cases
 
-- Good: use `delegate_task` for disposable expert work where only a summary should return to the orchestrator.
+- Good: use `create_agent` for disposable expert work where only a summary should return to the orchestrator.
 - Good: use `spawn_teammate` only when durable mailbox state or cross-turn teammate identity is required.
 - Base: a teammate reads its own inbox via `read_teammate_inbox`; orchestrator may read named inboxes for manual inspection.
 - Bad: treating `.team/inbox/*.jsonl` as chat history. It is a drain-on-read mailbox, not a transcript.

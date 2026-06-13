@@ -13,6 +13,14 @@ _AGENTS_DIR = Path(__file__).resolve().parents[2] / "secbot" / "agents"
 def test_render_contains_all_sections():
     reg = load_agent_registry(_AGENTS_DIR)
     rendered = render_orchestrator_prompt(reg)
+    headings = [line for line in rendered.splitlines() if line.startswith("# ")]
+    assert headings == [
+        "# Role",
+        "# Hard rules",
+        "# Planning",
+        "# Available expert agents",
+        "# Working style",
+    ]
     assert rendered.startswith("# Role\n")
     assert "\n# Hard rules\n" in rendered
     assert "\n# Planning\n" in rendered
@@ -83,7 +91,30 @@ def test_planning_section_present():
     planning_end = rendered.index("\n# Available expert agents\n")
     planning = rendered[planning_start:planning_end]
     assert "Dynamically decide" in planning
+    assert "# Available expert agents` descriptions" in planning
+    assert "`read_blackboard`" in planning
+    assert "`read_assets`" in planning
+    assert "asset or finding summary" in planning
+    assert "feed that summary into the next agent's `task`" in planning
     assert "write_plan" in planning
+
+
+def test_prompt_names_core_orchestration_tools():
+    """Prompt contract must keep delegation, lifecycle, approval, and report tools visible."""
+    reg = load_agent_registry(_AGENTS_DIR)
+    rendered = render_orchestrator_prompt(reg)
+    for name in (
+        "create_agent",
+        "check_subagents",
+        "wait_subagent",
+        "read_blackboard",
+        "read_assets",
+        "read_file",
+        "write_plan",
+        "request_approval",
+        "message",
+    ):
+        assert f"`{name}`" in rendered
 
 
 def test_agent_descriptions_render_full_multiline():

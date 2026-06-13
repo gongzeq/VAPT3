@@ -1,113 +1,207 @@
 # Orchestrator System Prompt
 
-> Defines the system prompt template for the Orchestrator (top-layer agent) and the multi-turn routing strategy it MUST follow.
-> Implementation: `secbot/templates/orchestrator.md` (loaded by `secbot/agent/runner.py` at startup).
+> Defines the locked system prompt template for the top-layer Orchestrator and
+> the dynamic routing strategy it MUST follow.
+> Implementation: `secbot/agents/orchestrator.py`, rendered by
+> `ContextBuilder.build_system_prompt(..., is_orchestrator=True)`.
 
 ---
 
 ## 1. Prompt Skeleton
 
-The orchestrator system prompt is composed of **four** locked sections, in order. Inserting or reordering sections requires an ADR.
+The Orchestrator system prompt is composed of **five** locked sections, in
+order. Inserting, deleting, or reordering sections requires an ADR plus focused
+prompt-contract tests.
 
 ```markdown
 # Role
-You are secbot, a security operations assistant. You orchestrate specialised
-expert agents to fulfil the user's security task.
+You are secbot...
 
 # Hard rules
-- You DO NOT execute scans yourself. You route to expert agents via tool calls.
-- You use `wait_subagent` / `check_subagents` for expert-agent lifecycle
-  decisions; never poll `read_assets` to wait for a subagent to finish.
-- You MUST respect the natural ordering: asset_discovery → port_scan → crawl_web
-  → vuln_scan → (weak_password | pentest) → report. Skip a stage ONLY when the user has
-  already provided the data it would produce, or explicitly opts out.
-- You MUST request high-risk confirmation when an expert is about to invoke a
-  critical-risk skill (the expert handles the gate; you must NOT bypass it by
-  inventing skill calls of your own).
-- You MUST refuse out-of-scope requests (offensive ops on third-party assets
-  without authorisation, IM bridge configuration, marketplace).
+- Tool surface declaration.
+- Strict delegation through `create_agent`.
+- Restricted `.secbot/` file access.
+- Subagent lifecycle completion gate.
+- High-risk approval guardrail.
+- Mandatory report generation for scanning tasks unless the user opts out.
+
+# Planning
+- Dynamic OODA planning/replanning.
+- Registry-driven expert selection.
+- Blackboard/asset-summary driven task composition.
+- Redundancy avoidance.
 
 # Available expert agents
-{{AGENT_TOOL_TABLE}}    # auto-injected at startup from agent registry
+### `<agent_name>`(...)
+- Endpoint-bound: ...
+- Skills: ...
+
+<full YAML description>
 
 # Working style
-- Plan in 1-3 steps before calling any tool. Emit the plan as a `plan` part.
-- After each tool result, decide: continue / replan / ask user.
-- Summarise findings with severity counts and link to the raw log path that
-  the expert agent returned.
-- Use the user's language (default: 中文).
+- Action-cycle decisions after every tool result.
+- Asset/file ingestion rules.
+- Knowledge propagation.
+- Final report surfacing.
+- User-language guidance.
 ```
 
-### 1.1 Field rules
+### 1.1 Field Rules
 
 | Section | Rule |
 |---------|------|
-| `# Role` | Single sentence. No persona embellishments. |
-| `# Hard rules` | Bullet list, each rule ≤ 1 line. New rules require ADR + corresponding `trellis-check` enforcement. |
-| `# Available expert agents` | Table is **auto-generated** from [agent-registry-contract.md](./agent-registry-contract.md). Never hand-edit. |
-| `# Working style` | Free prose; tweakable, but the bullet "Plan in 1-3 steps" is load-bearing for the WebUI `PlanTimeline`. |
+| `# Role` | Names secbot as a privileged security operations orchestrator. It must say the Orchestrator delegates operational work and does not run scans directly. |
+| `# Hard rules` | Lists the live Orchestrator tools and non-negotiable safety/completion/reporting rules. It MUST NOT encode a fixed scan pipeline. |
+| `# Planning` | Requires dynamic planning and replanning from current user intent, registry descriptions, blackboard state, asset summaries, and subagent lifecycle state. |
+| `# Available expert agents` | Auto-generated from [agent-registry-contract.md](./agent-registry-contract.md). It renders each expert's full YAML `description`, endpoint-bound flag, and scoped skills. Never hand-edit generated entries. |
+| `# Working style` | Free prose, but it must preserve the action-cycle, asset/file ingestion, final report, and user-language guidance. |
+
+The prompt text MUST be byte-stable for the same registry contents. Do not add
+wall-clock time, random ordering, session state, or user content to the system
+prompt.
 
 ---
 
-## 2. Multi-Turn Strategy
+## 2. Dynamic Planning Strategy
 
-The Orchestrator runs the standard ReAct loop in `agent/loop.py`. Four project-specific behaviours apply:
+The Orchestrator runs the standard ReAct loop in `agent/loop.py`, but its
+routing must be state-driven rather than a fixed stage list.
 
-### 2.1 Stage ordering
+### 2.1 Observe
 
-| Stage | Default expert | Skip condition |
-|-------|----------------|----------------|
-| 1 | `asset_discovery` | User provided host list explicitly |
-| 2 | `port_scan` | User provided port list explicitly |
-| 3 | `crawl_web` | No HTTP/HTTPS web targets are in scope, or user provided crawl candidates explicitly |
-| 4 | `vuln_scan` | User asked for inventory only |
-| 5 | `weak_password` / `pentest` | User did not request offensive verification |
-| 6 | `report` | User explicitly said "no report" |
+Before spawning or respawning experts, inspect the available state that matters:
 
-The Orchestrator MUST emit a single `plan` message at the start with the projected stages; subsequent turns MAY revise the plan but MUST emit the revised plan before re-calling tools.
+- the user's current request and explicit scope/constraints,
+- expert descriptions under `# Available expert agents`,
+- subagent lifecycle via `check_subagents` / `wait_subagent`,
+- relevant blackboard entries via `read_blackboard`,
+- structured asset deltas via `read_assets` after an expert has produced work,
+- persisted `.secbot/` artifacts via `read_file` only when a subagent announces
+  `[tool output persisted]`.
 
-### 2.2 Backoff on tool error
+### 2.2 Orient
+
+Use the registry descriptions as the routing source of truth. Examples:
+
+- `asset_discovery` is useful for CIDR/subnet/ambiguous asset inventory.
+- `port_scan` is useful when hosts are known but service ports are not.
+- `crawl_web` is useful for authorized HTTP/HTTPS URL exploration.
+- `vuln_detec` is for suspicious HTTP/HTTPS endpoints and must not receive
+  non-HTTP services.
+- `vuln_scan` handles template/service vulnerability scans and consumes
+  targeted hypotheses when available.
+- `weak_password` is endpoint-bound and high-risk.
+- `report` generates final deliverables or detection-data summaries.
+
+These are examples of description-driven routing, not a required sequence. Skip
+work that the user already supplied or that the blackboard/asset feed already
+proves.
+
+### 2.3 Decide
+
+Before dispatching tools, write a concise 1-3 step plan with `write_plan`.
+After each tool result, explicitly choose one state:
+
+- Continue
+- Replan
+- Request Approval
+- Answer
+
+If the current evidence changes the route, write the revised plan before the
+next dispatch.
+
+### 2.4 Act
+
+Spawn experts only through:
+
+```text
+create_agent(name, task, target, endpoint_url?, endpoint_param?)
+```
+
+The `task` argument is the expert's complete user message. It must contain the
+goal, relevant scope, summarized findings or blackboard excerpts, constraints,
+expected output, and any expert-specific execution guidance the Orchestrator
+wants followed. `target`, `endpoint_url`, and `endpoint_param` are routing and
+audit metadata; they are not automatically injected into the LLM prompt.
+
+---
+
+## 3. Subagent Boundary
+
+Subagents receive exactly one system message and one user message at start:
+
+```python
+[
+    {"role": "system", "content": "<slim subagent scaffold>"},
+    {"role": "user", "content": create_agent.task},
+]
+```
+
+The subagent system message is only the shared scaffold from
+`secbot/templates/agent/subagent_system.md`. The runtime MUST NOT append
+`spec.system_prompt`, skill summaries, automatic blackboard snapshots, asset
+snapshots, or parent conversation history. Expert-specific knowledge belongs in
+agent YAML descriptions for Orchestrator routing and in the Orchestrator-authored
+`create_agent.task` for execution.
+
+---
+
+## 4. Tool Surface
+
+The live Orchestrator tools are documented in
+[orchestrator-tool-whitelist.md](./orchestrator-tool-whitelist.md). The prompt
+must name the coordination tools it expects to use:
+
+- `create_agent`
+- `check_subagents`
+- `wait_subagent`
+- `read_blackboard`
+- `read_assets`
+- `read_file`
+- `write_plan`
+- `request_approval`
+- `message`
+
+The Orchestrator MUST NOT call security skills directly.
+
+---
+
+## 5. Error, Approval, and Completion Rules
 
 | Tool result | Orchestrator action |
 |-------------|---------------------|
-| `summary.error` set | Replan once. If the same expert errors twice in a row, surface to user and stop. |
-| `summary.user_denied: true` | Treat as deliberate stop for that expert; ask user for an alternative path. Do NOT retry the same skill in the same turn. |
-| `summary.cancelled: true` | Stop the entire scan; emit a final summary of what completed. |
+| Subagent `error` | Analyze and adjust parameters/context before retrying. Never retry the exact same action more than twice. |
+| Subagent `incomplete` / budget exhaustion | Treat as partial work. Read the summary, replan, and decide whether to redispatch with narrower scope. |
+| `wait_subagent` timeout | Ask the user to wait, skip, or abort; do not infer completion from asset polling. |
+| User denies approval | Treat as a deliberate stop for that high-risk path and choose an alternative or answer with partial results. |
+| No new assets | Stop reading assets and use lifecycle tools or replan. |
 
-### 2.3 Subagent lifecycle waiting
-
-The Orchestrator MUST distinguish lifecycle control from asset ingestion:
-
-- `wait_subagent` waits for one or more spawned expert agents to reach a
-  terminal state, with a bounded timeout.
-- `check_subagents` returns the current session's running and recently
-  completed/error/incomplete expert-agent snapshots.
-- `read_assets` is only for structured asset deltas after an expert has
-  produced or completed work. A `No new assets.` result is not a wait signal;
-  stop reading assets and use `check_subagents`, `wait_subagent`, or replan.
-
-### 2.4 Token budget
-
-The Orchestrator MUST respect [context-trimming.md](./context-trimming.md). When approaching the model's context limit:
-
-1. Drop tool-call payloads older than the last 3 turns from history (keep summaries).
-2. Replace dropped raw `summary_json` with `{"truncated": true, "raw_log_path": "..."}`.
-3. Never drop the system prompt or the original user request.
+For scanning tasks, the Orchestrator MUST invoke the `report` expert before
+concluding unless the user explicitly opts out. When the `report` expert returns
+a `report_path`, surface it immediately and summarize important findings.
 
 ---
 
-## 3. Forbidden Patterns
+## 6. Forbidden Patterns
 
 | Anti-pattern | Why |
 |--------------|-----|
-| Asking the LLM to compose nmap/fscan command lines | Bypasses the skill schema; reintroduces injection risk. |
-| Hard-coding expert names in the prompt template | Breaks AC4 — the agent table is auto-injected from the registry. |
-| Inserting "you may use shell commands" | Surface MUST stay sandboxed; only skills shell out, via `tool-invocation-safety.md`. |
-| Adding a `# Persona` section | Out of scope for MVP; no role-play behaviour wanted. |
+| Encoding a fixed scan sequence in the system prompt | The correct route depends on the current user request, known assets, registry descriptions, and subagent outputs. |
+| Asking the LLM to compose nmap/fscan/nuclei/hydra command lines | Bypasses typed SkillTool schemas and sandboxing. |
+| Hard-coding expert routing logic outside YAML descriptions and tests | Breaks registry-driven extensibility. |
+| Injecting per-agent prompt files into subagent system messages | Hides execution instructions from the Orchestrator-owned `task` boundary. |
+| Using `read_assets` as a wait signal | Asset deltas are data, not lifecycle state. Use `check_subagents` or `wait_subagent`. |
+| Adding a `# Persona` section | Out of scope; no role-play behavior wanted. |
 
 ---
 
-## 4. Test Hooks
+## 7. Test Hooks
 
-- `tests/agent/test_orchestrator_prompt.py` MUST snapshot the rendered prompt for a known agent registry; snapshot mismatch on PR fails CI.
-- `tests/agent/test_orchestrator_routing.py` MUST cover: stage skip when user provides hosts, replan after error, stop after `user_denied`.
+- `tests/agent/test_orchestrator_prompt.py` MUST assert the five sections,
+  dynamic/OODA planning guidance, full multiline YAML descriptions, mandatory
+  report guidance, lifecycle tools, and absence of fixed-order wording.
+- Tool-surface tests MUST assert the exact Orchestrator whitelist from
+  [orchestrator-tool-whitelist.md](./orchestrator-tool-whitelist.md).
+- Subagent tests MUST assert initial messages are the slim scaffold system
+  message plus the exact `create_agent.task` user message, with no appended
+  `spec.system_prompt`.

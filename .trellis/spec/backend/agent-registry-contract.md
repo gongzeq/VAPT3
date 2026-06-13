@@ -1,151 +1,180 @@
 # Agent Registry Contract
 
-> Defines how Expert Agents are declared, discovered, and exposed to the Orchestrator.
-> Implementation lives under `secbot/agent/subagent.py` + a new `secbot/agents/` registry directory.
+> Defines how expert agents are declared, discovered, and exposed to the
+> Orchestrator. Implementation lives under `secbot/agents/registry.py`,
+> `secbot/agent/subagent.py`, and `secbot/agents/`.
 
 ---
 
 ## 1. Storage Layout
 
-```
+```text
 secbot/agents/
 ├── asset_discovery.yaml
+├── crawl_web.yaml
 ├── port_scan.yaml
+├── vuln_detec.yaml
 ├── vuln_scan.yaml
 ├── weak_password.yaml
-├── pentest.yaml
-└── report.yaml
+├── report.yaml
+└── prompts/
+    └── <agent>.md
 ```
 
-One YAML file per expert agent. Filename (without extension) IS the agent's
-registered name; the Orchestrator picks it via `create_agent(name=...)`. Per-
-agent tools (one tool per yaml) are no longer exposed at the LLM tool surface
-(see `orchestrator-tool-whitelist.md` and decision D2 in
-`05-18-subagent-prompt-minimal-create-agent/prd.md`).
+One YAML file declares one expert agent. Filename without extension is the
+registered name, and the Orchestrator selects it with
+`create_agent(name=...)`. Per-agent tools are not exposed at the Orchestrator
+LLM surface; see [orchestrator-tool-whitelist.md](./orchestrator-tool-whitelist.md).
 
 ---
 
 ## 2. YAML Schema
 
 ```yaml
-# secbot/agents/<name>.yaml
-name: asset_discovery                # required, snake_case, == filename
-display_name: 资产探测                # required, shown in WebUI plan timeline
-description: |                       # required, drives Orchestrator routing
-  Discover live hosts, services and basic asset
-  inventory under a target CIDR/IP/domain.
-  Use BEFORE port_scan or vuln_scan.
+name: asset_discovery
+display_name: 资产探测
+description: |
+  Full routing description rendered into the Orchestrator prompt.
+  This is where expert selection guidance belongs.
 
-system_prompt_file: ./prompts/asset_discovery.md  # required, path relative to YAML
+system_prompt_file: ./prompts/asset_discovery.md
 
-scoped_skills:                       # required, non-empty list
-  - nmap-host-discovery
+scoped_skills:
+  - qscan-host-discovery
   - fscan-asset-discovery
-  - cmdb-add-target
 
-model:                               # optional, falls back to global default
+model:
   provider: openai
   name: gpt-4o-mini
   temperature: 0.1
 
-max_iterations: 8                    # optional, default 10
-emit_plan_steps: true                # optional, default true (renders in PlanTimeline)
-endpoint_bound: false                # optional, default false. When true, the
-                                     # agent operates on a single (endpoint_url,
-                                     # endpoint_param) pair and SubagentManager
-                                     # enforces endpoint-level mutual exclusion.
+max_iterations: 10
+emit_plan_steps: true
+endpoint_bound: false
+allow_exec: false
+minimal_tools: false
 
-legacy_input_schema:                 # required (alias `input_schema` accepted
-                                     # with a DeprecationWarning during the
-                                     # migration window — decision D7). Kept
-                                     # for diagnostics & schema docs ONLY; the
-                                     # Orchestrator no longer hands per-agent
-                                     # input shapes to the LLM.
+legacy_input_schema:
   type: object
   required: [target]
   properties:
     target:
       type: string
-      description: CIDR / IP / domain
-    label:
-      type: string
-      description: Optional human label written into CMDB
 
-output_schema:                       # required, declares the summary returned to Orchestrator
+output_schema:
   type: object
-  required: [assets]
-  properties:
-    assets:
-      type: array
-      items:
-        type: object
-        required: [target, kind]
-        properties:
-          target: {type: string}
-          kind:   {type: string, enum: [cidr, ip, domain]}
-          label:  {type: string}
 ```
 
 ### 2.1 Field Rules
 
 | Field | Rule |
 |-------|------|
-| `name` | MUST equal filename stem; MUST match `^[a-z][a-z0-9_]*$`. |
-| `scoped_skills` | Each entry MUST exist as a registered skill (`secbot/skills/<entry>/SKILL.md`). Loader fails fast if missing. |
-| `system_prompt_file` | MUST exist; loader reads it and **appends** it to the subagent system prompt (after the safety scaffold). This gives the subagent both the hard-rules skeleton and the per-agent role instructions. |
-| `legacy_input_schema` / `output_schema` | MUST be valid JSON Schema 2020-12. `legacy_input_schema` is informational only — the Orchestrator no longer validates `args` against it (the `create_agent` tool has its own fixed schema). `output_schema` MAY still drive post-run summary validation. The legacy alias `input_schema` is accepted with a DeprecationWarning. |
-| `endpoint_bound` | Optional bool, default `false`. When `true`, `create_agent` MUST receive both `endpoint_url` and `endpoint_param`; `SubagentManager` rejects a second concurrent spawn against the same normalised `(endpoint_url, endpoint_param)` key. |
-| `emit_plan_steps` | When `false`, the agent's individual steps collapse in the WebUI; only the final summary renders. |
+| `name` | Required. MUST equal filename stem and match `^[a-z][a-z0-9_]*$`. |
+| `display_name` | Required non-empty user-facing label. |
+| `description` | Required non-empty routing knowledge. Rendered in full under `# Available expert agents`; this is the Orchestrator's source of expert-selection guidance. |
+| `system_prompt_file` | Required and MUST exist. Loader reads it into `ExpertAgentSpec.system_prompt` for API/editing/diagnostics compatibility, but live subagent LLM prompts MUST NOT append it automatically. Execution guidance from this file is effective only when the Orchestrator chooses to include the relevant instructions in `create_agent.task`. |
+| `scoped_skills` | Required non-empty list. Each entry MUST exist as a registered skill when the loader is called with `skill_names`; a skill MUST NOT be claimed by multiple expert agents. |
+| `legacy_input_schema` / `output_schema` | Required valid JSON Schema 2020-12. `legacy_input_schema` is informational only; `create_agent` has its own fixed schema and no longer exposes per-agent input shapes to the LLM. The old alias `input_schema` is accepted with a `DeprecationWarning` during migration. |
+| `max_iterations` | Optional positive int, default `10`. Effective runtime is capped by the parent loop's global limit. |
+| `emit_plan_steps` | Optional bool, default `true`. When `false`, the agent's individual steps collapse in the WebUI. |
+| `endpoint_bound` | Optional bool, default `false`. When `true`, `create_agent` MUST receive both `endpoint_url` and `endpoint_param`; `SubagentManager` rejects concurrent runs against the same normalized endpoint key. |
+| `allow_exec` | Optional bool, default `false`. Even if global `ExecToolConfig.enable` is true, a subagent receives `exec` only when its resolved expert spec has `allow_exec: true`. |
+| `minimal_tools` | Optional bool, default `false`. When `true`, the subagent receives only its scoped SkillTools, with no file, curl, blackboard, ask_user, exec, asset feed, or vulnerability-report tools. |
 
 ---
 
 ## 3. Registration Flow
 
-```
+```text
 secbot startup
   └── load_agent_registry(secbot/agents/)
-        ├── for each *.yaml:
-        │     ├── parse + validate against this schema
-        │     ├── resolve scoped_skills against skill registry
-        │     ├── load system_prompt_file
-        │     └── register tool in OrchestratorTools as {name, description, input_schema}
-        └── on ANY failure: abort startup with structured error
+        ├── parse every *.yaml
+        ├── validate required fields and JSON Schemas
+        ├── resolve scoped_skills when a skill set is provided
+        ├── reject skills claimed by more than one expert
+        ├── read system_prompt_file for diagnostics/API compatibility
+        ├── compute required_binaries / missing_binaries when skills_root is provided
+        └── expose an AgentRegistry for prompt rendering and create_agent validation
 ```
 
-- Registration is **at startup only**. No hot reload in MVP.
-- Adding a new expert agent requires zero change to Orchestrator code (AC4 in PRD).
+Registration is startup-only in the live runtime. Loader failure aborts registry
+construction; it must not silently register a partial set.
+
+Adding a new expert agent should not require Orchestrator prompt code changes.
+The new YAML description is rendered automatically.
 
 ---
 
 ## 4. What the Orchestrator Sees
 
-The Orchestrator does NOT receive one tool per expert agent. Instead, it sees a
-single `create_agent(name, task, target, endpoint_url?, endpoint_param?)` tool
-plus the locked agent table rendered into its system prompt by
-`render_orchestrator_prompt()`. Each row of that table lists:
+The Orchestrator sees one tool for expert launch:
 
-- the agent `name` (the value to pass as `create_agent(name=...)`),
-- whether the agent is `endpoint-bound`,
-- a one-line purpose,
-- the agent's scoped skills.
+```text
+create_agent(name, task, target, endpoint_url?, endpoint_param?)
+```
 
-The Orchestrator never sees individual skill names as standalone tools.
-Skills are an **implementation detail** of the expert agent.
+It also sees a rendered `# Available expert agents` section from
+`render_orchestrator_prompt()`. Each agent entry lists:
+
+- the agent `name` to pass as `create_agent(name=...)`,
+- the display name,
+- whether it is endpoint-bound,
+- its scoped skills,
+- the full YAML `description`.
+
+The Orchestrator never sees individual expert skills as standalone tools.
+Skills are implementation details of the expert agent.
 
 ---
 
-## 5. Forbidden Patterns
+## 5. Live Subagent Prompt Boundary
+
+At runtime, `SubagentManager` starts expert subagents with:
+
+```python
+[
+    {"role": "system", "content": "<shared slim scaffold>"},
+    {"role": "user", "content": create_agent.task},
+]
+```
+
+The system prompt comes from `secbot/templates/agent/subagent_system.md`. It is
+a shared safety/tool-use scaffold only. The runtime MUST NOT append:
+
+- `spec.system_prompt`,
+- a skill summary,
+- a blackboard snapshot,
+- asset-feed snapshots,
+- parent conversation history.
+
+The Orchestrator owns task composition. If an expert needs detailed execution
+steps, parameter constraints, or selected findings, those instructions must be
+written into `create_agent.task`.
+
+---
+
+## 6. Forbidden Patterns
 
 | Anti-pattern | Why |
 |--------------|-----|
-| Defining an agent in Python instead of YAML | Breaks AC4 (zero-code addition). |
-| Sharing a skill across two expert agents | Causes Orchestrator routing ambiguity; if a capability is truly shared, factor it into a separate expert agent. |
-| Putting `risk_level` on the agent YAML | `risk_level` is a **skill** attribute (see [skill-contract.md](./skill-contract.md)). Agents are routing units, not safety units. |
-| Calling another expert agent from inside an expert agent | Violates two-layer rule ([architecture.md §3](./architecture.md#3-boundaries-what-each-layer-must-not-do)). |
+| Defining an expert agent in Python instead of YAML | Breaks registry-driven addition. |
+| Sharing one skill across multiple expert agents | Creates routing ambiguity. |
+| Putting `risk_level` on the agent YAML | Risk is a skill attribute; agents are routing units. |
+| Calling another expert agent from inside an expert | Violates the two-layer architecture. |
+| Appending `system_prompt_file` content to the live subagent system prompt | Hides instructions outside the Orchestrator-authored `task` boundary. |
+| Relying on `target` metadata to teach the subagent scope | `target` is routing/audit metadata; restate needed scope inside `task`. |
 
 ---
 
-## 6. Test Hooks
+## 7. Test Hooks
 
-- `tests/agent/test_agent_registry.py` MUST verify: missing skill → startup error; bad schema → startup error; valid YAML → tool surface matches snapshot.
-- New expert agent PRs MUST add a YAML fixture under `tests/fixtures/agents/`.
+- `tests/agent/test_agent_registry.py` MUST verify missing skill, bad schema,
+  valid YAML, availability, endpoint-bound, allow-exec, and shared-skill
+  behavior.
+- `tests/agent/test_orchestrator_prompt.py` MUST verify full YAML descriptions
+  are rendered for routing.
+- Subagent tests MUST verify scoped-skill filtering, `create_agent` absence,
+  `minimal_tools` behavior, exact user-message pass-through, and absence of
+  `spec.system_prompt` from the system prompt.
+- New expert agent PRs MUST add or update YAML fixtures/tests when schema
+  behavior changes.

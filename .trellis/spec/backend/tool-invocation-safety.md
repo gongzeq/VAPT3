@@ -14,7 +14,7 @@ The LLM's tool surface is **bounded** by the following invariants:
 
 1. `ExecToolConfig.enable` defaults to `False`. The free-form shell `exec` tool is **not exposed** to the LLM in any standard orchestration config. Re-enabling it is an explicit operator decision and MUST be recorded in config, not derived from defaults.
 2. Every external binary call reaches the LLM as a `SkillTool` — one skill = one tool, schema-validated, sandbox-backed. No skill MAY shell out outside `sandbox.run_command`.
-3. Specialist sub-loops (`SubagentManager._run_subagent(spec)`) register **only** `spec.scoped_skills` from the agent YAML. The orchestrator loop sees `spawn / blackboard_read / blackboard_write / request_approval` — NOT skill tools directly.
+3. Specialist sub-loops (`SubagentManager._run_subagent(spec)`) register **only** `spec.scoped_skills` from the agent YAML. The orchestrator loop sees coordination/read tools such as `create_agent`, `check_subagents`, `wait_subagent`, `read_blackboard`, `read_assets`, `read_file`, `write_plan`, `request_approval`, and `message` — NOT skill tools directly.
 4. Skills with `risk_level: critical` in SKILL.md front-matter MUST block on `ctx.confirm(...)` before execution. In non-interactive channels (cron, API, tests) `ctx.confirm` returns `False` → skill aborts with a denial tool-error; it never hangs waiting.
 
 Consequences:
@@ -73,7 +73,7 @@ verify availability with `katana -version`. The `katana-crawl-web` skill declare
 
 ### 1. Scope / Trigger
 
-- Trigger: `katana-crawl-web` is an external scanner skill and therefore changes the sandbox whitelist, skill schema contract, and orchestrator stage ordering.
+- Trigger: `katana-crawl-web` is an external scanner skill and therefore changes the sandbox whitelist, skill schema contract, and agent routing descriptions.
 - Scope: crawl only authorized HTTP/HTTPS web targets and return bounded crawl candidates; do not run exploit payloads.
 
 ### 2. Signatures
@@ -120,7 +120,7 @@ verify availability with `katana -version`. The `katana-crawl-web` skill declare
 - Skill metadata test asserts `katana-crawl-web` is discovered and validates.
 - Sandbox test asserts `katana` is in `BINARY_WHITELIST`.
 - Handler tests mock Katana and assert argv construction, target validation, deduplication, static/noisy filtering, off-scope filtering, parameter risk classification, JSON/XML hints, schema-valid summary, timeout handling, and missing-binary handling.
-- Orchestrator prompt test asserts `crawl_web` appears in the hard-rule stage order before `vuln_scan`.
+- Orchestrator prompt test asserts `crawl_web` appears in the registry-rendered agent descriptions with HTTP/HTTPS crawl routing guidance.
 
 ### 7. Wrong vs Correct
 

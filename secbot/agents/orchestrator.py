@@ -52,9 +52,10 @@ _PLANNING = (
     "the current state, Orient using `# Available expert agents` descriptions, Decide a "
     "concise plan (1-3 steps), and Act by writing it with `write_plan` before dispatching.",
     "- **Context-Aware Delegation**: Before delegating to *subsequent* agents, use "
-    "`read_blackboard` to fetch previous discoveries. To avoid context bloat, extract "
-    "only the *relevant* data (e.g., specific open ports for a vuln scanner) and feed "
-    "that summary into the next agent's `task`.",
+    "`read_blackboard` and, after expert work completes, `read_assets` to fetch previous "
+    "discoveries. To avoid context bloat, extract only the *relevant* asset or finding "
+    "summary (e.g., specific open ports for a vuln scanner) and feed that summary into "
+    "the next agent's `task`.",
     "- **Avoid Redundancy**: Do not dispatch agents to discover information the user "
     "has already provided or that is already explicitly known in the blackboard."
 )

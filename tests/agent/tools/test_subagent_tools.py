@@ -1184,6 +1184,7 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
 
     async def fake_run(run_spec):
         captured["tool_names"] = set(run_spec.tools.tool_names)
+        captured["initial_messages"] = run_spec.initial_messages
         captured["system_prompt"] = run_spec.initial_messages[0]["content"]
         captured["user_message"] = run_spec.initial_messages[1]["content"]
         return SimpleNamespace(
@@ -1220,14 +1221,15 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
     for skill in ("qscan-host-discovery", "nuclei-template-scan", "hydra-bruteforce"):
         assert skill not in captured["tool_names"], f"{skill} must be scoped out"
 
-    # The per-agent ``spec.system_prompt`` is now appended to the base scaffold
-    # so the subagent receives both safety rules and its role instructions.
+    # The system prompt is only the slim scaffold. Per-agent instructions are
+    # authored by the orchestrator in ``task`` and arrive as the user message.
+    assert [msg["role"] for msg in captured["initial_messages"]] == ["system", "user"]
     sys_prompt = captured["system_prompt"]
     spec_first_line = spec.system_prompt.strip().split("\n", 1)[0]
     if spec_first_line and len(spec_first_line) > 8:
-        assert spec_first_line in sys_prompt
-    assert "Do not reconstruct Katana output paths" in sys_prompt
-    assert "raw_urls_path" in sys_prompt
+        assert spec_first_line not in sys_prompt
+    assert "Do not reconstruct Katana output paths" not in sys_prompt
+    assert "raw_urls_path" not in sys_prompt
     # And the user message MUST carry the orchestrator-supplied task verbatim.
     assert captured["user_message"] == "scan targets"
 

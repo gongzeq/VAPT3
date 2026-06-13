@@ -297,10 +297,12 @@ def test_agent_loop_registers_orchestrator_whitelist(tmp_path: Path) -> None:
 
     assert set(loop.tools.tool_names) == {
         "create_agent",
+        "check_subagents",
         "read_assets",
         "read_blackboard",
         "read_file",
         "request_approval",
+        "wait_subagent",
         "write_plan",
         "message",
     }
@@ -363,8 +365,8 @@ def test_subagent_prompt_contains_runtime_metadata(tmp_path: Path) -> None:
     assert str(tmp_path) in prompt
 
 
-def test_subagent_prompt_appends_spec_system_prompt(tmp_path: Path) -> None:
-    """When a spec is provided, its system_prompt is appended to the base scaffold."""
+def test_subagent_prompt_omits_spec_system_prompt(tmp_path: Path) -> None:
+    """Expert instructions belong in create_agent.task, not the system prompt."""
     from secbot.agents.registry import ExpertAgentSpec
 
     bus = MessageBus()
@@ -391,7 +393,5 @@ def test_subagent_prompt_appends_spec_system_prompt(tmp_path: Path) -> None:
     prompt = mgr._build_subagent_prompt(spec)
 
     assert "Subagent" in prompt
-    assert "# Custom Instructions" in prompt
-    assert "Run the `test-skill` tool." in prompt
-    # Base scaffold comes first, then the custom instructions
-    assert prompt.index("Subagent") < prompt.index("# Custom Instructions")
+    assert "# Custom Instructions" not in prompt
+    assert "Run the `test-skill` tool." not in prompt
