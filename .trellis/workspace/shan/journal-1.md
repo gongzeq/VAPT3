@@ -852,11 +852,13 @@ Implemented recoverable interrupted expert-agent handling: exposed interrupted s
 
 ### Summary
 
-Refactored Orchestrator prompt toward dynamic planning, moved expert knowledge to registry descriptions and create_agent task bodies, updated subagent prompt boundary tests/specs.
+Refactored Orchestrator prompt toward dynamic planning, moved routing knowledge to registry descriptions, preserved expert execution contracts in subagent user messages, and updated subagent prompt boundary tests/specs.
 
 ### Main Changes
 
-(Add details)
+- Orchestrator prompt now uses the locked five-section dynamic planning contract and registry-rendered expert descriptions.
+- Expert subagents keep the slim shared system scaffold; trusted per-agent execution contracts are delivered in the initial user message before the Orchestrator task.
+- Prompt boundary tests/specs were updated for lifecycle tools, dynamic planning, expert-contract delivery, and scoped-skill isolation.
 
 ### Git Commits
 
@@ -867,7 +869,7 @@ Refactored Orchestrator prompt toward dynamic planning, moved expert knowledge t
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `uv run pytest tests/agent/test_orchestrator_prompt.py tests/agent/tools/test_subagent_tools.py::test_subagent_registers_only_scoped_skills tests/tools/test_search_tools.py::test_agent_loop_registers_orchestrator_whitelist tests/tools/test_search_tools.py::test_subagent_prompt_omits_spec_system_prompt tests/tools/test_search_tools.py::test_subagent_user_message_includes_spec_execution_contract`
 
 ### Status
 
