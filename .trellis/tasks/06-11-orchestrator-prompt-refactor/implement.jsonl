@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "Authoritative prompt contract for dynamic Orchestrator planning and rendered section rules."}
+{"file": ".trellis/spec/backend/orchestrator-tool-whitelist.md", "reason": "Defines the Orchestrator tool surface used by prompt hard rules and tests."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Defines YAML descriptions/system_prompt_file semantics and registry-driven agent knowledge."}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "Two-layer Orchestrator -> expert boundary; Orchestrator routes while experts execute."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Subagent hard rules must preserve skill-tool execution and sandbox boundaries."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Prompt pipeline and test quality standards."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Changing prompt constants/tests requires checking repeated contracts and stale references."}

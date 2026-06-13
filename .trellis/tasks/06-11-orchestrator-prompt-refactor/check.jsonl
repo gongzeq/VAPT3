@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/orchestrator-prompt.md", "reason": "Verify implementation and tests match the dynamic Orchestrator prompt contract."}
+{"file": ".trellis/spec/backend/orchestrator-tool-whitelist.md", "reason": "Verify prompt hard rules and registration tests agree on the live tool surface."}
+{"file": ".trellis/spec/backend/agent-registry-contract.md", "reason": "Verify agent YAML semantics no longer imply hidden subagent system prompt injection."}
+{"file": ".trellis/spec/backend/tool-invocation-safety.md", "reason": "Verify subagent slim scaffold still preserves skill-tool-only execution rules."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify focused tests/lint/typecheck align with project quality gates."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check stale prompt-contract references were updated consistently."}
