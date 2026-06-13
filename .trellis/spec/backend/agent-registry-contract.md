@@ -72,7 +72,7 @@ output_schema:
 | `name` | Required. MUST equal filename stem and match `^[a-z][a-z0-9_]*$`. |
 | `display_name` | Required non-empty user-facing label. |
 | `description` | Required non-empty routing knowledge. Rendered in full under `# Available expert agents`; this is the Orchestrator's source of expert-selection guidance. |
-| `system_prompt_file` | Required and MUST exist. Loader reads it into `ExpertAgentSpec.system_prompt` for API/editing/diagnostics compatibility, but live subagent LLM prompts MUST NOT append it automatically. Execution guidance from this file is effective only when the Orchestrator chooses to include the relevant instructions in `create_agent.task`. |
+| `system_prompt_file` | Required and MUST exist. Loader reads it into `ExpertAgentSpec.system_prompt`. Runtime MUST NOT append it to the subagent system prompt; instead, `SubagentManager` prepends it to the subagent's initial user message as the trusted expert execution contract before the Orchestrator-authored concrete task. |
 | `scoped_skills` | Required non-empty list. Each entry MUST exist as a registered skill when the loader is called with `skill_names`; a skill MUST NOT be claimed by multiple expert agents. |
 | `legacy_input_schema` / `output_schema` | Required valid JSON Schema 2020-12. `legacy_input_schema` is informational only; `create_agent` has its own fixed schema and no longer exposes per-agent input shapes to the LLM. The old alias `input_schema` is accepted with a `DeprecationWarning` during migration. |
 | `max_iterations` | Optional positive int, default `10`. Effective runtime is capped by the parent loop's global limit. |
@@ -134,22 +134,30 @@ At runtime, `SubagentManager` starts expert subagents with:
 ```python
 [
     {"role": "system", "content": "<shared slim scaffold>"},
-    {"role": "user", "content": create_agent.task},
+    {
+        "role": "user",
+        "content": (
+            "<expert execution contract from spec.system_prompt>\n\n"
+            "<Orchestrator-authored create_agent.task>"
+        ),
+    },
 ]
 ```
 
 The system prompt comes from `secbot/templates/agent/subagent_system.md`. It is
 a shared safety/tool-use scaffold only. The runtime MUST NOT append:
 
-- `spec.system_prompt`,
+- `spec.system_prompt` to the system prompt,
 - a skill summary,
 - a blackboard snapshot,
 - asset-feed snapshots,
 - parent conversation history.
 
-The Orchestrator owns task composition. If an expert needs detailed execution
-steps, parameter constraints, or selected findings, those instructions must be
-written into `create_agent.task`.
+The project-authored expert execution contract preserves detailed procedure,
+output, and write-channel rules for the selected expert. The Orchestrator owns
+concrete task composition: target scope, relevant findings, blackboard/asset
+excerpts, constraints, and expected output must still be written into
+`create_agent.task`.
 
 ---
 
@@ -174,7 +182,8 @@ written into `create_agent.task`.
 - `tests/agent/test_orchestrator_prompt.py` MUST verify full YAML descriptions
   are rendered for routing.
 - Subagent tests MUST verify scoped-skill filtering, `create_agent` absence,
-  `minimal_tools` behavior, exact user-message pass-through, and absence of
-  `spec.system_prompt` from the system prompt.
+  `minimal_tools` behavior, expert-contract inclusion in the user message,
+  Orchestrator task inclusion, and absence of `spec.system_prompt` from the
+  system prompt.
 - New expert agent PRs MUST add or update YAML fixtures/tests when schema
   behavior changes.

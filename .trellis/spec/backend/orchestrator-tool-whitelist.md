@@ -35,9 +35,11 @@ takes:
 
 - `name` (required): registered expert agent name. Unknown names are rejected
   fail-fast.
-- `task` (required): the FULL prompt body the subagent receives as its user
-  message. The Orchestrator owns prompt composition; the subagent does NOT read
-  `spec.system_prompt`. Bounded by `MAX_TASK_LEN` (currently 16K chars).
+- `task` (required): the Orchestrator-authored concrete task body. Runtime
+  prepends the selected expert's project-authored execution contract from
+  `spec.system_prompt` to the subagent's initial user message. The
+  Orchestrator must still include scope, relevant findings, constraints, and
+  expected output. Bounded by `MAX_TASK_LEN` (currently 16K chars).
 - `target` (required): asset/scope identifier (IP, CIDR, domain, URL, etc.).
   Routing and audit only; not auto-injected into the LLM prompt.
 - `endpoint_url`, `endpoint_param`: required iff the resolved spec has
@@ -71,7 +73,8 @@ perform resource access and share findings. `minimal_tools` subagents receive
 only their scoped SkillTools.
 
 The Orchestrator-side blackboard snapshot is not auto-injected into the
-subagent system prompt. The Orchestrator embeds whatever excerpt it considers
+subagent prompt. The trusted expert execution contract is prepended to the user
+message, and the Orchestrator embeds whatever runtime excerpt it considers
 relevant into `task` directly.
 
 ## Interactive Approval

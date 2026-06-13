@@ -1222,7 +1222,7 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
         assert skill not in captured["tool_names"], f"{skill} must be scoped out"
 
     # The system prompt is only the slim scaffold. Per-agent instructions are
-    # authored by the orchestrator in ``task`` and arrive as the user message.
+    # composed into the user message so expert execution rules are not lost.
     assert [msg["role"] for msg in captured["initial_messages"]] == ["system", "user"]
     sys_prompt = captured["system_prompt"]
     spec_first_line = spec.system_prompt.strip().split("\n", 1)[0]
@@ -1230,8 +1230,12 @@ async def test_subagent_registers_only_scoped_skills(tmp_path):
         assert spec_first_line not in sys_prompt
     assert "Do not reconstruct Katana output paths" not in sys_prompt
     assert "raw_urls_path" not in sys_prompt
-    # And the user message MUST carry the orchestrator-supplied task verbatim.
-    assert captured["user_message"] == "scan targets"
+    user_message = captured["user_message"]
+    assert user_message.startswith("# Expert Execution Contract\n\n")
+    assert spec_first_line in user_message
+    assert "Do not reconstruct Katana output paths" in user_message
+    assert "raw_urls_path" in user_message
+    assert user_message.endswith("# Orchestrator Task\n\nscan targets")
 
 
 # ---------------------------------------------------------------------------

@@ -118,11 +118,13 @@ Spawn experts only through:
 create_agent(name, task, target, endpoint_url?, endpoint_param?)
 ```
 
-The `task` argument is the expert's complete user message. It must contain the
-goal, relevant scope, summarized findings or blackboard excerpts, constraints,
-expected output, and any expert-specific execution guidance the Orchestrator
-wants followed. `target`, `endpoint_url`, and `endpoint_param` are routing and
-audit metadata; they are not automatically injected into the LLM prompt.
+The `task` argument is the Orchestrator-authored concrete work request. Runtime
+prepends the selected expert's project-authored execution contract from
+`spec.system_prompt` to the initial user message, but `task` must still contain
+the goal, relevant scope, summarized findings or blackboard excerpts,
+constraints, and expected output. `target`, `endpoint_url`, and
+`endpoint_param` are routing and audit metadata; they are not automatically
+injected into the LLM prompt.
 
 ---
 
@@ -133,16 +135,26 @@ Subagents receive exactly one system message and one user message at start:
 ```python
 [
     {"role": "system", "content": "<slim subagent scaffold>"},
-    {"role": "user", "content": create_agent.task},
+    {
+        "role": "user",
+        "content": (
+            "<expert execution contract from spec.system_prompt>\n\n"
+            "<Orchestrator-authored create_agent.task>"
+        ),
+    },
 ]
 ```
 
 The subagent system message is only the shared scaffold from
 `secbot/templates/agent/subagent_system.md`. The runtime MUST NOT append
 `spec.system_prompt`, skill summaries, automatic blackboard snapshots, asset
-snapshots, or parent conversation history. Expert-specific knowledge belongs in
-agent YAML descriptions for Orchestrator routing and in the Orchestrator-authored
-`create_agent.task` for execution.
+snapshots, or parent conversation history to that system message.
+
+The user message carries two parts: the trusted project-authored expert
+execution contract (`spec.system_prompt`) and the Orchestrator-authored concrete
+task. Expert routing knowledge belongs in agent YAML descriptions; expert
+procedure/output/write-channel rules belong in the execution contract; selected
+runtime findings and scope belong in `create_agent.task`.
 
 ---
 
@@ -189,7 +201,7 @@ a `report_path`, surface it immediately and summarize important findings.
 | Encoding a fixed scan sequence in the system prompt | The correct route depends on the current user request, known assets, registry descriptions, and subagent outputs. |
 | Asking the LLM to compose nmap/fscan/nuclei/hydra command lines | Bypasses typed SkillTool schemas and sandboxing. |
 | Hard-coding expert routing logic outside YAML descriptions and tests | Breaks registry-driven extensibility. |
-| Injecting per-agent prompt files into subagent system messages | Hides execution instructions from the Orchestrator-owned `task` boundary. |
+| Injecting per-agent prompt files into subagent system messages | Breaks the shared slim-scaffold boundary and can hide expert instructions from review. |
 | Using `read_assets` as a wait signal | Asset deltas are data, not lifecycle state. Use `check_subagents` or `wait_subagent`. |
 | Adding a `# Persona` section | Out of scope; no role-play behavior wanted. |
 
@@ -203,5 +215,5 @@ a `report_path`, surface it immediately and summarize important findings.
 - Tool-surface tests MUST assert the exact Orchestrator whitelist from
   [orchestrator-tool-whitelist.md](./orchestrator-tool-whitelist.md).
 - Subagent tests MUST assert initial messages are the slim scaffold system
-  message plus the exact `create_agent.task` user message, with no appended
-  `spec.system_prompt`.
+  message plus one user message containing the expert execution contract and
+  Orchestrator task, with no appended `spec.system_prompt` in the system prompt.

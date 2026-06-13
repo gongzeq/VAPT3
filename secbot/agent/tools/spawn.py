@@ -5,10 +5,10 @@ This is the *single* tool the Orchestrator uses to launch an expert agent
 
 Strict invariants (fail-fast, no defaults, no silent fallbacks):
 - ``name``  must be a registered expert agent.
-- ``task``  must be a non-empty prompt within ``MAX_TASK_LEN``; the Orchestrator
-            is expected to write the full prompt body — the subagent will NOT
-            read ``spec.system_prompt`` nor receive an auto-injected blackboard
-            snapshot.
+- ``task``  must be a non-empty concrete task within ``MAX_TASK_LEN``; the
+            platform prepends the project-authored expert execution contract
+            from ``spec.system_prompt`` to the subagent's initial user message,
+            but no blackboard snapshot is auto-injected.
 - ``target`` must be set (asset / scope identifier — IP, CIDR, domain, URL, …).
             Used for routing/audit; **not** spliced into the LLM prompt by this
             tool. The Orchestrator is responsible for embedding any necessary
@@ -29,10 +29,10 @@ if TYPE_CHECKING:
 
 
 # Hard upper bound on the ``task`` payload coming from the Orchestrator. The
-# value is intentionally generous: a full prompt usually fits well under 8K
-# chars, and 16K leaves head-room for embedded findings/blackboard excerpts
-# the Orchestrator chooses to inline. Anything past this is almost certainly
-# a bug (e.g. dumping a whole repo into the field).
+# value is intentionally generous: a concrete task body usually fits well under
+# 8K chars, and 16K leaves head-room for embedded findings/blackboard excerpts
+# the Orchestrator chooses to inline. Anything past this is almost certainly a
+# bug (e.g. dumping a whole repo into the field).
 MAX_TASK_LEN = 16_000
 
 
@@ -43,9 +43,11 @@ MAX_TASK_LEN = 16_000
             "orchestrator prompt (or /api/agents). Unknown names are rejected.",
         ),
         task=StringSchema(
-            "Full prompt for the subagent. The Orchestrator writes the entire "
-            "instruction body here — the subagent does NOT read any per-agent "
-            f"system_prompt. Hard limit: {MAX_TASK_LEN} characters.",
+            "Concrete task body for the subagent. The platform prepends the "
+            "registered expert execution contract to the initial user message; "
+            "the Orchestrator must still include goal, scope, relevant findings, "
+            f"constraints, and expected output here. Hard limit: {MAX_TASK_LEN} "
+            "characters.",
         ),
         target=StringSchema(
             "Asset / scope identifier (IP, CIDR, domain, URL, …). Required for "
@@ -97,12 +99,12 @@ class SpawnTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Create an expert subagent to run a concrete task. Provide the FULL "
-            "prompt in 'task', the asset/scope in 'target', and — when the agent "
-            "is endpoint-bound — both 'endpoint_url' and 'endpoint_param'. The "
-            "orchestrator owns prompt composition; the subagent does not read "
-            "per-agent system prompts and is not given an auto-injected "
-            "blackboard snapshot."
+            "Create an expert subagent to run a concrete task. Provide the "
+            "task body in 'task', the asset/scope in 'target', and — when the "
+            "agent is endpoint-bound — both 'endpoint_url' and 'endpoint_param'. The "
+            "platform prepends the project-authored expert execution contract "
+            "to the subagent's user message, but no blackboard snapshot is "
+            "auto-injected."
         )
 
     async def execute(

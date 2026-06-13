@@ -395,3 +395,37 @@ def test_subagent_prompt_omits_spec_system_prompt(tmp_path: Path) -> None:
     assert "Subagent" in prompt
     assert "# Custom Instructions" not in prompt
     assert "Run the `test-skill` tool." not in prompt
+
+
+def test_subagent_user_message_includes_spec_execution_contract(tmp_path: Path) -> None:
+    """Per-agent instructions stay out of system prompt but reach the subagent."""
+    from secbot.agents.registry import ExpertAgentSpec
+
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=bus,
+        max_tool_result_chars=4096,
+    )
+
+    spec = ExpertAgentSpec(
+        name="test_agent",
+        display_name="Test Agent",
+        description="A test agent.",
+        system_prompt="# Custom Instructions\nRun the `test-skill` tool.",
+        scoped_skills=("test-skill",),
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+    )
+
+    user_message = mgr._build_subagent_user_message("scan targets", spec)
+
+    assert user_message.startswith("# Expert Execution Contract\n\n")
+    assert "# Custom Instructions" in user_message
+    assert "Run the `test-skill` tool." in user_message
+    assert user_message.endswith("# Orchestrator Task\n\nscan targets")
+    assert mgr._build_subagent_user_message("scan targets") == "scan targets"
