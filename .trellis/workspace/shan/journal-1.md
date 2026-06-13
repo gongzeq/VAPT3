@@ -842,3 +842,37 @@ Implemented recoverable interrupted expert-agent handling: exposed interrupted s
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: Orchestrator prompt refactor
+
+**Date**: 2026-06-13
+**Task**: Orchestrator prompt refactor
+**Branch**: `main`
+
+### Summary
+
+Refactored Orchestrator prompt toward dynamic planning, moved expert knowledge to registry descriptions and create_agent task bodies, updated subagent prompt boundary tests/specs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fe3bacc0` | (see git log) |
+| `abe277ac7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

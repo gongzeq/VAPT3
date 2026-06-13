@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 17
+- **Total Sessions**: 18
 - **Last Active**: 2026-06-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~844 | Active |
+| `journal-1.md` | ~878 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 18 | 2026-06-13 | Orchestrator prompt refactor | `7fe3bacc0`, `abe277ac7` | `main` |
 | 17 | 2026-06-13 | Recoverable expert agent interruption handling | `e18e4535d` | `main` |
 | 16 | 2026-06-11 | 修复轮次耗尽后 Orchestrator 不重派子代理 | `e1d8e02fb` | `main` |
 | 15 | 2026-06-09 | 纳管资产、风险拓扑与候选漏洞 | `4b8387dfc`, `2620ceec5`, `26399cfea` | `main` |
