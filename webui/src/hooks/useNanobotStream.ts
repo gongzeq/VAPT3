@@ -249,14 +249,6 @@ export function useNanobotStream(
   /** Most recent agent that emitted an ``agent_event`` or ``message``. Used
    * to tag plain assistant turns so they inherit the correct avatar colour. */
   const currentAgentRef = useRef<string>("orchestrator");
-  /** Timer that defers ``isStreaming = false`` after ``stream_end``.
-   *
-   * When the model finishes a text segment and calls a tool, the server
-   * sends ``stream_end`` but the agent is still "thinking" while the tool
-   * executes.  By deferring the flag reset by a short window (1 s) we keep
-   * the loading spinner alive across tool-call boundaries without needing
-   * backend changes. */
-  const streamEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return client.onError((err) => setStreamError(err));
@@ -290,10 +282,6 @@ export function useNanobotStream(
       usageBaselineRef.current = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, turnCount: 0 };
       buffer.current = null;
       currentAgentRef.current = "orchestrator";
-      if (streamEndTimerRef.current !== null) {
-        clearTimeout(streamEndTimerRef.current);
-        streamEndTimerRef.current = null;
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, initialMessages]);
@@ -325,14 +313,6 @@ export function useNanobotStream(
           usageBaselineRef.current = seeded;
         }
         return;
-      }
-
-      // Any incoming event while the debounce timer is alive means the model
-      // is still working (e.g. tool result arrived, more text to stream).
-      // Cancel the pending "stream ended" timer so we don't hide the spinner.
-      if (streamEndTimerRef.current !== null) {
-        clearTimeout(streamEndTimerRef.current);
-        streamEndTimerRef.current = null;
       }
 
       // Any event other than ``turn_end`` / ``session_updated`` / ``error`` is
@@ -386,12 +366,8 @@ export function useNanobotStream(
       }
 
       if (ev.event === "turn_end") {
-        // Definitive signal that the turn is fully complete.  Cancel any
-        // pending debounce timer and stop the loading indicator immediately.
-        if (streamEndTimerRef.current !== null) {
-          clearTimeout(streamEndTimerRef.current);
-          streamEndTimerRef.current = null;
-        }
+        // Definitive signal that the turn is fully complete. Stop the loading
+        // indicator immediately.
         // If the LLM recovered after a retry, dismiss the disruption banner.
         setStreamError((prev) => prev?.kind === "llm_retry" ? null : prev);
         setIsStreaming(false);
@@ -412,18 +388,18 @@ export function useNanobotStream(
           return updated;
         });
         if (usage) {
-          setCumulativeUsage((prev) => {
-            const next: CumulativeUsage = {
-              promptTokens: prev.promptTokens + (usage.prompt_tokens || 0),
-              completionTokens: prev.completionTokens + (usage.completion_tokens || 0),
-              cachedTokens: prev.cachedTokens + (usage.cached_tokens || 0),
-              turnCount: prev.turnCount + 1,
-            };
-            // Snapshot as the new baseline so subsequent ``usage_update``
-            // events from the next turn accumulate on top of this.
-            usageBaselineRef.current = next;
-            return next;
-          });
+          // Compute + snapshot the new baseline outside the state updater so
+          // it stays pure: React 18 StrictMode invokes updaters twice in dev,
+          // which would double-count if the ref write lived inside.
+          const base = usageBaselineRef.current;
+          const next: CumulativeUsage = {
+            promptTokens: base.promptTokens + (usage.prompt_tokens || 0),
+            completionTokens: base.completionTokens + (usage.completion_tokens || 0),
+            cachedTokens: base.cachedTokens + (usage.cached_tokens || 0),
+            turnCount: base.turnCount + 1,
+          };
+          usageBaselineRef.current = next;
+          setCumulativeUsage(next);
         }
         onTurnEnd?.();
         return;
@@ -618,10 +594,15 @@ export function useNanobotStream(
               return payload.content ?? "";
             case "subagent_spawned":
               return `🚀 子智能体「${eventAgentName}」已启动`;
-            case "subagent_done":
-              return payload.status === "ok"
-                ? `✅ 子智能体「${eventAgentName}」已完成`
-                : `❌ 子智能体「${eventAgentName}」失败`;
+            case "subagent_done": {
+              if (payload.status === "ok") {
+                return `✅ 子智能体「${eventAgentName}」已完成`;
+              }
+              if (payload.status === "incomplete" || payload.status === "interrupted") {
+                return `⚠️ 子智能体「${eventAgentName}」未完成`;
+              }
+              return `❌ 子智能体「${eventAgentName}」失败`;
+            }
             case "blackboard_entry":
               return `📝 黑板条目 [${payload.agent_name}]: ${payload.text ?? ""}`;
             default:
@@ -650,10 +631,6 @@ export function useNanobotStream(
     return () => {
       unsub();
       buffer.current = null;
-      if (streamEndTimerRef.current !== null) {
-        clearTimeout(streamEndTimerRef.current);
-        streamEndTimerRef.current = null;
-      }
     };
   }, [chatId, client, onTurnEnd]);
 

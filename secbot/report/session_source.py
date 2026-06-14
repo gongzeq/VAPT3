@@ -15,12 +15,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from secbot.report.builder import ReportModel, build_report_model_from_asset_entries
+from secbot.agent.vulnerability_store import (
+    VALID_SEVERITIES,
+    VALID_VERIFICATION_METHODS,
+)
+from secbot.report.builder import (
+    ReportModel,
+    build_report_model_from_asset_entries,
+    build_report_model_from_vulnerabilities,
+    merge_report_models,
+)
 from secbot.session.manager import SessionManager
 
 _logger = logging.getLogger(__name__)
 
 _ASSET_PUSH_ID_RE = re.compile(r"asset pushed \(id=(\d+),")
+_ASSET_PUSH_BATCH_ID_RE = re.compile(r"assets pushed \(ids=(\d+)\.\.")
+_REPORT_VULN_ID_RE = re.compile(r"vulnerability reported \(id=(\d+),")
 
 
 @dataclass(frozen=True)
@@ -30,6 +41,18 @@ class SessionReportSource:
     model: ReportModel
     session_path: Path | None
     entry_count: int
+
+
+@dataclass(frozen=True)
+class SessionReportEntries:
+    """Structured report-relevant entries extracted from a session JSONL."""
+
+    asset_entries: list[dict[str, Any]]
+    vulnerability_entries: list[dict[str, Any]]
+
+    @property
+    def count(self) -> int:
+        return len(self.asset_entries) + len(self.vulnerability_entries)
 
 
 def workspace_from_scan_dir(scan_dir: Path) -> Path:
@@ -65,7 +88,14 @@ def find_session_jsonl(workspace: Path, scan_id: str) -> Path | None:
 def load_asset_entries_from_session_jsonl(path: Path) -> list[dict[str, Any]]:
     """Extract successful ``asset_push`` tool calls from a session JSONL file."""
 
-    entries: list[dict[str, Any]] = []
+    return load_report_entries_from_session_jsonl(path).asset_entries
+
+
+def load_report_entries_from_session_jsonl(path: Path) -> SessionReportEntries:
+    """Extract report data from successful session tool-call events."""
+
+    asset_entries: list[dict[str, Any]] = []
+    vulnerability_entries: list[dict[str, Any]] = []
     read_assets_snapshots: list[list[dict[str, Any]]] = []
     seen_tool_call_ids: set[str] = set()
 
@@ -94,33 +124,55 @@ def load_asset_entries_from_session_jsonl(path: Path) -> list[dict[str, Any]]:
                     continue
 
                 tool_name = event.get("tool_name")
-                if tool_name == "asset_push":
-                    new_entries = _entries_from_asset_push_event(
-                        row, event, len(entries) + 1
-                    )
-                    if not new_entries:
-                        continue
+                if tool_name in {"asset_push", "report_vulnerability"}:
                     tool_call_id = str(event.get("tool_call_id") or "")
-                    if tool_call_id:
-                        if tool_call_id in seen_tool_call_ids:
+                    if tool_call_id and tool_call_id in seen_tool_call_ids:
+                        continue
+                    fallback_id = len(asset_entries) + len(vulnerability_entries) + 1
+                    if tool_name == "asset_push":
+                        new_entries = _entries_from_asset_push_event(
+                            row, event, fallback_id
+                        )
+                        if not new_entries:
                             continue
+                        asset_entries.extend(new_entries)
+                    else:
+                        new_entry = _entry_from_report_vulnerability_event(
+                            row, event, fallback_id
+                        )
+                        if new_entry is None:
+                            continue
+                        vulnerability_entries.append(new_entry)
+                    if tool_call_id:
                         seen_tool_call_ids.add(tool_call_id)
-                    entries.extend(new_entries)
                 elif tool_name == "read_assets":
                     snapshot = _read_assets_snapshot(event)
                     if snapshot:
                         read_assets_snapshots.append(snapshot)
     except FileNotFoundError:
-        return []
+        return SessionReportEntries(asset_entries=[], vulnerability_entries=[])
     except OSError:
         _logger.warning("report session source failed to read %s", path, exc_info=True)
-        return []
+        return SessionReportEntries(asset_entries=[], vulnerability_entries=[])
 
-    if entries:
-        return entries
-    if read_assets_snapshots:
-        return read_assets_snapshots[-1]
-    return []
+    if not asset_entries and read_assets_snapshots:
+        # Incremental ``since_id`` reads each return only a delta, so taking
+        # just the last snapshot would undercount. Union every snapshot by
+        # real feed id (id-less rows are always kept).
+        merged: dict[Any, dict[str, Any]] = {}
+        extra: list[dict[str, Any]] = []
+        for snapshot in read_assets_snapshots:
+            for item in snapshot:
+                key = item.get("id")
+                if key is None:
+                    extra.append(item)
+                else:
+                    merged[key] = item
+        asset_entries = list(merged.values()) + extra
+    return SessionReportEntries(
+        asset_entries=asset_entries,
+        vulnerability_entries=vulnerability_entries,
+    )
 
 
 def build_report_model_from_session_jsonl(
@@ -133,19 +185,25 @@ def build_report_model_from_session_jsonl(
 
     session_path = find_session_jsonl(workspace, scan_id)
     entries = (
-        load_asset_entries_from_session_jsonl(session_path)
+        load_report_entries_from_session_jsonl(session_path)
         if session_path is not None
-        else []
+        else SessionReportEntries(asset_entries=[], vulnerability_entries=[])
     )
-    model = build_report_model_from_asset_entries(
-        entries,
+    asset_model = build_report_model_from_asset_entries(
+        entries.asset_entries,
         scan_id=scan_id,
         target=target,
     )
+    vulnerability_model = build_report_model_from_vulnerabilities(
+        entries.vulnerability_entries,
+        scan_id=scan_id,
+        target=target,
+    )
+    model = merge_report_models(vulnerability_model, asset_model)
     return SessionReportSource(
         model=model,
         session_path=session_path,
-        entry_count=len(entries),
+        entry_count=entries.count,
     )
 
 
@@ -244,6 +302,62 @@ def _entries_from_asset_push_event(
     ]
 
 
+def _entry_from_report_vulnerability_event(
+    row: dict[str, Any],
+    event: dict[str, Any],
+    fallback_id: int,
+) -> dict[str, Any] | None:
+    tool_args = event.get("tool_args")
+    if not isinstance(tool_args, dict):
+        return None
+
+    title = _required_str(tool_args.get("title"))
+    severity = _required_str(tool_args.get("severity")).lower()
+    description = _required_str(tool_args.get("description"))
+    exploitation_proof = _required_str(tool_args.get("exploitation_proof"))
+    verification_method = _required_str(tool_args.get("verification_method")).lower()
+    if (
+        not title
+        or severity not in VALID_SEVERITIES
+        or not description
+        or not exploitation_proof
+        or verification_method not in VALID_VERIFICATION_METHODS
+    ):
+        return None
+
+    entry: dict[str, Any] = {
+        "id": _report_vulnerability_id(event.get("detail")) or fallback_id,
+        "agent_name": str(
+            event.get("agent_name")
+            or event.get("agent")
+            or row.get("sender_id")
+            or "report_vulnerability"
+        ),
+        "created_at": _timestamp_to_epoch(row.get("timestamp")),
+        "title": title,
+        "severity": severity,
+        "description": description,
+        "exploitation_proof": exploitation_proof,
+        "verification_method": verification_method,
+        "category": _optional_str(tool_args.get("category") or tool_args.get("type"))
+        or "other",
+    }
+
+    cvss = _numeric(tool_args.get("cvss"))
+    if cvss is not None:
+        entry["cvss"] = cvss
+    for key in (
+        "endpoint",
+        "poc_description",
+        "poc_script_code",
+        "remediation_steps",
+    ):
+        value = _optional_str(tool_args.get(key))
+        if value:
+            entry[key] = value
+    return entry
+
+
 def _read_assets_snapshot(event: dict[str, Any]) -> list[dict[str, Any]]:
     detail = event.get("detail")
     if not isinstance(detail, str) or not detail.strip():
@@ -280,12 +394,43 @@ def _read_assets_snapshot(event: dict[str, Any]) -> list[dict[str, Any]]:
 def _asset_push_id(detail: object) -> int | None:
     if not isinstance(detail, str):
         return None
-    match = _ASSET_PUSH_ID_RE.search(detail)
+    match = _ASSET_PUSH_ID_RE.search(detail) or _ASSET_PUSH_BATCH_ID_RE.search(detail)
     if not match:
         return None
     try:
         return int(match.group(1))
     except ValueError:
+        return None
+
+
+def _report_vulnerability_id(detail: object) -> int | None:
+    if not isinstance(detail, str):
+        return None
+    match = _REPORT_VULN_ID_RE.search(detail)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _required_str(raw: object) -> str:
+    return raw.strip() if isinstance(raw, str) else ""
+
+
+def _optional_str(raw: object) -> str | None:
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _numeric(raw: object) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
         return None
 
 

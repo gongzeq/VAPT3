@@ -68,6 +68,9 @@ export interface OrchestratorPlanStep {
  * - error: tool failed or was denied */
 export type ToolCallStatus = "running" | "critical" | "ok" | "error";
 
+/** Terminal status emitted by subagent_done lifecycle events. */
+export type SubagentDoneStatus = "ok" | "error" | "incomplete" | "interrupted";
+
 export interface AgentEventPayload {
   type: AgentEventType;
   agent?: string;
@@ -79,7 +82,7 @@ export interface AgentEventPayload {
   phase?: string;
   iteration?: number;
   tool_events?: unknown[];
-  status?: ToolCallStatus | AgentRuntimeStatus;
+  status?: ToolCallStatus | AgentRuntimeStatus | SubagentDoneStatus;
   result?: string;
   id?: string;
   agent_name?: string;

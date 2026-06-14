@@ -863,7 +863,9 @@ def build_report_model_from_vulnerabilities(
         state["findings"].append(
             ReportFinding(
                 severity=severity,
-                category=_normalise_category(entry.get("type") or "other"),
+                category=_normalise_category(
+                    entry.get("category") or entry.get("type") or "other"
+                ),
                 title=title,
                 cve_id=entry.get("cve_id"),
                 evidence_summary=exploitation_proof[:256] if exploitation_proof else description[:256],

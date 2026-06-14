@@ -471,6 +471,65 @@ describe("useNanobotStream", () => {
     expect(onTurnEnd).toHaveBeenCalledTimes(1);
   });
 
+  it("does not double count the current turn after live usage updates", () => {
+    const fake = fakeClient();
+    const { result } = renderHook(() => useNanobotStream("chat-usage", EMPTY_MESSAGES), {
+      wrapper: wrap(fake.client),
+    });
+
+    act(() => {
+      fake.emit("chat-usage", {
+        event: "attached",
+        chat_id: "chat-usage",
+        active_turn: true,
+        cumulative_usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          cached_tokens: 20,
+          turn_count: 2,
+        },
+      });
+    });
+
+    act(() => {
+      fake.emit("chat-usage", {
+        event: "usage_update",
+        chat_id: "chat-usage",
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 5,
+          cached_tokens: 4,
+        },
+      });
+    });
+
+    expect(result.current.cumulativeUsage).toEqual({
+      promptTokens: 110,
+      completionTokens: 55,
+      cachedTokens: 24,
+      turnCount: 2,
+    });
+
+    act(() => {
+      fake.emit("chat-usage", {
+        event: "turn_end",
+        chat_id: "chat-usage",
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 7,
+          cached_tokens: 4,
+        },
+      });
+    });
+
+    expect(result.current.cumulativeUsage).toEqual({
+      promptTokens: 110,
+      completionTokens: 57,
+      cachedTokens: 24,
+      turnCount: 3,
+    });
+  });
+
   it("refreshes session metadata when the server reports a session update", () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();

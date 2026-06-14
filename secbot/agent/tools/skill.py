@@ -233,8 +233,9 @@ class SkillTool(Tool):
     @property
     def exclusive(self) -> bool:
         # Critical skills prompt the user; running them in parallel would race
-        # the confirmation dialog. Non-critical skills still share the sandbox
-        # subprocess slot, so keep them exclusive for simplicity.
+        # the confirmation dialog, so they execute exclusively. Non-critical
+        # skills run concurrently — each writes its own per-skill artifact
+        # under scan_dir (e.g. qscan-port-scan.log), so they don't collide.
         return self._meta.is_critical()
 
     async def execute(self, **kwargs: Any) -> str:
@@ -348,6 +349,7 @@ class SkillTool(Tool):
                             description=normalized["description"],
                             exploitation_proof=normalized["evidence_text"],
                             verification_method="automated_scan",
+                            category=normalized["category"],
                             endpoint=normalized.get("endpoint"),
                             poc_description=normalized.get("poc_description"),
                             remediation_steps=normalized.get("remediation"),

@@ -184,15 +184,25 @@ export function AgentEventCard({ payload, agentName, animClass, defaultExpanded 
       return null;
     case "subagent_done": {
       const doneOk = payload.status === "ok";
+      const doneIncomplete = payload.status === "incomplete" || payload.status === "interrupted";
       const hasResult = Boolean(payload.result);
+      const doneToneClass = doneOk
+        ? "border-alert-success/20 bg-alert-success/5 border-l-alert-success/60"
+        : doneIncomplete
+          ? "border-alert-warning/20 bg-alert-warning/5 border-l-alert-warning/60"
+          : "border-destructive/20 bg-destructive/5 border-l-destructive/60";
+      const doneIconClass = doneOk
+        ? "text-alert-success"
+        : doneIncomplete
+          ? "text-alert-warning"
+          : "text-destructive";
+      const doneLabel = doneOk ? "已完成" : doneIncomplete ? "未完成" : "失败";
       return (
         <div
           className={cn(
             "rounded-lg border border-l-[3px]",
             animClass,
-            doneOk
-              ? "border-alert-success/20 bg-alert-success/5 border-l-alert-success/60"
-              : "border-destructive/20 bg-destructive/5 border-l-destructive/60",
+            doneToneClass,
           )}
         >
           <button
@@ -208,18 +218,12 @@ export function AgentEventCard({ payload, agentName, animClass, defaultExpanded 
             <Bot
               className={cn(
                 "h-4 w-4 shrink-0",
-                doneOk ? "text-alert-success" : "text-destructive",
+                doneIconClass,
               )}
               aria-hidden
             />
             <span className="font-medium text-foreground">{lifecycleAgentName}</span>
-            <span
-              className={cn(
-                doneOk ? "text-alert-success" : "text-destructive",
-              )}
-            >
-              {doneOk ? "已完成" : "失败"}
-            </span>
+            <span className={cn(doneIconClass)}>{doneLabel}</span>
             {hasResult && (
               <ChevronRight
                 aria-hidden

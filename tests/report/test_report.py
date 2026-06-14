@@ -29,6 +29,7 @@ from secbot.report.builder import (
     build_report_model_from_asset_entries,
 )
 from secbot.report.render import render_html, render_markdown
+from secbot.report.session_source import build_report_model_from_session_jsonl
 from secbot.skills.types import SkillContext
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[2] / "secbot" / "skills"
@@ -451,6 +452,72 @@ async def test_report_html_merges_vulnerability_store_and_jsonl(
     assert "Current store finding" in text
     assert "git_repo_exposed" in text
     assert "dockerfile_disclosure" in text
+
+
+async def test_report_html_replays_report_vulnerability_events_after_store_loss(
+    cmdb_engine,
+    tmp_path: Path,
+):
+    """Historical reports recover canonical report_vulnerability tool calls."""
+    scan_id = "websocket_replay_vuln"
+    target = "http://example.test"
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    (sessions_dir / f"{scan_id}.jsonl").write_text(
+        json.dumps(
+            {
+                "_kind": "agent_event",
+                "timestamp": "2026-06-13T12:00:00+00:00",
+                "sender_id": "vuln_scan",
+                "agent_event": {
+                    "type": "tool_call",
+                    "status": "ok",
+                    "tool_name": "report_vulnerability",
+                    "tool_call_id": "call-report-vuln",
+                    "agent_name": "vuln_scan",
+                    "detail": "vulnerability reported (id=7, severity=critical, cvss=9.8)",
+                    "tool_args": {
+                        "title": "SQL Injection in id parameter",
+                        "severity": "critical",
+                        "category": "injection",
+                        "description": "Manual verification confirmed SQL injection.",
+                        "exploitation_proof": "GET /item?id=1' returned SQL syntax error",
+                        "verification_method": "manual_test",
+                        "cvss": 9.8,
+                        "endpoint": "http://example.test/item?id=1",
+                        "poc_description": "id=1'",
+                        "remediation_steps": "Use parameterized queries.",
+                    },
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    source = build_report_model_from_session_jsonl(
+        tmp_path,
+        scan_id,
+        target=target,
+    )
+    assert source.entry_count == 1
+    finding = source.model.assets[0].findings[0]
+    assert finding.category == "injection"
+    assert finding.discovered_by == "vuln_scan"
+    assert "manual_test" in (finding.evidence_detail or "")
+
+    mod = _load("report-html")
+    ctx = _ctx(tmp_path)
+    bind_skill_context(scan_id=scan_id, scan_dir=ctx.scan_dir)
+
+    res = await mod.run({"target": target, "type": "vuln"}, ctx)
+
+    assert res.summary["status"] == "ok"
+    assert res.summary["source"] == "session_jsonl"
+    assert res.summary["finding_count"] == 1
+    text = Path(res.summary["report_path"]).read_text(encoding="utf-8")
+    assert "SQL Injection in id parameter" in text
 
 
 async def test_report_html_blocks_normal_report_when_subagent_interrupted(

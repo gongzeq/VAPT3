@@ -252,32 +252,37 @@ describe("ThreadShell", () => {
 
   it("sends quick action prompts from the empty thread landing", async () => {
     const client = makeClient();
-    const onNewChat = vi.fn().mockResolvedValue("chat-a");
+    const onCreateChat = vi.fn().mockResolvedValue("chat-a");
 
     render(
       wrap(
         client,
         <ThreadShell
-          session={session("chat-a")}
-          title="Chat chat-a"
+          session={null}
+          title="secbot"
           onToggleSidebar={() => {}}
           onGoHome={() => {}}
-          onNewChat={onNewChat}
+          onNewChat={() => {}}
+          onCreateChat={onCreateChat}
         />,
       ),
     );
 
+    // ScanQuickStart renders on the blank landing (session=null).
+    // It requires a target before scenario buttons are enabled.
+    const targetInput = screen.getByLabelText(/scan target/i);
+    fireEvent.change(targetInput, { target: { value: "192.168.1.1" } });
+
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /\u5168\u7f51\u8d44\u4ea7\u53d1\u73b0/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Asset only/i })).not.toBeDisabled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /\u5168\u7f51\u8d44\u4ea7\u53d1\u73b0/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Asset only/i }));
 
-    // QuickPrompts dispatches a composer prefill event, not a direct sendMessage.
-    // The composer should be prefilled with the prompt text.
+    // With session=null, ScanQuickStart calls handleWelcomeSend which
+    // creates a new chat via onCreateChat and queues the prompt.
     await waitFor(() => {
-      const input = screen.getByLabelText("Message input") as HTMLTextAreaElement;
-      expect(input.value.length).toBeGreaterThan(0);
+      expect(onCreateChat).toHaveBeenCalled();
     });
   });
 
@@ -494,7 +499,8 @@ describe("ThreadShell", () => {
     });
 
     expect(screen.queryByText("live assistant reply")).not.toBeInTheDocument();
-    expect(screen.getByText("粤海智盾")).toBeInTheDocument();
+    // ScanQuickStart renders the "Quick actions" header on the blank landing.
+    expect(screen.getByText("Quick actions")).toBeInTheDocument();
 
     await act(async () => {
       rerender(

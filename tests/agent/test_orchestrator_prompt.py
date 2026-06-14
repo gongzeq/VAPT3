@@ -130,6 +130,8 @@ def test_agent_descriptions_render_full_multiline():
     assert "sqlmap-detect is ONLY allowed when hypotheses" in rendered
     # report description includes empty-status guidance
     assert "status" in rendered and "empty" in rendered
+    assert "blocked_interrupted_dependencies" in rendered
+    assert "allow_partial" in rendered
 
 
 def test_prompt_requires_auto_report_after_scan():

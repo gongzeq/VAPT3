@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { RightRail } from "@/components/RightRail";
@@ -37,10 +37,16 @@ export function HomePage({ onModelNameChange, onLogout }: HomePageProps) {
   // session via the URL, auto-resume it in the home Shell so the scan
   // progress is visible without leaving the 智能助手 page.
   const runningSession = sessions.find((s) => s.status === "running");
+  // Auto-resume at most once per mount, and only when the user hasn't already
+  // selected a session. Without the one-shot guard this effect re-forces the
+  // URL back to the running session whenever ?session= changes — trapping the
+  // user, who could no longer start a new chat or switch away while a scan runs.
+  const didAutoResumeRef = useRef(false);
   useEffect(() => {
+    if (didAutoResumeRef.current) return;
     if (!runningSession) return;
-    const currentKey = searchParams.get("session");
-    if (currentKey === runningSession.key) return; // already showing it
+    if (searchParams.get("session")) return; // user already has a selection
+    didAutoResumeRef.current = true;
     const next = new URLSearchParams(searchParams);
     next.set("session", runningSession.key);
     setSearchParams(next, { replace: true });

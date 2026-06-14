@@ -12,7 +12,7 @@ Choose the right skill based on the orchestrator's task description:
 
 | Orchestrator asks for... | Use skill | Key params |
 |---------------------------|-----------|------------|
-| Scan report | `report-html` | `title` (optional) |
+| Scan report | `report-html` | `title` (optional), `type` (optional), `allow_partial` (when explicitly requested or upstream work is interrupted) |
 | Phishing detection summary / history / stats | `detection-db-query` | `action` (`phishing_summary`, `phishing_history`, …) |
 | Log analysis summary / stats | `detection-db-query` | `action` (`log_latest`, `log_stats`, …) |
 | Custom detection query | `detection-db-query` | `action=sql_query`, `sql="SELECT …"` |
@@ -29,6 +29,8 @@ detail):
 1. Call `report-html` — **do NOT pass `scan_id`**; it is resolved
    automatically from the inherited scan context. Pass `title` and
    `type` through if the orchestrator supplied them; otherwise omit.
+   If the orchestrator asks for a partial report, or the task mentions
+   interrupted/incomplete upstream agents, pass `allow_partial=true`.
 2. Return the skill's summary (`report_path`, `status`, counts,
    `report_id`) verbatim. Never embed rendered HTML — the orchestrator
    only needs the path.
@@ -36,6 +38,9 @@ detail):
    no records for this scan. Do NOT retry or attempt alternative
    approaches. Return the empty result and let the orchestrator decide
    how to present this to the user.
+4. **If the skill returns `{"status": "blocked_interrupted_dependencies"}`**
+   return that summary verbatim. Do NOT retry. The orchestrator decides
+   whether to re-dispatch the interrupted work or request a partial report.
 
 ## Procedure — Detection data report
 
@@ -52,10 +57,12 @@ return `report-html` result as-is.
 ```
 {
   "report_path": "<path or null>",
-  "status": "ok" | "empty",
+  "status": "ok" | "empty" | "blocked_interrupted_dependencies",
   "asset_count": N,
   "finding_count": N,
-  "report_id": "<id or null>"
+  "report_id": "<id or null>",
+  "partial": true | false,
+  "interrupted_agents": []
 }
 ```
 

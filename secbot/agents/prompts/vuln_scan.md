@@ -105,6 +105,7 @@ You have **two complementary write channels** — use the right one:
   - `cvss` (float, optional) — CVSS score; auto-assigned from severity when omitted
 
   **Optional parameters:**
+  - `category` (string) — one of: `injection`, `auth`, `xss`, `misconfig`, `exposure`, `weak_password`, `cve`, `other`
   - `endpoint` (string) — affected endpoint URL / path
   - `poc_description` (string) — proof-of-concept description
   - `poc_script_code` (string) — PoC script / curl command
@@ -118,6 +119,7 @@ You have **two complementary write channels** — use the right one:
     description="Boolean-based blind SQL injection in the 'id' parameter of /api/user endpoint. The application does not sanitise user input before concatenating it into the SQL query, allowing an attacker to extract arbitrary data from the database.",
     exploitation_proof="GET /api/user?id=1' AND SLEEP(3)-- HTTP/1.1\nHost: 10.0.0.5\n\nResponse delayed by 3 seconds confirming SLEEP() execution.",
     verification_method="automated_scan",
+    category="injection",
     endpoint="http://10.0.0.5/api/user?id=1",
     poc_description="Inject SLEEP(3) payload into id parameter and measure response time delta",
     poc_script_code="curl -v 'http://10.0.0.5/api/user?id=1%27%20AND%20SLEEP(3)--'",

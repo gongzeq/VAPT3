@@ -218,6 +218,29 @@ describe("MessageBubble", () => {
     expect(screen.getByText("Actual result body")).not.toHaveClass("text-foreground");
   });
 
+  it("renders incomplete subagent lifecycle events as unfinished, not failed", () => {
+    const message: UIMessage = {
+      id: "subagent-incomplete",
+      role: "assistant",
+      kind: "agent_event",
+      content: "子智能体未完成",
+      agentName: "vuln_scan",
+      createdAt: Date.now(),
+      agentEvent: {
+        type: "subagent_done",
+        agent_name: "vuln_scan",
+        task_id: "t-incomplete",
+        status: "incomplete",
+        result: "[任务未完成]\npartial findings were preserved",
+      },
+    };
+
+    render(<MessageBubble message={message} />);
+
+    expect(screen.getByRole("button", { name: /未完成/ })).toBeInTheDocument();
+    expect(screen.queryByText("失败")).not.toBeInTheDocument();
+  });
+
   it("renders video media as an inline player", () => {
     const message: UIMessage = {
       id: "a1",

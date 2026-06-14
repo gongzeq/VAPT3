@@ -9,9 +9,13 @@ description: |
   records for this scan — the report was NOT generated. The orchestrator
   should inform the user clearly and list the findings discovered during
   the scan (from the blackboard or asset feed) so the user at least has
-  a textual summary. For phishing-email detection summaries, log-analysis
-  results, or any report based on detection data (detection_results.db),
-  use mode=detection (the agent has detection-db-query skill).
+  a textual summary. If the result contains {"status":
+  "blocked_interrupted_dependencies"} it means upstream expert work is
+  incomplete; re-dispatch that work or explicitly request a partial report
+  with allow_partial=true. For phishing-email detection summaries,
+  log-analysis results, or any report based on detection data
+  (detection_results.db), use mode=detection (the agent has
+  detection-db-query skill).
 
 system_prompt_file: ./prompts/report.md
 
@@ -39,13 +43,21 @@ legacy_input_schema:
       enum: [vapt, detection]
       default: vapt
       description: vapt=scan HTML report; detection=query detection_results.db
+    allow_partial:
+      type: boolean
+      default: false
+      description: Generate a partial VAPT report when upstream expert work is interrupted
 
 output_schema:
   type: object
   required: [report_path, status]
   properties:
     report_path: {type: [string, "null"]}
-    status:      {type: string, enum: [ok, empty]}
+    status:      {type: string, enum: [ok, empty, blocked_interrupted_dependencies]}
     asset_count:   {type: integer}
     finding_count: {type: integer}
     report_id:   {type: [string, "null"]}
+    partial:     {type: boolean}
+    interrupted_agents:
+      type: array
+      items: {type: object}

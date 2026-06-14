@@ -384,6 +384,7 @@ def test_execute_bridges_confirmed_findings_to_vulnerability_store_and_feed(tmp_
     stored = asyncio.run(store.to_dict_list())
     assert stored[0]["title"] == "SQL Error Probe"
     assert stored[0]["severity"] == "high"
+    assert stored[0]["category"] == "injection"
     assert stored[0]["verification_method"] == "automated_scan"
 
     entries = asyncio.run(feed.since())
