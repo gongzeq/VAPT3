@@ -29,7 +29,10 @@ from secbot.report.builder import (
     build_report_model_from_asset_entries,
 )
 from secbot.report.render import render_html, render_markdown
-from secbot.report.session_source import build_report_model_from_session_jsonl
+from secbot.report.session_source import (
+    build_report_model_from_session_jsonl,
+    load_report_entries_from_session_jsonl,
+)
 from secbot.skills.types import SkillContext
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[2] / "secbot" / "skills"
@@ -595,3 +598,75 @@ async def test_report_html_blocks_normal_report_when_subagent_interrupted(
     assert partial.summary["partial"] is True
     assert partial.summary["finding_count"] == 1
     assert partial.summary["interrupted_agents"][0]["agent_name"] == "vuln_scan"
+
+
+def test_read_assets_fallback_filters_vuln_entries(tmp_path: Path):
+    """read_assets fallback must not inject kind=vuln rows into asset_entries."""
+    jsonl_path = tmp_path / "sessions" / "read_assets_vuln.jsonl"
+    jsonl_path.parent.mkdir()
+    # A read_assets snapshot containing both url and vuln entries.
+    snapshot = json.dumps(
+        [
+            {
+                "id": 1,
+                "kind": "url",
+                "agent_name": "crawl_web",
+                "payload": {"url": "http://target/login"},
+                "created_at": "2026-06-15T10:00:00Z",
+            },
+            {
+                "id": 2,
+                "kind": "vuln",
+                "agent_name": "vuln-detec-manual",
+                "payload": {
+                    "title": "SQL Error Probe",
+                    "type": "injection",
+                    "severity": "high",
+                    "target": "111.228.2.47:8080",
+                },
+                "created_at": "2026-06-15T10:01:00Z",
+            },
+            {
+                "id": 3,
+                "kind": "port",
+                "agent_name": "port_scan",
+                "payload": {"port": 8080, "protocol": "tcp"},
+                "created_at": "2026-06-15T10:02:00Z",
+            },
+        ]
+    )
+    jsonl_path.write_text(
+        json.dumps(
+            {
+                "_kind": "agent_event",
+                "timestamp": "2026-06-15T10:05:00+00:00",
+                "sender_id": "orchestrator",
+                "agent_event": {
+                    "type": "tool_call",
+                    "status": "ok",
+                    "tool_name": "read_assets",
+                    "tool_call_id": "call-read-assets-1",
+                    "agent_name": "orchestrator",
+                    "detail": snapshot,
+                    "tool_args": {},
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    entries = load_report_entries_from_session_jsonl(jsonl_path)
+
+    # No asset_push events, so the read_assets fallback is used.
+    # kind=vuln must be excluded; only url and port remain.
+    kinds = [e["kind"] for e in entries.asset_entries]
+    assert "vuln" not in kinds, (
+        f"kind=vuln should be filtered from read_assets fallback, got: {kinds}"
+    )
+    assert set(kinds) == {"url", "port"}
+    assert len(entries.asset_entries) == 2
+    # vulnerability_entries is empty because there were no report_vulnerability
+    # events in the JSONL (the vuln data only came via read_assets dual-write).
+    assert entries.vulnerability_entries == []

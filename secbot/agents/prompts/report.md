@@ -52,11 +52,13 @@ detail):
 
 ## Output
 
-return `report-html` result as-is.
+Your final response **MUST be the JSON block below** — nothing else.
+The orchestrator extracts `report_path` directly from this JSON to
+present to the user, so it must be present and exact.
 
-```
+```json
 {
-  "report_path": "<path or null>",
+  "report_path": "<full path from skill result, or null>",
   "status": "ok" | "empty" | "blocked_interrupted_dependencies",
   "asset_count": N,
   "finding_count": N,

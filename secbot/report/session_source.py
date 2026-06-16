@@ -159,10 +159,17 @@ def load_report_entries_from_session_jsonl(path: Path) -> SessionReportEntries:
         # Incremental ``since_id`` reads each return only a delta, so taking
         # just the last snapshot would undercount. Union every snapshot by
         # real feed id (id-less rows are always kept).
+        #
+        # Skip ``kind=vuln`` entries — they are dual-written by
+        # ``report_vulnerability`` into AssetFeed and already captured in
+        # ``vulnerability_entries`` above; including them here would inject
+        # duplicate vulnerability data into the asset section of the report.
         merged: dict[Any, dict[str, Any]] = {}
         extra: list[dict[str, Any]] = []
         for snapshot in read_assets_snapshots:
             for item in snapshot:
+                if str(item.get("kind") or "").strip().lower() == "vuln":
+                    continue
                 key = item.get("id")
                 if key is None:
                     extra.append(item)
