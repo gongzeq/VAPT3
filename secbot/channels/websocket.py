@@ -1900,7 +1900,7 @@ class WebSocketChannel(BaseChannel):
         if not mime:
             mime = "application/octet-stream"
         # Include scan_id in filename to avoid duplicate names across scans.
-        dl_name = f"{candidate.name}_{scan_id}"
+        dl_name = f"{candidate.stem}_{scan_id}{candidate.suffix}"
         return _http_response(
             body,
             content_type=mime,
