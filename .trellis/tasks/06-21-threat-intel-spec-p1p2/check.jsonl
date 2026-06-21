@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/threat-intel/index.md", "reason": "Pre-Implementation Checklist — 质量检查时逐项核对"}
+{"file": ".trellis/spec/threat-intel/feed-integration.md", "reason": "Feed集成禁止模式 + Tests Required — 检查代码是否违反约定"}
+{"file": ".trellis/spec/threat-intel/graph-contract.md", "reason": "图谱禁止模式 + Tests Required — 检查前后端一致性"}
+{"file": ".trellis/spec/threat-intel/detail-and-management.md", "reason": "详情页API契约 + 禁止模式 — 检查API响应结构"}
+{"file": ".trellis/spec/threat-intel/p2-pipeline.md", "reason": "P2管道禁止模式 + Tests Required — 检查LLM提取和过期逻辑"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}

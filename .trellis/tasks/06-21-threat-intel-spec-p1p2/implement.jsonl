@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/threat-intel/index.md", "reason": "入口 + P0架构基线 + Pre-Development Checklist — 所有P1/P2开发前必读"}
+{"file": ".trellis/spec/threat-intel/feed-integration.md", "reason": "P1数据源接入规范（NVD/MalwareBazaar/Feodo/OTX/Exploit-DB）+ CPE匹配 + Feed Pull函数签名约定"}
+{"file": ".trellis/spec/threat-intel/graph-contract.md", "reason": "P1知识图谱全栈规范：后端聚合API + 前端reactflow + 节点归并 + 聚类 + 交互"}
+{"file": ".trellis/spec/threat-intel/detail-and-management.md", "reason": "P1详情页API + 前端组件 + Watchlist/别名管理界面 + Feed失败通知"}
+{"file": ".trellis/spec/threat-intel/p2-pipeline.md", "reason": "P2海事LLM提取管道 + 过期淘汰 + 低置信复核队列"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
