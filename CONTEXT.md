@@ -451,3 +451,101 @@ _Avoid_: repeated polling, repeated context reads, self-reported progress only
 - Reproduction-document verification was discussed; resolved: use **Document-Guided Verification** as an explicit user action, and route any live-target verification through the existing **Scan** authorization and high-risk safety model.
 - Language support was discussed as a potential upload restriction; resolved: uploads are not language-restricted, but high-confidence findings require an **Analyzer Adapter** with parser, entry-point extraction, source/sink/sanitizer rules, data-flow evidence, and line references.
 - Initial **Analyzer Adapter** scope was discussed; resolved: MVP starts with Java/Spring MVC/Spring Boot, JavaScript/TypeScript/Node.js/Express/NestJS, and Python/FastAPI/Django/Flask.
+
+## Threat Intelligence Glossary
+
+**Threat Intelligence Module**:
+An independent security workspace for consuming, storing, and presenting open-source threat intelligence focused on the Chinese transportation and maritime industries. Separate from the conversational VAPT pipeline; has its own storage, scheduled ingestion, API routes, and frontend pages.
+_Avoid_: scan feature, dashboard sub-tab, VAPT extension
+
+**Threat Group**:
+A named adversary (APT, cybercrime group, or state-sponsored actor) tracked in the threat intelligence store, with aliases, known TTPs, target sectors, and associated infrastructure. Sourced primarily from MITRE ATT&CK Groups and enriched via AlienVault OTX. Users may mark groups as watched for priority monitoring.
+_Avoid_: threat actor (implementation detail), IOC source, scan target
+
+**Threat Group Watchlist**:
+A user-maintained list of **Threat Groups** flagged for priority monitoring. Watchlisted groups surface their latest activity (new C2 IPs, new malware families, new exploited vulnerabilities) prominently on the overview page.
+_Avoid_: favorite, bookmark, auto-subscribe
+
+**Threat Infrastructure IP**:
+An IP address associated with a known **Threat Group** as command-and-control (C2) infrastructure, sourced from abuse.ch ThreatFox and Feodo Tracker. Not a standalone indicator — always linked to a **Threat Group**.
+_Avoid_: attack IP (too generic), scan source, blacklisted IP
+
+**Threat Vulnerability**:
+A vulnerability tracked in the threat intelligence store because it is in CISA KEV or has CVSS >= 7.0, including transportation-industry supply chain vulnerabilities identified via CPE matching against a maintained industry product list.
+_Avoid_: scan vulnerability, CMDB vulnerability, Vulnerability Candidate
+
+**Industry CPE List**:
+A maintained list of Common Platform Enumeration identifiers for software and hardware products commonly deployed in the transportation and maritime sectors (e.g., Siemens SIMATIC, Inmarsat terminals, port SCADA systems). Used to filter **Threat Vulnerabilities** for supply chain relevance.
+_Avoid_: asset fingerprint, scan CPE, generic product list
+
+**Threat Malware Family**:
+A named malware family or sample set associated with a **Threat Group**, sourced from abuse.ch MalwareBazaar. Records include sample hashes (MD5/SHA256), YARA rules, and behavioral indicators. Always bound to a **Threat Group**.
+_Avoid_: standalone sample, virus signature, scan finding
+
+**Threat Group Vulnerability Association**:
+Evidence that a **Threat Group** is known to exploit a **Threat Vulnerability**, distinct from the vulnerability's general existence in CISA KEV or NVD.
+_Avoid_: vulnerability ownership, scan finding relation, inferred asset exposure
+
+**Maritime Intelligence Event**:
+A safety or security event in the maritime domain, such as piracy incidents, navigation warnings, or GNSS interference reports. Sourced from unstructured public sources (IMO GISIS, UKMTO, ReCAAP ISC) via LLM-assisted extraction rather than dedicated crawlers.
+_Avoid_: ship tracking, AIS data, weather alert
+
+**Threat Intel Store**:
+An independent SQLite database (`threat_intel.sqlite3`) with its own ORM models, repository layer, and migration scripts. Separate from the CMDB and the detection results database. Scheduled ingestion is driven by the Workflow system.
+_Avoid_: CMDB extension, detection_results table, scan database
+
+**Threat Intel Feed Pull**:
+A scheduled Workflow job that fetches data from configured external sources, applies severity and relevance filters, deduplicates against existing records, and upserts into the **Threat Intel Store**. LLM extraction is used for unstructured sources (maritime PDF/HTML reports).
+_Avoid_: real-time stream, webhook listener, scan trigger
+
+**Threat Intel Feed Run**:
+One execution record for a **Threat Intel Feed Pull**, including source, trigger, freshness, inserted/updated/skipped counts, unmapped records, and failure details.
+_Avoid_: scan task, workflow result blob, generic log line
+
+**Threat Intel Knowledge Graph**:
+An interactive graph visualization of the **Threat Intel Store** entities and their relationships, rendered with reactflow. Available in two modes: a local graph embedded in the **Threat Group** detail page (radial layout, single group center) and a global graph page at `/threat-intel/graph` (force-directed layout, multiple groups). Nodes represent Threat Groups, Threat Infrastructure IPs, Threat Malware Families, and Threat Vulnerabilities; edges represent uses_c2, uses_malware, exploits, and targets relationships. **Maritime Intelligence Events** are excluded from the graph as an independent time-series dimension.
+_Avoid_: network topology, asset topology, maritime graph
+
+**Threat Intel Graph Cluster**:
+An aggregated node in the **Threat Intel Knowledge Graph** that represents multiple same-type satellite entities collapsed into one (e.g., "C2 IP x67") when the count exceeds the configurable `top_n` threshold (default 30). Users can click a cluster node to expand it into individual entities via a follow-up API call.
+_Avoid_: graph grouping, manual folder, pagination
+
+## Threat Intelligence Relationships
+
+- A **Threat Group** may have zero or more associated **Threat Infrastructure IPs**.
+- A **Threat Group** may use zero or more **Threat Malware Families**.
+- A **Threat Group** may have zero or more **Threat Group Vulnerability Associations**.
+- A **Threat Group Vulnerability Association** links exactly one **Threat Group** to exactly one **Threat Vulnerability** it is known to exploit.
+- A **Threat Group** may be on a user's **Threat Group Watchlist**.
+- A **Threat Vulnerability** is identified by CVE ID and is included when it appears in CISA KEV or has CVSS severity of 7.0 or above.
+- A **Threat Vulnerability** may be flagged as supply-chain-relevant when its CPE matches the **Industry CPE List**.
+- A **Threat Infrastructure IP** belongs to exactly one **Threat Group**.
+- A **Threat Malware Family** belongs to exactly one **Threat Group**.
+- A **Maritime Intelligence Event** is independent of **Threat Groups** and stored as standalone time-series data.
+- **Threat Intel Feed Pulls** run on a Workflow-defined schedule and upsert into the **Threat Intel Store**.
+- A **Threat Intel Feed Pull** produces one **Threat Intel Feed Run** per execution.
+- The **Threat Intelligence Module** has a dedicated top-level navigation entry in the frontend, separate from VAPT **Sessions**, **Dashboard**, and **Workflows**.
+- The **Threat Intelligence Module** overview page presents summary cards for threat groups, vulnerabilities, C2 infrastructure, malware activity, and maritime events, each drillable to a detail view.
+- The **Threat Intel Knowledge Graph** renders **Threat Groups** as central nodes with **Threat Infrastructure IPs**, **Threat Malware Families**, and **Threat Vulnerabilities** as satellite nodes connected by typed edges.
+- The **Threat Intel Knowledge Graph** local mode is embedded in the **Threat Group** detail page and uses radial layout; the global mode is a standalone page at `/threat-intel/graph` using force-directed layout.
+- A **Threat Intel Graph Cluster** replaces individual satellite nodes when a single group's association count for one entity type exceeds `top_n`, and expands on user click.
+- **Maritime Intelligence Events** do not appear in the **Threat Intel Knowledge Graph** because they have no association with **Threat Groups**.
+
+## Threat Intelligence Flagged Ambiguities
+
+- "威胁情报" was discussed as either a VAPT enhancement or an independent module; resolved: independent module with its own storage, scheduling, and frontend, decoupled from the VAPT pipeline.
+- Data ingestion was discussed as on-demand query vs. scheduled pull; resolved: scheduled pull via Workflow jobs, with LLM extraction for unstructured sources.
+- Storage scope was discussed as all-source full ingest vs. filtered; resolved: high-value sources only, CISA KEV or severity >= high (CVSS 7.0+), China transportation/maritime industry relevance filter.
+- Supply chain vulnerability was discussed as product-level or attack-level; resolved: product-level CPE matching against a maintained **Industry CPE List**, not supply-chain-attack attribution.
+- Threat vulnerabilities were discussed as always APT-bound vs. independently tracked CVEs; resolved: **Threat Vulnerabilities** can exist independently, and known exploitation by a group is captured through **Threat Group Vulnerability Associations**.
+- Attack IPs and malware were discussed as standalone dimensions; resolved: both are bound to **Threat Groups** as the central association hub (APT-centric star model).
+- Maritime intelligence sources were discussed as dedicated crawlers vs. LLM extraction; resolved: LLM-based extraction from unstructured public sources (IMO GISIS HTML, UKMTO/ReCAAP PDFs), avoiding fragile dedicated crawlers.
+- Threat group initial corpus was discussed; resolved: MITRE ATT&CK Groups as base data, AlienVault OTX for industry-tagged enrichment, Chinese APT alias mapping table maintained separately, user watchlist for priority monitoring.
+- Frontend entry point was discussed as dashboard sub-tab vs. new nav item; resolved: top-level navigation entry "威胁情报" with a Dashboard-style overview page and drill-down detail views.
+- Storage location was discussed as CMDB extension vs. independent database; resolved: independent `threat_intel.sqlite3` with its own ORM, repository, and migration, separate from CMDB and detection results.
+- Knowledge graph visualization library was discussed; resolved: reuse reactflow (already in `package.json`), not introduce a new graph library.
+- Knowledge graph scope was discussed as global-only vs. local-only; resolved: dual-mode — local graph in **Threat Group** detail page (radial layout) plus global page at `/threat-intel/graph` (force-directed layout).
+- Knowledge graph node interaction was discussed; resolved: single-click opens a side drawer with summary and animates the graph to center on the clicked node, no navigation to a separate detail page.
+- Knowledge graph performance was discussed for large datasets; resolved: configurable `top_n` clustering (default 30) with expandable cluster nodes, global graph initial render capped at 100-200 nodes.
+- **Maritime Intelligence Events** were discussed for graph inclusion; resolved: excluded from the **Threat Intel Knowledge Graph** because they are an independent time-series dimension with no **Threat Group** associations.
+- Knowledge graph MVP phase was discussed; resolved: placed entirely in P1 because P0 only has Group + IP (too sparse for a valuable graph), and P0 delivery is already heavy.

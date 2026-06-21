@@ -1,0 +1,21 @@
+{"file": "docs/prd-threat-intelligence.md", "reason": "完整PRD：数据模型、API设计、前端设计、MVP分期、验收标准"}
+{"file": "docs/adr/0003-threat-intelligence-as-independent-apt-centric-workspace.md", "reason": "架构决策：独立存储、星形模型、调度机制"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端开发指南索引与契约清单"}
+{"file": ".trellis/spec/backend/architecture.md", "reason": "两层Orchestrator→Expert架构边界，threat_intel需作为独立模块不侵入VAPT"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SQLite ORM模式、PRAGMA设置（WAL/foreign_keys/busy_timeout）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误类型与传播策略"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端代码质量标准与禁止模式"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "模块组织与文件布局规范"}
+{"file": ".trellis/spec/backend/rest-api-contract.md", "reason": "REST API契约：分页、响应结构、错误格式"}
+{"file": ".trellis/spec/backend/scan-lifecycle.md", "reason": "状态机模式参考，Feed Pull Run状态流转"}
+{"file": ".trellis/spec/backend/websocket-protocol.md", "reason": "WS事件协议，前端流式数据消费"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端硬性规则与Pre-Implementation Checklist"}
+{"file": ".trellis/spec/frontend/coding-standards.md", "reason": "TypeScript strict、组件规则、禁止模式"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "主题令牌：海蓝主色、严重度色板、亮色模式规则"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "组件模式：MessageBubble、AlertDialog、卡片样式"}
+{"file": ".trellis/spec/frontend/architecture.md", "reason": "路由图、组件树、hooks、API clients、i18n"}
+{"file": ".trellis/spec/frontend/visualization-libraries.md", "reason": "可视化库白名单：react-flow + recharts"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流思考：API→Service→DB边界契约"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "代码重用：修改前先搜索已有实现"}
+{"file": "CONTEXT.md", "reason": "领域术语表：Threat Intelligence Glossary章节"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}

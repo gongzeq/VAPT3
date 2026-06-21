@@ -1,0 +1,10 @@
+{"file": "docs/prd-threat-intelligence.md", "reason": "P0验收检查清单§9.4"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端代码质量标准与禁止模式检查"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理一致性检查"}
+{"file": ".trellis/spec/backend/rest-api-contract.md", "reason": "API契约合规：分页结构、错误格式"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库规范：PRAGMA、外键、迁移"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端硬性规则合规检查"}
+{"file": ".trellis/spec/frontend/coding-standards.md", "reason": "TypeScript strict、禁止模式、组件大小限制"}
+{"file": ".trellis/spec/frontend/theme-tokens.md", "reason": "主题令牌合规：无原始hex、亮色模式"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层一致性验证：API↔Service↔DB数据流"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
