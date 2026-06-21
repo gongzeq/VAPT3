@@ -220,7 +220,8 @@
     "dashboard": "Dashboard",
     "settings": "Settings",
     "notifications": "Notifications",
-    "workflows": "Workflows"
+    "workflows": "Workflows",
+    "threatIntel": "Threat Intel"
   },
   "home": {
     "hero": {

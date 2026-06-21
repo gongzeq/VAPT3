@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Bell, History, LayoutDashboard, Menu, MessageSquare, Settings, Workflow } from "lucide-react";
+import { Bell, History, LayoutDashboard, Menu, MessageSquare, Settings, Shield, Workflow } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -31,6 +31,7 @@ const NAV_ITEMS: Array<{
     icon: Workflow,
     enabled: WORKFLOW_BUILDER_ENABLED,
   },
+  { to: "/threat-intel", labelKey: "nav.threatIntel", fallback: "威胁情报", icon: Shield },
   { to: "/settings", labelKey: "nav.settings", fallback: "设置", icon: Settings },
 ];
 

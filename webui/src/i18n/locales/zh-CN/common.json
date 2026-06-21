@@ -209,7 +209,8 @@
     "dashboard": "大屏分析",
     "settings": "设置",
     "notifications": "通知",
-    "workflows": "工作流"
+    "workflows": "工作流",
+    "threatIntel": "威胁情报"
   },
   "home": {
     "hero": {

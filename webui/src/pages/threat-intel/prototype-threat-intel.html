@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark" data-theme="secbot">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>威胁情报 — UI/UX 设计稿</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Design Tokens — 复用 secbot dark theme (globals.css)
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg:         hsl(230 20% 5%);
+  --fg:         hsl(220 10% 92%);
+  --card:       hsl(230 18% 9%);
+  --card-fg:    hsl(220 10% 92%);
+  --popover:    hsl(230 16% 12%);
+  --border:     hsl(230 12% 18%);
+  --border-sub: hsl(230 14% 14%);
+  --muted:      hsl(222 28% 14%);
+  --muted-fg:   hsl(210 16% 65%);
+  --primary:    hsl(210 100% 56%);
+  --primary-fg: hsl(230 20% 5%);
+  --ocean-300:  hsl(210 100% 72%);
+  --ocean-500:  hsl(210 100% 56%);
+  --ocean-700:  hsl(210 92% 38%);
+  --cyan-glow:  hsl(189 94% 56%);
+  --destructive:hsl(0 100% 65%);
+  --sev-critical:hsl(0 100% 65%);
+  --sev-high:   hsl(22 100% 62%);
+  --sev-medium: hsl(48 96% 53%);
+  --sev-low:    hsl(203 100% 62%);
+  --alert-success:hsl(152 70% 45%);
+  --alert-warning:hsl(38 95% 56%);
+  --grad-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(195 100% 60%));
+  --grad-card:    linear-gradient(140deg, hsl(222 47% 11% / .95), hsl(210 32% 14% / .85));
+  --shadow-elegant: 0 10px 30px -10px hsl(210 100% 56% / .32);
+  --shadow-glow:    0 0 40px hsl(210 100% 56% / .3);
+  --radius: .5rem;
+  --font-sans: Inter, "Noto Sans SC", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Reset & Base
+   ═══════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; scroll-behavior: smooth; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+::selection { background: hsl(210 100% 56% / .15); }
+
+/* ═══════════════════════════════════════════════════════════════
+   Utility Classes
+   ═══════════════════════════════════════════════════════════════ */
+.glass-card {
+  background: hsl(230 18% 9% / .55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid hsl(230 12% 18% / .5);
+  border-radius: var(--radius);
+  box-shadow: inset 0 1px 0 0 hsl(220 10% 92% / .04);
+  transition: box-shadow .3s cubic-bezier(.4,0,.2,1), border-color .3s cubic-bezier(.4,0,.2,1);
+}
+.glass-card:hover {
+  border-color: hsl(210 100% 56% / .3);
+  box-shadow: 0 0 0 1px hsl(210 100% 56% / .08), 0 8px 24px -8px hsl(210 100% 56% / .18);
+}
+.section-accent-bar {
+  position: relative;
+  padding-left: .75rem;
+}
+.section-accent-bar::before {
+  content: "";
+  position: absolute;
+  left: 0; top: .125rem; bottom: .125rem;
+  width: 3px;
+  border-radius: 9999px;
+  background: var(--grad-primary);
+}
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  border: 1px solid transparent;
+}
+.badge-primary   { color: var(--primary); border-color: hsl(210 100% 56% / .24); background: hsl(210 100% 56% / .1); }
+.badge-critical  { color: var(--sev-critical); border-color: hsl(0 100% 65% / .26); background: hsl(0 100% 65% / .1); }
+.badge-high      { color: var(--sev-high); border-color: hsl(22 100% 62% / .26); background: hsl(22 100% 62% / .1); }
+.badge-medium    { color: var(--sev-medium); border-color: hsl(48 96% 53% / .26); background: hsl(48 96% 53% / .1); }
+.badge-low       { color: var(--sev-low); border-color: hsl(203 100% 62% / .26); background: hsl(203 100% 62% / .1); }
+.badge-success   { color: var(--alert-success); border-color: hsl(152 70% 45% / .28); background: hsl(152 70% 45% / .1); }
+.badge-warning   { color: var(--alert-warning); border-color: hsl(38 95% 56% / .3); background: hsl(38 95% 56% / .11); }
+.badge-muted     { color: var(--muted-fg); border-color: hsl(230 12% 18% / .78); background: hsl(222 28% 14% / .78); }
+.text-gradient {
+  background: var(--grad-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.mono { font-family: var(--font-mono); }
+a { color: var(--primary); text-decoration: none; transition: color .2s; }
+a:hover { color: var(--ocean-300); }
+
+/* SVG Icon helper */
+.icon { width: 16px; height: 16px; flex-shrink: 0; }
+.icon-sm { width: 14px; height: 14px; }
+.icon-lg { width: 20px; height: 20px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Layout Shell
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Navbar ── */
+.navbar {
+  position: sticky; top: 0; z-index: 50;
+  border-bottom: 1px solid hsl(230 12% 18% / .5);
+  background: hsl(230 20% 5% / .8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+.navbar-inner {
+  max-width: 1600px; margin: 0 auto;
+  display: flex; align-items: center; gap: 24px;
+  padding: 0 24px; height: 64px;
+}
+.nav-logo {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--grad-primary);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 12px hsl(210 100% 56% / .25);
+  font-weight: 700; font-size: 14px; color: var(--primary-fg);
+}
+.nav-links { display: flex; align-items: center; gap: 4px; margin-left: 16px; }
+.nav-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  font-size: 14px; color: var(--muted-fg);
+  transition: all .2s;
+  cursor: pointer;
+  text-decoration: none;
+}
+.nav-link:hover { background: hsl(210 100% 56% / .08); color: var(--fg); }
+.nav-link.active {
+  background: var(--grad-primary);
+  color: var(--primary-fg);
+  font-weight: 500;
+  box-shadow: 0 2px 12px hsl(210 100% 56% / .35);
+}
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.ws-badge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px; border-radius: 8px;
+  font-size: 12px; color: var(--muted-fg);
+  border: 1px solid hsl(230 12% 18% / .6);
+  background: hsl(230 18% 9% / .6);
+}
+.ws-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--alert-success); box-shadow: 0 0 6px hsl(152 70% 45% / .6); }
+
+/* ── Main Container ── */
+.main { max-width: 1600px; margin: 0 auto; padding: 24px; }
+
+/* ── Page Header ── */
+.page-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-title { font-size: 20px; font-weight: 700; }
+.page-title .icon { color: var(--primary); }
+
+/* ── Freshness Bar ── */
+.freshness-bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: hsl(230 18% 9% / .7);
+  border: 1px solid hsl(230 12% 18% / .5);
+  margin-bottom: 24px;
+  font-size: 12px;
+}
+.freshness-item { display: flex; align-items: center; gap: 6px; color: var(--muted-fg); }
+.freshness-item .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.dot-ok   { background: var(--alert-success); box-shadow: 0 0 6px hsl(152 70% 45% / .5); }
+.dot-warn { background: var(--alert-warning); box-shadow: 0 0 6px hsl(38 95% 56% / .5); }
+.dot-fail { background: var(--sev-critical); box-shadow: 0 0 6px hsl(0 100% 65% / .5); }
+
+/* ═══════════════════════════════════════════════════════════════
+   Overview — 5 Situation Cards (PRD §7.2)
+   ═══════════════════════════════════════════════════════════════ */
+.situation-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+@media (max-width: 1200px) { .situation-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px)  { .situation-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px)  { .situation-grid { grid-template-columns: 1fr; } }
+
+.sit-card {
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.sit-card::after {
+  content: "";
+  position: absolute; bottom: 0; left: 20px; right: 20px;
+  height: 2px; border-radius: 2px;
+  background: var(--grad-primary);
+  opacity: 0;
+  transition: opacity .3s;
+}
+.sit-card:hover::after { opacity: 1; }
+.sit-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.sit-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid hsl(210 100% 56% / .24);
+  background: linear-gradient(135deg, hsl(210 100% 56% / .16), hsl(189 94% 56% / .08)), hsl(230 18% 9%);
+  color: var(--primary);
+  box-shadow: inset 0 1px 0 hsl(220 10% 92% / .04), 0 12px 24px -18px hsl(210 100% 56% / .55);
+}
+.sit-icon-danger { border-color: hsl(0 100% 65% / .26); background: linear-gradient(135deg, hsl(0 100% 65% / .12), hsl(22 100% 62% / .06)), hsl(230 18% 9%); color: var(--sev-critical); box-shadow: inset 0 1px 0 hsl(220 10% 92% / .04), 0 12px 24px -18px hsl(0 100% 65% / .4); }
+.sit-icon-warning { border-color: hsl(22 100% 62% / .26); background: linear-gradient(135deg, hsl(22 100% 62% / .12), hsl(38 95% 56% / .06)), hsl(230 18% 9%); color: var(--sev-high); box-shadow: inset 0 1px 0 hsl(220 10% 92% / .04), 0 12px 24px -18px hsl(22 100% 62% / .4); }
+.sit-icon-success { border-color: hsl(152 70% 45% / .28); background: linear-gradient(135deg, hsl(152 70% 45% / .12), hsl(174 72% 46% / .06)), hsl(230 18% 9%); color: var(--alert-success); box-shadow: inset 0 1px 0 hsl(220 10% 92% / .04), 0 12px 24px -18px hsl(152 70% 45% / .4); }
+.sit-icon-info { border-color: hsl(203 100% 62% / .26); background: linear-gradient(135deg, hsl(203 100% 62% / .12), hsl(210 100% 56% / .06)), hsl(230 18% 9%); color: var(--sev-low); box-shadow: inset 0 1px 0 hsl(220 10% 92% / .04), 0 12px 24px -18px hsl(203 100% 62% / .4); }
+
+.sit-trend {
+  display: flex; align-items: center; gap: 2px;
+  font-size: 10px; font-weight: 500;
+  padding: 2px 6px; border-radius: 9999px;
+}
+.trend-up   { color: var(--sev-critical); background: hsl(0 100% 65% / .1); }
+.trend-down { color: var(--alert-success); background: hsl(152 70% 45% / .1); }
+.trend-flat { color: var(--muted-fg); background: hsl(222 28% 14% / .78); }
+
+.sit-value { font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-family: var(--font-mono); line-height: 1; }
+.sit-sub   { font-size: 11px; color: var(--muted-fg); }
+.sit-label { font-size: 13px; color: var(--muted-fg); }
+.sit-footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sit-footer .badge { font-size: 10px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Content Sections (2-col layout below cards)
+   ═══════════════════════════════════════════════════════════════ */
+.content-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+@media (max-width: 1024px) { .content-grid { grid-template-columns: 1fr; } }
+
+.panel { padding: 20px; }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.panel-title { font-size: 14px; font-weight: 600; }
+.panel-action {
+  font-size: 12px; color: hsl(210 100% 56% / .8);
+  display: flex; align-items: center; gap: 4px;
+  cursor: pointer; transition: color .2s;
+}
+.panel-action:hover { color: var(--primary); }
+
+/* ── Threat Group Table ── */
+.tg-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.tg-table th {
+  text-align: left; font-size: 11px; font-weight: 500;
+  color: var(--muted-fg); text-transform: uppercase;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.tg-table td {
+  padding: 12px 0; border-bottom: 1px solid hsl(230 12% 18% / .35);
+  vertical-align: middle;
+}
+.tg-table tr:last-child td { border-bottom: none; }
+.tg-table tr { transition: background .15s; }
+.tg-table tr:hover td { background: hsl(210 100% 56% / .04); }
+.tg-name { font-weight: 600; color: var(--fg); }
+.tg-alias { font-size: 11px; color: var(--muted-fg); margin-top: 2px; }
+.tg-num { font-family: var(--font-mono); font-weight: 500; text-align: center; }
+.star-btn {
+  width: 28px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid hsl(230 12% 18% / .55);
+  background: transparent; cursor: pointer;
+  color: var(--muted-fg);
+  transition: all .2s;
+}
+.star-btn:hover { border-color: hsl(38 95% 56% / .4); color: var(--alert-warning); }
+.star-btn.watched { color: var(--alert-warning); border-color: hsl(38 95% 56% / .4); background: hsl(38 95% 56% / .1); }
+
+/* ── Activity Timeline ── */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.tl-item {
+  display: flex; gap: 12px; padding: 12px 0;
+  border-bottom: 1px solid hsl(230 12% 18% / .35);
+  position: relative;
+}
+.tl-item:last-child { border-bottom: none; }
+.tl-dot-col {
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: 4px; width: 20px; flex-shrink: 0;
+}
+.tl-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.tl-line {
+  width: 1px; flex: 1; margin-top: 4px;
+  background: hsl(230 12% 18% / .6);
+}
+.tl-item:last-child .tl-line { display: none; }
+.tl-body { flex: 1; min-width: 0; }
+.tl-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.tl-meta  { font-size: 11px; color: var(--muted-fg); display: flex; gap: 8px; align-items: center; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Detail Preview Panels (bottom section)
+   ═══════════════════════════════════════════════════════════════ */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+@media (max-width: 1024px) { .detail-grid { grid-template-columns: 1fr; } }
+
+/* ── Vuln Table ── */
+.vuln-table { width: 100%; font-size: 13px; border-collapse: collapse; }
+.vuln-table th {
+  text-align: left; font-size: 11px; font-weight: 500;
+  color: var(--muted-fg); text-transform: uppercase;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.vuln-table td {
+  padding: 10px 0; border-bottom: 1px solid hsl(230 12% 18% / .35);
+}
+.vuln-table tr:last-child td { border-bottom: none; }
+.vuln-cve { font-family: var(--font-mono); font-weight: 500; font-size: 12px; color: var(--primary); }
+.cvss-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; padding: 2px 8px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; font-family: var(--font-mono);
+}
+.cvss-critical { background: hsl(0 100% 65% / .15); color: var(--sev-critical); }
+.cvss-high     { background: hsl(22 100% 62% / .15); color: var(--sev-high); }
+
+/* ── Maritime Events ── */
+.maritime-list { display: flex; flex-direction: column; gap: 0; }
+.maritime-item {
+  padding: 12px 0;
+  border-bottom: 1px solid hsl(230 12% 18% / .35);
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.maritime-item:last-child { border-bottom: none; }
+.maritime-sev {
+  width: 4px; border-radius: 2px; align-self: stretch;
+  flex-shrink: 0; min-height: 32px;
+}
+.maritime-body { flex: 1; min-width: 0; }
+.maritime-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+.maritime-meta  { font-size: 11px; color: var(--muted-fg); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Feed Status Bar (bottom)
+   ═══════════════════════════════════════════════════════════════ */
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+@media (max-width: 1024px) { .feed-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px)  { .feed-grid { grid-template-columns: repeat(2, 1fr); } }
+.feed-item {
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.feed-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.feed-info { flex: 1; min-width: 0; }
+.feed-name { font-size: 12px; font-weight: 500; }
+.feed-time { font-size: 10px; color: var(--muted-fg); font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════════════════════
+   APT Group Detail Preview (modal-like section)
+   ═══════════════════════════════════════════════════════════════ */
+.detail-preview {
+  padding: 24px;
+  margin-bottom: 32px;
+}
+.detail-head {
+  display: flex; align-items: flex-start; gap: 16px;
+  margin-bottom: 20px;
+}
+.detail-avatar {
+  width: 56px; height: 56px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700;
+  border: 1px solid hsl(210 100% 56% / .24);
+  background: linear-gradient(135deg, hsl(210 100% 56% / .18), hsl(189 94% 56% / .08)), hsl(230 18% 9%);
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.detail-info { flex: 1; min-width: 0; }
+.detail-name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.detail-aliases { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.detail-meta-row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted-fg); }
+.detail-meta-item { display: flex; align-items: center; gap: 4px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab {
+  padding: 8px 16px; font-size: 13px; color: var(--muted-fg);
+  cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all .2s; position: relative; bottom: -1px;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+
+/* ── Stats Row in Detail ── */
+.stats-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 16px;
+}
+.stat-box {
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid hsl(230 12% 18% / .5);
+  background: hsl(230 18% 9% / .4);
+  text-align: center;
+}
+.stat-val { font-size: 22px; font-weight: 700; font-family: var(--font-mono); }
+.stat-label { font-size: 11px; color: var(--muted-fg); margin-top: 2px; }
+
+/* ── ATT&CK Techniques Mini ── */
+.technique-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.technique-chip {
+  padding: 3px 10px; border-radius: 6px;
+  font-size: 11px; font-family: var(--font-mono);
+  border: 1px solid hsl(230 12% 18% / .5);
+  background: hsl(222 28% 14% / .5);
+  color: var(--muted-fg);
+  transition: all .2s;
+  cursor: default;
+}
+.technique-chip:hover { border-color: hsl(210 100% 56% / .3); color: var(--primary); }
+
+/* ═══════════════════════════════════════════════════════════════
+   Search & Filter Bar
+   ═══════════════════════════════════════════════════════════════ */
+.filter-bar {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.filter-input {
+  flex: 1; min-width: 200px;
+  padding: 8px 12px; border-radius: var(--radius);
+  border: 1px solid hsl(230 12% 18% / .7);
+  background: hsl(230 18% 9% / .6);
+  color: var(--fg); font-size: 13px;
+  outline: none; transition: border-color .2s;
+}
+.filter-input::placeholder { color: var(--muted-fg); }
+.filter-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px hsl(210 100% 56% / .15); }
+.filter-select {
+  padding: 8px 12px; border-radius: var(--radius);
+  border: 1px solid hsl(230 12% 18% / .7);
+  background: hsl(230 18% 9% / .6);
+  color: var(--fg); font-size: 13px;
+  outline: none; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='hsl(210 16%25 65%25)' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+.filter-btn {
+  padding: 8px 16px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  border: 1px solid hsl(230 12% 18% / .7);
+  background: hsl(230 18% 9% / .6);
+  color: var(--fg); transition: all .2s;
+  display: flex; align-items: center; gap: 6px;
+}
+.filter-btn:hover { border-color: hsl(210 100% 56% / .3); }
+.filter-btn-primary {
+  background: var(--grad-primary);
+  color: var(--primary-fg);
+  border: none;
+}
+.filter-btn-primary:hover { box-shadow: 0 4px 16px hsl(210 100% 56% / .35); }
+
+/* ═══════════════════════════════════════════════════════════════
+   Section Divider
+   ═══════════════════════════════════════════════════════════════ */
+.section-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 32px 0 24px;
+  font-size: 16px; font-weight: 600;
+}
+.section-divider::after {
+  content: "";
+  flex: 1; height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Annotation / Design Notes
+   ═══════════════════════════════════════════════════════════════ */
+.design-note {
+  margin: 8px 0 24px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px dashed hsl(38 95% 56% / .35);
+  background: hsl(38 95% 56% / .05);
+  font-size: 12px; color: var(--alert-warning);
+  line-height: 1.7;
+}
+.design-note strong { color: hsl(38 95% 56% / .9); }
+
+/* ═══════════════════════════════════════════════════════════════
+   Animations
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes fade-in-up {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fade-in-up .35s cubic-bezier(.4,0,.2,1) both; }
+.delay-1 { animation-delay: .05s; }
+.delay-2 { animation-delay: .1s; }
+.delay-3 { animation-delay: .15s; }
+.delay-4 { animation-delay: .2s; }
+.delay-5 { animation-delay: .25s; }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 18px hsl(210 100% 70% / .35); }
+  50%      { box-shadow: 0 0 32px hsl(210 100% 70% / .65); }
+}
+.glow-pulse { animation: pulse-glow 2.4s ease-in-out infinite; }
+
+@keyframes breath {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(0 100% 65% / .55); opacity: 1; }
+  50%      { box-shadow: 0 0 0 6px hsl(0 100% 65% / 0); opacity: .85; }
+}
+.breath { animation: breath 2.2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════════
+     NAVBAR — "威胁情报" 作为一级导航入口 (ADR §Decision)
+     ════════════════════════════════════════════════════════════════ -->
+<header class="navbar">
+  <div class="navbar-inner">
+    <div class="nav-logo">灵</div>
+    <nav class="nav-links">
+      <a class="nav-link" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        智能助手
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        历史会话
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        大屏分析
+      </a>
+      <!-- ★ 威胁情报 — 当前激活态 ★ -->
+      <a class="nav-link active" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        威胁情报
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        工作流
+      </a>
+      <a class="nav-link" href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        设置
+      </a>
+    </nav>
+    <div class="nav-right">
+      <div class="ws-badge">
+        <span class="ws-dot"></span>
+        <span class="mono">WS · 已连接</span>
+      </div>
+      <button class="star-btn" title="通知" style="position:relative">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <span style="position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9999px;background:var(--destructive);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;color:#fff;padding:0 4px;">3</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ════════════════════════════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- ── 设计说明 ── -->
+  <div class="design-note animate-in">
+    <strong>UI/UX 设计稿说明</strong><br/>
+    本原型基于 <strong>ADR-0003</strong>（独立APT工作空间）+ <strong>PRD v1.1</strong> 构建，遵循 secbot 海蓝主题体系。<br/>
+    <strong>页面结构：</strong>① 数据新鲜度条 → ② 5 态势卡片概览 → ③ 关注组织动态 + 活动时间线 → ④ 高危漏洞 + 海事事件 → ⑤ 组织详情预览（下钻）→ ⑥ Feed 运行状态<br/>
+    <strong>交互规范：</strong>所有卡片 hover 辉光 · 点击下钻 · Watchlist 星标切换 · 200-300ms 过渡 · 尊重 prefers-reduced-motion
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §1  Page Header + Data Freshness Bar (PRD §7.2)
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="page-header animate-in">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <svg class="icon-lg" style="color:var(--primary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <h1 class="page-title">威胁情报</h1>
+      <span class="badge badge-primary" style="margin-left:4px;">P0</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="filter-btn">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+        手动拉取 Feed
+      </button>
+      <button class="filter-btn filter-btn-primary">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        添加关注
+      </button>
+    </div>
+  </div>
+
+  <!-- 数据新鲜度条 -->
+  <div class="freshness-bar animate-in delay-1">
+    <div class="freshness-item">
+      <svg class="icon-sm" style="color:var(--alert-success)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>最近成功：<strong style="color:var(--fg)">2026-06-18 08:00 UTC</strong></span>
+    </div>
+    <div class="freshness-item">
+      <span class="dot dot-ok"></span>
+      <span>MITRE ATT&CK</span>
+    </div>
+    <div class="freshness-item">
+      <span class="dot dot-ok"></span>
+      <span>CISA KEV</span>
+    </div>
+    <div class="freshness-item">
+      <span class="dot dot-warn"></span>
+      <span>ThreatFox <strong style="color:var(--alert-warning)">· 过期</strong></span>
+    </div>
+    <div class="freshness-item">
+      <span class="dot dot-ok"></span>
+      <span>APT Alias</span>
+    </div>
+    <div style="margin-left:auto;">
+      <a href="#" style="font-size:12px;display:flex;align-items:center;gap:4px;">
+        查看 Feed 运行记录
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §2  Five Situation Cards (PRD §7.2 概览页)
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="situation-grid">
+
+    <!-- Card 1: 关注组织动态 -->
+    <div class="glass-card sit-card animate-in delay-1">
+      <div class="sit-card-head">
+        <div class="sit-icon">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <span class="sit-trend trend-up">↑ 3</span>
+      </div>
+      <div>
+        <div class="sit-value">12</div>
+        <div class="sit-sub" style="margin-top:4px;">近 7 天活动 <strong style="color:var(--sev-high)">3</strong></div>
+      </div>
+      <div class="sit-label">关注组织动态</div>
+      <div class="sit-footer">
+        <span class="badge badge-warning">新 C2 ×2</span>
+        <span class="badge badge-high">新漏洞 ×1</span>
+      </div>
+    </div>
+
+    <!-- Card 2: 高危漏洞速览 -->
+    <div class="glass-card sit-card animate-in delay-2">
+      <div class="sit-card-head">
+        <div class="sit-icon sit-icon-danger">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <span class="sit-trend trend-up">↑ 12</span>
+      </div>
+      <div>
+        <div class="sit-value">847</div>
+        <div class="sit-sub" style="margin-top:4px;">近 7 天新增 <strong style="color:var(--sev-critical)">12</strong></div>
+      </div>
+      <div class="sit-label">高危漏洞速览</div>
+      <div class="sit-footer">
+        <span class="badge badge-critical">供应链 34</span>
+        <span class="badge badge-high">CISA KEV</span>
+      </div>
+    </div>
+
+    <!-- Card 3: 活跃 C2 统计 -->
+    <div class="glass-card sit-card animate-in delay-3">
+      <div class="sit-card-head">
+        <div class="sit-icon sit-icon-warning">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <span class="sit-trend trend-flat">— 0</span>
+      </div>
+      <div>
+        <div class="sit-value">1,243</div>
+        <div class="sit-sub" style="margin-top:4px;">活跃 C2 基础设施</div>
+      </div>
+      <div class="sit-label">活跃 C2 统计</div>
+      <div class="sit-footer">
+        <span class="badge badge-muted">APT41 ×87</span>
+        <span class="badge badge-muted">Lazarus ×64</span>
+      </div>
+    </div>
+
+    <!-- Card 4: 海事安全事件 -->
+    <div class="glass-card sit-card animate-in delay-4">
+      <div class="sit-card-head">
+        <div class="sit-icon sit-icon-info">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20l2-2h3l3-3 4 4 4-4 4 4"/><path d="M2 12l2-2h3l3-3 4 4 4-4 4 4"/></svg>
+        </div>
+        <span class="badge badge-warning" style="font-size:9px">P2</span>
+      </div>
+      <div>
+        <div class="sit-value">156</div>
+        <div class="sit-sub" style="margin-top:4px;">最近 <strong style="color:var(--sev-low)">1</strong> 条新事件</div>
+      </div>
+      <div class="sit-label">海事安全事件</div>
+      <div class="sit-footer">
+        <span class="badge badge-high">海盗 ×1</span>
+        <span class="badge badge-muted">几内亚湾</span>
+      </div>
+    </div>
+
+    <!-- Card 5: 木马家族活跃 -->
+    <div class="glass-card sit-card animate-in delay-5">
+      <div class="sit-card-head">
+        <div class="sit-icon sit-icon-success">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <span class="sit-trend trend-up">↑ 45</span>
+      </div>
+      <div>
+        <div class="sit-value">89</div>
+        <div class="sit-sub" style="margin-top:4px;">近 7 天新样本 <strong style="color:var(--sev-high)">45</strong></div>
+      </div>
+      <div class="sit-label">木马家族活跃</div>
+      <div class="sit-footer">
+        <span class="badge badge-muted">ShadowPad ×23</span>
+        <span class="badge badge-muted">PlugX ×18</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §3  Watched Group Activity + Recent Activity Timeline
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="section-divider">
+    <svg class="icon" style="color:var(--primary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    威胁组织列表
+  </div>
+
+  <!-- 搜索 / 过滤栏 -->
+  <div class="filter-bar">
+    <input class="filter-input" type="text" placeholder="搜索组织名称 / 别名（如"海莲花"、APT41）..." />
+    <select class="filter-select">
+      <option>全部组织</option>
+      <option>仅关注</option>
+      <option>中国</option>
+      <option>朝鲜</option>
+      <option>俄罗斯</option>
+      <option>伊朗</option>
+    </select>
+    <select class="filter-select">
+      <option>全部行业</option>
+      <option>海事</option>
+      <option>交通</option>
+      <option>政府</option>
+      <option>能源</option>
+    </select>
+    <button class="filter-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      筛选
+    </button>
+  </div>
+
+  <div class="content-grid">
+    <!-- Left: Threat Group Table -->
+    <div class="glass-card panel animate-in">
+      <div class="panel-head">
+        <h3 class="panel-title section-accent-bar">威胁组织</h3>
+        <span class="panel-action">
+          查看全部
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>
+      </div>
+      <table class="tg-table">
+        <thead>
+          <tr>
+            <th>组织</th>
+            <th style="text-align:center">C2 IP</th>
+            <th style="text-align:center">木马</th>
+            <th style="text-align:center">漏洞</th>
+            <th style="text-align:center;width:40px">关注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="tg-name">APT41</div>
+              <div class="tg-alias">Winnti / Barium / 双尾蝎</div>
+            </td>
+            <td class="tg-num">87</td>
+            <td class="tg-num">5</td>
+            <td class="tg-num">12</td>
+            <td><button class="star-btn watched" title="已关注">
+              <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="tg-name">Lazarus Group</div>
+              <div class="tg-alias">APT38 / 蓝诺威 / Hidden Cobra</div>
+            </td>
+            <td class="tg-num">64</td>
+            <td class="tg-num">8</td>
+            <td class="tg-num">15</td>
+            <td><button class="star-btn watched" title="已关注">
+              <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="tg-name">APT-C-00</div>
+              <div class="tg-alias">海莲花 / OceanLotus / APT32</div>
+            </td>
+            <td class="tg-num">42</td>
+            <td class="tg-num">6</td>
+            <td class="tg-num">9</td>
+            <td><button class="star-btn watched" title="已关注">
+              <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="tg-name">Kimsuky</div>
+              <div class="tg-alias">APT-C-55 / Thallium / Velvet Chollima</div>
+            </td>
+            <td class="tg-num">31</td>
+            <td class="tg-num">4</td>
+            <td class="tg-num">7</td>
+            <td><button class="star-btn" title="未关注">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="tg-name">SideWinder</div>
+              <div class="tg-alias">响尾蛇 / T-APT-04</div>
+            </td>
+            <td class="tg-num">28</td>
+            <td class="tg-num">3</td>
+            <td class="tg-num">5</td>
+            <td><button class="star-btn" title="未关注">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Right: Watched Activity Timeline -->
+    <div class="glass-card panel animate-in delay-1">
+      <div class="panel-head">
+        <h3 class="panel-title section-accent-bar">关注组织近期活动</h3>
+      </div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot-col">
+            <span class="tl-dot" style="background:var(--sev-high);box-shadow:0 0 6px hsl(22 100% 62% / .5)"></span>
+            <span class="tl-line"></span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-title">APT41 新增 2 个 C2 IP</div>
+            <div class="tl-meta">
+              <span class="badge badge-warning" style="font-size:10px">C2</span>
+              <span>2026-06-18 06:30 UTC</span>
+            </div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot-col">
+            <span class="tl-dot" style="background:var(--sev-critical);box-shadow:0 0 6px hsl(0 100% 65% / .5)"></span>
+            <span class="tl-line"></span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-title">海莲花 利用新漏洞 CVE-2026-3127</div>
+            <div class="tl-meta">
+              <span class="badge badge-critical" style="font-size:10px">漏洞</span>
+              <span>2026-06-17 22:15 UTC</span>
+            </div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot-col">
+            <span class="tl-dot" style="background:var(--alert-success);box-shadow:0 0 6px hsl(152 70% 45% / .5)"></span>
+            <span class="tl-line"></span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-title">Lazarus Group 新样本 — ShadowPad 变种</div>
+            <div class="tl-meta">
+              <span class="badge badge-success" style="font-size:10px">木马</span>
+              <span>2026-06-17 14:00 UTC</span>
+            </div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot-col">
+            <span class="tl-dot" style="background:var(--sev-high);box-shadow:0 0 6px hsl(22 100% 62% / .5)"></span>
+            <span class="tl-line"></span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-title">APT-C-00 新增 3 个 C2 IP（东南亚节点）</div>
+            <div class="tl-meta">
+              <span class="badge badge-warning" style="font-size:10px">C2</span>
+              <span>2026-06-16 18:42 UTC</span>
+            </div>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot-col">
+            <span class="tl-dot" style="background:var(--primary);box-shadow:0 0 6px hsl(210 100% 56% / .5)"></span>
+            <span class="tl-line"></span>
+          </div>
+          <div class="tl-body">
+            <div class="tl-title">APT41 已关联漏洞 CVE-2026-2890 被确认利用</div>
+            <div class="tl-meta">
+              <span class="badge badge-primary" style="font-size:10px">关联</span>
+              <span>2026-06-16 09:20 UTC</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §4  High-Severity Vulns + Maritime Events
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="section-divider">
+    <svg class="icon" style="color:var(--sev-critical)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    高危漏洞 & 海事事件
+  </div>
+
+  <div class="detail-grid">
+    <!-- Left: Vuln Table -->
+    <div class="glass-card panel animate-in">
+      <div class="panel-head">
+        <h3 class="panel-title section-accent-bar">近期高危漏洞</h3>
+        <span class="panel-action">
+          查看全部
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>
+      </div>
+      <table class="vuln-table">
+        <thead>
+          <tr>
+            <th>CVE</th>
+            <th>标题</th>
+            <th>CVSS</th>
+            <th>供应链</th>
+            <th>PoC</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="vuln-cve">CVE-2026-3127</span></td>
+            <td style="font-size:12px;">Siemens SIMATIC S7-1200 RCE</td>
+            <td><span class="cvss-pill cvss-critical">9.8</span></td>
+            <td><span class="badge badge-critical" style="font-size:10px">供应链</span></td>
+            <td><span class="badge badge-success" style="font-size:10px">有</span></td>
+          </tr>
+          <tr>
+            <td><span class="vuln-cve">CVE-2026-2890</span></td>
+            <td style="font-size:12px;">Apache Struts OGNL Injection</td>
+            <td><span class="cvss-pill cvss-critical">9.1</span></td>
+            <td><span class="badge badge-muted" style="font-size:10px">—</span></td>
+            <td><span class="badge badge-success" style="font-size:10px">有</span></td>
+          </tr>
+          <tr>
+            <td><span class="vuln-cve">CVE-2026-2715</span></td>
+            <td style="font-size:12px;">Cisco ASA/FTD Path Traversal</td>
+            <td><span class="cvss-pill cvss-high">8.6</span></td>
+            <td><span class="badge badge-muted" style="font-size:10px">—</span></td>
+            <td><span class="badge badge-muted" style="font-size:10px">无</span></td>
+          </tr>
+          <tr>
+            <td><span class="vuln-cve">CVE-2026-2488</span></td>
+            <td style="font-size:12px;">Portwise Navigation RCE</td>
+            <td><span class="cvss-pill cvss-high">8.1</span></td>
+            <td><span class="badge badge-critical" style="font-size:10px">供应链</span></td>
+            <td><span class="badge badge-muted" style="font-size:10px">无</span></td>
+          </tr>
+          <tr>
+            <td><span class="vuln-cve">CVE-2026-2301</span></td>
+            <td style="font-size:12px;">Zabbix Server SQL Injection</td>
+            <td><span class="cvss-pill cvss-high" style="opacity:.6">待补充</span></td>
+            <td><span class="badge badge-muted" style="font-size:10px">—</span></td>
+            <td><span class="badge badge-warning" style="font-size:10px">CISA KEV</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Right: Maritime Events (P2) -->
+    <div class="glass-card panel animate-in delay-1">
+      <div class="panel-head">
+        <h3 class="panel-title section-accent-bar">海事安全事件</h3>
+        <span class="badge badge-warning" style="font-size:10px">P2</span>
+      </div>
+      <div class="maritime-list">
+        <div class="maritime-item">
+          <div class="maritime-sev" style="background:var(--sev-high)"></div>
+          <div class="maritime-body">
+            <div class="maritime-title">Piracy incident — Gulf of Guinea</div>
+            <div class="maritime-meta">
+              <span class="badge badge-high" style="font-size:10px">海盗</span>
+              <span>2026-06-15 14:30 UTC</span>
+              <span class="badge badge-success" style="font-size:10px">已确认</span>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted-fg)">
+              <a href="#" style="font-size:11px">IMO GISIS ↗</a>
+            </div>
+          </div>
+        </div>
+        <div class="maritime-item">
+          <div class="maritime-sev" style="background:var(--sev-medium)"></div>
+          <div class="maritime-body">
+            <div class="maritime-title">GNSS Interference — Strait of Malacca</div>
+            <div class="maritime-meta">
+              <span class="badge badge-medium" style="font-size:10px">GNSS干扰</span>
+              <span>2026-06-14 08:12 UTC</span>
+              <span class="badge badge-warning" style="font-size:10px">待审</span>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted-fg)">
+              <span style="opacity:.7">LLM 提取置信度: 0.72</span>
+            </div>
+          </div>
+        </div>
+        <div class="maritime-item">
+          <div class="maritime-sev" style="background:var(--sev-low)"></div>
+          <div class="maritime-body">
+            <div class="maritime-title">Navigation Warning — South China Sea</div>
+            <div class="maritime-meta">
+              <span class="badge badge-low" style="font-size:10px">航行警告</span>
+              <span>2026-06-12 16:45 UTC</span>
+              <span class="badge badge-success" style="font-size:10px">已确认</span>
+            </div>
+            <div style="margin-top:4px;font-size:11px;color:var(--muted-fg)">
+              <a href="#" style="font-size:11px">UKMTO ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §5  APT Group Detail Preview (下钻预览 — PRD §7.2 详情页)
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="section-divider">
+    <svg class="icon" style="color:var(--primary)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    组织详情预览（下钻） — APT41
+  </div>
+
+  <div class="glass-card detail-preview animate-in">
+    <div class="detail-head">
+      <div class="detail-avatar">A41</div>
+      <div class="detail-info">
+        <div class="detail-name">
+          APT41
+          <button class="star-btn watched" title="已关注" style="display:inline-flex;vertical-align:middle;margin-left:8px">
+            <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </button>
+        </div>
+        <div class="detail-aliases">
+          <span class="badge badge-primary">Winnti</span>
+          <span class="badge badge-primary">Barium</span>
+          <span class="badge badge-primary">双尾蝎</span>
+          <span class="badge badge-muted">G0126</span>
+        </div>
+        <div class="detail-meta-row">
+          <span class="detail-meta-item">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            归因：中国
+          </span>
+          <span class="detail-meta-item">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            首现：2012
+          </span>
+          <span class="detail-meta-item">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            最近活跃：2026-06-17
+          </span>
+          <span class="detail-meta-item">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            目标：海事 / 科技 / 政府
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-val" style="color:var(--sev-high)">87</div>
+        <div class="stat-label">C2 IP</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" style="color:var(--alert-success)">5</div>
+        <div class="stat-label">木马家族</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" style="color:var(--sev-critical)">12</div>
+        <div class="stat-label">已知利用漏洞</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" style="color:var(--primary)">0.92</div>
+        <div class="stat-label">综合置信度</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active">ATT&CK 技术</div>
+      <div class="tab">C2 IP 列表</div>
+      <div class="tab">木马家族</div>
+      <div class="tab">已知利用漏洞</div>
+      <div class="tab">来源证据</div>
+    </div>
+
+    <!-- ATT&CK Techniques (current tab content) -->
+    <div style="margin-bottom:12px;font-size:12px;color:var(--muted-fg)">MITRE ATT&CK 技术矩阵 — APT41 已记录 28 项技术</div>
+    <div class="technique-grid">
+      <span class="technique-chip">T1566 Phishing</span>
+      <span class="technique-chip">T1059 Command & Scripting</span>
+      <span class="technique-chip">T1190 Exploit Public App</span>
+      <span class="technique-chip">T1078 Valid Accounts</span>
+      <span class="technique-chip">T1071 Application Layer</span>
+      <span class="technique-chip">T1027 Obfuscated Files</span>
+      <span class="technique-chip">T1547 Boot Autostart</span>
+      <span class="technique-chip">T1053 Scheduled Task</span>
+      <span class="technique-chip">T1041 Exfiltration C2</span>
+      <span class="technique-chip">T1105 Ingress Tool Transfer</span>
+      <span class="technique-chip">T1021 Remote Services</span>
+      <span class="technique-chip">T1573 Encrypted Channel</span>
+      <span class="technique-chip">T1560 Archive Collected</span>
+      <span class="technique-chip">T1083 File & Dir Discovery</span>
+      <span class="technique-chip">T1057 Process Discovery</span>
+      <span class="technique-chip">T1082 System Info Discovery</span>
+      <span class="technique-chip" style="color:var(--primary);border-color:hsl(210 100% 56% / .3)">+ 12 more</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════
+       §6  Feed Pull Run Status
+       ══════════════════════════════════════════════════════════════ -->
+  <div class="section-divider">
+    <svg class="icon" style="color:var(--alert-success)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+    Feed 运行状态
+  </div>
+
+  <div class="feed-grid">
+    <div class="glass-card feed-item animate-in">
+      <span class="feed-dot dot-ok"></span>
+      <div class="feed-info">
+        <div class="feed-name">MITRE ATT&CK</div>
+        <div class="feed-time">06-18 08:00 · 150 组</div>
+      </div>
+    </div>
+    <div class="glass-card feed-item animate-in delay-1">
+      <span class="feed-dot dot-ok"></span>
+      <div class="feed-info">
+        <div class="feed-name">CISA KEV</div>
+        <div class="feed-time">06-18 08:00 · +12 新</div>
+      </div>
+    </div>
+    <div class="glass-card feed-item animate-in delay-2">
+      <span class="feed-dot dot-warn"></span>
+      <div class="feed-info">
+        <div class="feed-name">ThreatFox</div>
+        <div class="feed-time">06-17 08:00 · 过期</div>
+      </div>
+    </div>
+    <div class="glass-card feed-item animate-in delay-3">
+      <span class="feed-dot dot-ok"></span>
+      <div class="feed-info">
+        <div class="feed-name">APT Alias</div>
+        <div class="feed-time">种子 · 28 映射</div>
+      </div>
+    </div>
+    <div class="glass-card feed-item animate-in delay-4" style="opacity:.45">
+      <span class="feed-dot" style="background:var(--muted-fg)"></span>
+      <div class="feed-info">
+        <div class="feed-name">NVD <span class="badge badge-muted" style="font-size:9px">P1</span></div>
+        <div class="feed-time">未接入</div>
+      </div>
+    </div>
+    <div class="glass-card feed-item animate-in delay-5" style="opacity:.45">
+      <span class="feed-dot" style="background:var(--muted-fg)"></span>
+      <div class="feed-info">
+        <div class="feed-name">IMO GISIS <span class="badge badge-muted" style="font-size:9px">P2</span></div>
+        <div class="feed-time">未接入</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 底部设计说明 ── -->
+  <div class="design-note" style="margin-top:40px">
+    <strong>交互规范补充</strong><br/>
+    <strong>导航：</strong>"威胁情报"为一级导航入口（Shield 图标），路由 /threat-intel，点击卡片下钻至子路由（/threat-intel/groups, /vulns, /ips, /malware, /maritime, /feeds）<br/>
+    <strong>响应式：</strong>5 卡片在 ≥1200px 一行排开 → 1024px 三列 → 768px 两列 → 480px 单列。所有表格在移动端转为卡片列表<br/>
+    <strong>空状态：</strong>首次无数据时显示引导空状态（"执行首次 Feed Pull 或等待定时任务"），Watchlist 为空时卡片显示"尚未关注组织"<br/>
+    <strong>无障碍：</strong>所有交互元素 ≥44×44px 触摸目标 · 对比度 ≥4.5:1 · aria-label · 键盘可导航 · prefers-reduced-motion<br/>
+    <strong>数据新鲜度：</strong>Feed 失败/过期仅影响对应卡片局部告警，不阻断其他卡片渲染（PRD §7.3）<br/>
+    <strong>CVSS 缺失：</strong>CISA KEV 缺 CVSS 时显示"待补充"，严重性默认 high（PRD §7.3）
+  </div>
+
+</main>
+
+</body>
+</html>

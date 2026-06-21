@@ -34,6 +34,11 @@ import { TaskDetailPage } from "@/pages/TaskDetailPage";
 import { WorkflowListPage } from "@/pages/WorkflowListPage";
 import { WorkflowDetailPage } from "@/pages/WorkflowDetailPage";
 import { WORKFLOW_BUILDER_ENABLED } from "@/lib/workflow-client";
+import { ThreatIntelLayout } from "@/pages/threat-intel/ThreatIntelLayout";
+import { OverviewPage } from "@/pages/threat-intel/OverviewPage";
+import { GroupsPage } from "@/pages/threat-intel/GroupsPage";
+import { GroupDetailPage } from "@/pages/threat-intel/GroupDetailPage";
+import { FeedsPage } from "@/pages/threat-intel/FeedsPage";
 
 /**
  * Default to ON so the refactor lands behind a default-true flag — flipping
@@ -264,6 +269,13 @@ export default function App() {
                 />
               </>
             )}
+            {/* Threat Intel workspace — light theme, independent module */}
+            <Route path="/threat-intel" element={<ThreatIntelLayout />}>
+              <Route index element={<OverviewPage />} />
+              <Route path="groups" element={<GroupsPage />} />
+              <Route path="groups/:id" element={<GroupDetailPage />} />
+              <Route path="feeds" element={<FeedsPage />} />
+            </Route>
             <Route
               path="/settings"
               element={
