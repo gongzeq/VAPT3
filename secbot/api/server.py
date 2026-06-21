@@ -429,6 +429,11 @@ def create_app(
 
     register_asset_feed_routes(app)
 
+    # Threat Intel API routes — independent module, no app-level state needed.
+    from secbot.api.threat_intel_routes import register_routes as register_threat_intel_routes
+
+    register_threat_intel_routes(app)
+
     if workflow_service is not None:
         # Late import keeps the workflow module out of the hot path for
         # callers that only need the OpenAI-compat surface.

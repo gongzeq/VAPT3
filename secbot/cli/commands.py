@@ -1012,6 +1012,25 @@ def _run_gateway(
                 )
             return None
 
+        # Threat Intel feed pull: messages with the ``__threat_intel__:`` prefix
+        # are system jobs registered by register_threat_intel_cron_jobs.
+        from secbot.threat_intel.scheduler import (
+            is_threat_intel_cron_message,
+            decode_threat_intel_source,
+            handle_cron_threat_intel,
+        )
+        if is_threat_intel_cron_message(job.payload.message):
+            try:
+                source = decode_threat_intel_source(job.payload.message)
+                await handle_cron_threat_intel(source)
+            except Exception:
+                logger.exception(
+                    "threat intel cron dispatch failed job={} message={}",
+                    job.id,
+                    job.payload.message,
+                )
+            return None
+
         # Dream is an internal job — run directly, not through the agent loop.
         if job.name == "dream":
             try:
@@ -1244,6 +1263,11 @@ def _run_gateway(
         payload=CronPayload(kind="system_event"),
     ))
     console.print(f"[green]✓[/green] Dream: {dream_cfg.describe_schedule()}")
+
+    # Register daily Threat Intel feed pull jobs (CISA KEV + ThreatFox).
+    from secbot.threat_intel.scheduler import register_threat_intel_cron_jobs
+    register_threat_intel_cron_jobs(cron)
+    console.print("[green]✓[/green] Threat Intel: daily feed pulls registered (CISA KEV + ThreatFox)")
 
     async def _open_browser_when_ready() -> None:
         """Wait for the gateway to bind, then point the user's browser at the webui."""
