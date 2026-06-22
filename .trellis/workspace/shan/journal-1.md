@@ -878,3 +878,39 @@ Refactored Orchestrator prompt toward dynamic planning, moved routing knowledge 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: 威胁情报模块13个Gap功能完整交付
+
+**Date**: 2026-06-22
+**Task**: 威胁情报模块13个Gap功能完整交付
+**Branch**: `main`
+
+### Summary
+
+根据 gap-fixes.md 规范完成全部13个Gap修复：P0(Feed失败WS通知/行业CPE管理页/组织本地图谱)、P1(图谱d3-force布局/工具栏/点击动画/状态栏/海事PDF提取/复核队列重映射+备注)、P2(海事日期筛选+分页/复核队列分页)。后端新增WebSocket全局广播+pdfplumber可选依赖；前端新增onGlobalAgentEvent全局事件订阅+Toast通知+d3-force力导向布局+径向本地图谱+CPE管理页+分页控件。质量验证：ruff通过、29个threat_intel测试通过、tsc通过、ESLint 0错误。归档3个威胁情报任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `815764603` | (see git log) |
+| `cd10cedeb` | (see git log) |
+| `abd442162` | (see git log) |
+| `c688850e4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
