@@ -139,12 +139,12 @@ export function OverviewPage() {
           </div>
         </OverviewCard>
 
-        {/* Card 2: High Severity Vulns */}
+        {/* Card 2: High Severity Vulns — detail page P1 */}
         <OverviewCard
           title="高危漏洞速览"
           icon={<AlertTriangle className="h-5 w-5" />}
           accent="red"
-          onClick={() => navigate("/threat-intel/vulns")}
+          badge="即将上线"
         >
           <div className="space-y-1">
             <div className="flex items-baseline gap-2">
@@ -165,12 +165,12 @@ export function OverviewPage() {
           </div>
         </OverviewCard>
 
-        {/* Card 3: Active C2 IPs */}
+        {/* Card 3: Active C2 IPs — detail page P1 */}
         <OverviewCard
           title="活跃C2统计"
           icon={<Server className="h-5 w-5" />}
           accent="orange"
-          onClick={() => navigate("/threat-intel/ips")}
+          badge="即将上线"
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -190,12 +190,12 @@ export function OverviewPage() {
           </div>
         </OverviewCard>
 
-        {/* Card 4: Maritime Events */}
+        {/* Card 4: Maritime Events — detail page P1 */}
         <OverviewCard
           title="海事安全事件"
           icon={<Ship className="h-5 w-5" />}
           accent="blue"
-          onClick={() => navigate("/threat-intel/maritime")}
+          badge="即将上线"
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -213,12 +213,12 @@ export function OverviewPage() {
           </div>
         </OverviewCard>
 
-        {/* Card 5: Malware Activity */}
+        {/* Card 5: Malware Activity — detail page P1 */}
         <OverviewCard
           title="木马家族活跃"
           icon={<Bug className="h-5 w-5" />}
           accent="rose"
-          onClick={() => navigate("/threat-intel/malware")}
+          badge="即将上线"
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -278,27 +278,35 @@ interface OverviewCardProps {
   title: string;
   icon: React.ReactNode;
   accent: string;
-  onClick: () => void;
+  onClick?: () => void;
+  badge?: string;
   children: React.ReactNode;
 }
 
-function OverviewCard({ title, icon, accent, onClick, children }: OverviewCardProps) {
+function OverviewCard({ title, icon, accent, onClick, badge, children }: OverviewCardProps) {
+  const clickable = !!onClick;
   return (
     <div
       className={cn(
-        "cursor-pointer rounded-xl border p-4 transition-all duration-200",
+        "rounded-xl border p-4 transition-all duration-200",
+        clickable && "cursor-pointer",
         ACCENT_MAP[accent] || ACCENT_MAP.indigo,
       )}
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}
+      onClick={clickable ? onClick : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter") onClick!(); } : undefined}
     >
       <div className="mb-3 flex items-center gap-2">
         <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg", ICON_ACCENT[accent] || ICON_ACCENT.indigo)}>
           {icon}
         </div>
         <h3 className="text-sm font-medium text-slate-700">{title}</h3>
+        {badge && (
+          <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+            {badge}
+          </span>
+        )}
       </div>
       {children}
     </div>

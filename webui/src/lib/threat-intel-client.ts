@@ -359,3 +359,230 @@ export async function triggerFeedPull(
     body: JSON.stringify({ source }),
   });
 }
+
+// ── Graph Types & API (P1) ─────────────────────────────────────────────
+
+export interface GraphNode {
+  id: string;
+  type: "group" | "ip" | "malware" | "vuln" | "cluster";
+  label: string;
+  data: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: "uses_c2" | "uses_malware" | "exploits" | "targets";
+  confidence: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  metadata: {
+    total_nodes: number;
+    total_edges: number;
+    clustered_nodes: number;
+    groups_included: number;
+  };
+}
+
+export async function fetchGraph(
+  token: string,
+  params: {
+    group_id?: string;
+    watched?: boolean;
+    group_ids?: string[];
+    top_n?: number;
+    min_confidence?: number;
+    node_types?: string[];
+    expand_cluster?: string;
+  },
+): Promise<GraphData> {
+  const search = new URLSearchParams();
+  if (params.group_id) search.set("group_id", params.group_id);
+  if (params.watched !== undefined) search.set("watched", String(params.watched));
+  if (params.group_ids) search.set("group_ids", params.group_ids.join(","));
+  if (params.top_n) search.set("top_n", String(params.top_n));
+  if (params.min_confidence !== undefined) search.set("min_confidence", String(params.min_confidence));
+  if (params.node_types) search.set("node_types", params.node_types.join(","));
+  if (params.expand_cluster) search.set("expand_cluster", params.expand_cluster);
+  const qs = search.toString();
+  return request<GraphData>(`${BASE}/graph${qs ? `?${qs}` : ""}`, token);
+}
+
+// ── Detail Types & API (P1) ────────────────────────────────────────────
+
+export interface ThreatVulnDetail extends ThreatVulnSummary {
+  description: string | null;
+  affected_products: string[];
+  sources: string[];
+  source_refs: SourceRef[];
+  tags: string[];
+  exploiting_groups: {
+    group_id: string;
+    group_name: string;
+    relationship_type: string;
+    confidence: number;
+    last_seen: string | null;
+  }[];
+  last_ingested_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThreatInfraIPDetail extends ThreatInfraIPSummary {
+  group_id: string;
+  group_name: string | null;
+  source_refs: SourceRef[];
+  tags: string[];
+  last_ingested_at: string;
+  created_at: string;
+}
+
+export interface MalwareFamilyDetail extends MalwareFamilySummary {
+  group_id: string;
+  group_name: string | null;
+  aliases: string[];
+  description: string | null;
+  sample_hashes: { md5?: string; sha256?: string; source: string }[];
+  yara_rules: string[];
+  source_refs: SourceRef[];
+  tags: string[];
+  last_ingested_at: string;
+  created_at: string;
+}
+
+export async function fetchVulnDetail(token: string, vulnId: string): Promise<ThreatVulnDetail> {
+  return request<ThreatVulnDetail>(`${BASE}/vulns/${vulnId}`, token);
+}
+
+export async function fetchIPDetail(token: string, ipId: string): Promise<ThreatInfraIPDetail> {
+  return request<ThreatInfraIPDetail>(`${BASE}/ips/${ipId}`, token);
+}
+
+export async function fetchMalwareDetail(token: string, malwareId: string): Promise<MalwareFamilyDetail> {
+  return request<MalwareFamilyDetail>(`${BASE}/malware/${malwareId}`, token);
+}
+
+// ── Config Management API (P1) ────────────────────────────────────────
+
+export interface IndustryCPEEntry {
+  id: number;
+  cpe_string: string;
+  product_name: string;
+  vendor: string | null;
+  industry_tag: string;
+  confidence: number;
+  source: string;
+  note: string | null;
+}
+
+export interface AptAliasFull {
+  id: number;
+  group_id: string | null;
+  alias_name: string;
+  naming_org: string | null;
+  confidence: number;
+  source_url: string | null;
+}
+
+export async function fetchIndustryCPEs(token: string): Promise<{ items: IndustryCPEEntry[]; total: number }> {
+  return request(`${BASE}/config/industry-cpes`, token);
+}
+
+export async function addIndustryCPE(
+  token: string,
+  data: { cpe_string: string; product_name: string; vendor?: string; industry_tag?: string; confidence?: number },
+): Promise<IndustryCPEEntry> {
+  return request(`${BASE}/config/industry-cpes`, token, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteIndustryCPE(token: string, cpeId: number): Promise<void> {
+  await request(`${BASE}/config/industry-cpes/${cpeId}`, token, { method: "DELETE" });
+}
+
+export async function fetchAptAliases(token: string): Promise<{ items: AptAliasFull[]; total: number }> {
+  return request(`${BASE}/config/aliases`, token);
+}
+
+export async function addAptAlias(
+  token: string,
+  data: { alias_name: string; group_id?: string; naming_org?: string; confidence?: number; source_url?: string },
+): Promise<AptAliasFull> {
+  return request(`${BASE}/config/aliases`, token, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function batchImportAliases(
+  token: string,
+  aliases: { alias_name: string; mitre_id?: string; group_id?: string; naming_org?: string; confidence?: number }[],
+): Promise<{ total: number; inserted: number; updated: number; failed: number; errors: { alias_name: string; error: string }[] }> {
+  return request(`${BASE}/config/aliases/batch`, token, {
+    method: "POST",
+    body: JSON.stringify({ aliases }),
+  });
+}
+
+// ── Maritime Review API (P2) ──────────────────────────────────────────
+
+export async function reviewMaritimeEvent(
+  token: string,
+  eventId: string,
+  verificationStatus: "confirmed" | "dismissed",
+): Promise<void> {
+  await request(`${BASE}/maritime/${eventId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ verification_status: verificationStatus }),
+  });
+}
+
+// ── Review Queue API (P2) ─────────────────────────────────────────────
+
+export interface ReviewQueueItem {
+  id: string;
+  entity_type: "ip" | "maritime";
+  label: string;
+  confidence: number;
+  group_id: string | null;
+  group_name: string | null;
+  source: string;
+  source_refs: SourceRef[];
+  review_action: string;
+}
+
+export async function fetchReviewQueue(
+  token: string,
+  params: { type?: string; max_confidence?: number; page?: number; page_size?: number },
+): Promise<PaginatedResponse<ReviewQueueItem>> {
+  const search = new URLSearchParams();
+  if (params.type) search.set("type", params.type);
+  if (params.max_confidence !== undefined) search.set("max_confidence", String(params.max_confidence));
+  if (params.page) search.set("page", String(params.page));
+  if (params.page_size) search.set("page_size", String(params.page_size));
+  const qs = search.toString();
+  return request<PaginatedResponse<ReviewQueueItem>>(`${BASE}/review-queue${qs ? `?${qs}` : ""}`, token);
+}
+
+export async function submitReviewAction(
+  token: string,
+  itemId: string,
+  action: string,
+  body?: Record<string, unknown>,
+): Promise<void> {
+  await request(`${BASE}/review-queue/${itemId}/action`, token, {
+    method: "POST",
+    body: JSON.stringify({ action, ...body }),
+  });
+}
+
+// ── Expiry Sweep API (P2) ─────────────────────────────────────────────
+
+export async function triggerExpirySweep(token: string): Promise<Record<string, number>> {
+  return request(`${BASE}/expiry-sweep`, token, { method: "POST" });
+}

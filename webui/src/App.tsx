@@ -39,6 +39,16 @@ import { OverviewPage } from "@/pages/threat-intel/OverviewPage";
 import { GroupsPage } from "@/pages/threat-intel/GroupsPage";
 import { GroupDetailPage } from "@/pages/threat-intel/GroupDetailPage";
 import { FeedsPage } from "@/pages/threat-intel/FeedsPage";
+import { GraphPage } from "@/pages/threat-intel/GraphPage";
+import { VulnsPage } from "@/pages/threat-intel/VulnsPage";
+import { VulnDetailPage } from "@/pages/threat-intel/VulnDetailPage";
+import { MalwareListPage } from "@/pages/threat-intel/MalwareListPage";
+import { MalwareDetailPage } from "@/pages/threat-intel/MalwareDetailPage";
+import { IPDetailPage } from "@/pages/threat-intel/IPDetailPage";
+import { WatchlistPage } from "@/pages/threat-intel/WatchlistPage";
+import { AliasManagementPage } from "@/pages/threat-intel/AliasManagementPage";
+import { MaritimePage } from "@/pages/threat-intel/MaritimePage";
+import { ReviewQueuePage } from "@/pages/threat-intel/ReviewQueuePage";
 
 /**
  * Default to ON so the refactor lands behind a default-true flag — flipping
@@ -274,6 +284,16 @@ export default function App() {
               <Route index element={<OverviewPage />} />
               <Route path="groups" element={<GroupsPage />} />
               <Route path="groups/:id" element={<GroupDetailPage />} />
+              <Route path="graph" element={<GraphPage />} />
+              <Route path="vulns" element={<VulnsPage />} />
+              <Route path="vulns/:id" element={<VulnDetailPage />} />
+              <Route path="malware" element={<MalwareListPage />} />
+              <Route path="malware/:id" element={<MalwareDetailPage />} />
+              <Route path="ips/:id" element={<IPDetailPage />} />
+              <Route path="maritime" element={<MaritimePage />} />
+              <Route path="watchlist" element={<WatchlistPage />} />
+              <Route path="config/aliases" element={<AliasManagementPage />} />
+              <Route path="review" element={<ReviewQueuePage />} />
               <Route path="feeds" element={<FeedsPage />} />
             </Route>
             <Route
