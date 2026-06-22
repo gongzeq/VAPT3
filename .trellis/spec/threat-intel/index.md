@@ -124,6 +124,7 @@ Every Feed puller MUST follow this exact flow:
 | [Graph Contract](./graph-contract.md) | Knowledge graph: backend aggregation API + frontend reactflow + interaction + clustering | Active |
 | [Detail & Management](./detail-and-management.md) | Detail page APIs + frontend components + Watchlist/Alias management UI + feed notifications | Active |
 | [P2 Pipeline](./p2-pipeline.md) | Maritime LLM extraction pipeline + expiry strategy + review queue | Active |
+| [Gap Fixes](./gap-fixes.md) | 13 gaps from P1/P2 code review: 3 P0 + 7 P1 + 3 P2 fixes with acceptance criteria | Active |
 
 ---
 

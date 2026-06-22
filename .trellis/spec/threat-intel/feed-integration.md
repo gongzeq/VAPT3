@@ -578,23 +578,34 @@ P1 should seed the `industry_cpe` table with maritime/transport products:
 
 ## 9. Scheduler Extension
 
-### 9.1 New Cron Jobs
+### 9.1 Cron Jobs
 
-Add to `scheduler.py::register_threat_intel_cron_jobs()`:
+All jobs registered in `scheduler.py::register_threat_intel_cron_jobs()`. Implementation: `secbot/threat_intel/scheduler.py`.
 
 | Job ID | Source | Schedule | Notes |
 |--------|--------|----------|-------|
-| `threat-intel-nvd` | `nvd` | `0 9 * * *` (daily 09:00 UTC) | After CISA KEV (08:00) for merge |
+| `threat-intel-cisa-kev` | `cisa_kev` | `0 8 * * *` (daily 08:00 UTC) | CISA Known Exploited Vulnerabilities |
+| `threat-intel-threatfox` | `threatfox` | `0 8 * * *` (daily 08:00 UTC) | ThreatFox IOC feed |
+| `threat-intel-nvd` | `nvd` | `0 9 * * *` (daily 09:00 UTC) | After CISA KEV for merge |
 | `threat-intel-malwarebazaar` | `malwarebazaar` | `0 10 * * *` (daily 10:00 UTC) | |
-| `threat-intel-feodo` | `feodo` | `0 11 * * *` (daily 11:00 UTC) | |
-| `threat-intel-otx` | `otx` | `0 6 * * 1` (weekly Mon 06:00 UTC) | Weekly industry search |
-| `threat-intel-exploit-db` | `exploit_db` | `0 6 * * 1` (weekly Mon 07:00 UTC) | After OTX |
+| `threat-intel-feodo` | `feodo` | `0 11 * * *` (daily 11:00 UTC) | Feodo Tracker C2 IPs |
+| `threat-intel-otx` | `otx` | `0 6 * * 1` (weekly Mon 06:00 UTC) | AlienVault OTX industry search |
+| `threat-intel-exploit-db` | `exploit_db` | `0 7 * * 1` (weekly Mon 07:00 UTC) | After OTX |
+| `threat-intel-maritime-ukmto` | `ukmto` | `0 6 * * 2` (weekly Tue 06:00 UTC) | P2 maritime UKMTO events |
+| `threat-intel-maritime-recaap` | `recaap` | `0 6 1 * *` (monthly 1st 06:00 UTC) | P2 maritime ReCAAP events |
+| `threat-intel-expiry-sweep` | `expiry` | `0 2 * * 0` (weekly Sun 02:00 UTC) | P2 data expiry (IP 90d, maritime 365d) |
 
 ### 9.2 Handler Extension
 
-Extend `handle_cron_threat_intel()` in `scheduler.py`:
+`handle_cron_threat_intel()` in `scheduler.py` dispatches by source:
 
 ```python
+if source == "cisa_kev":
+    result = await pull_cisa_kev(session, trigger="schedule")
+elif source == "threatfox":
+    result = await pull_threatfox(session, trigger="schedule")
+elif source == "mitre":
+    result = await import_mitre_groups(session, trigger="schedule")
 elif source == "nvd":
     result = await pull_nvd(session, trigger="schedule")
 elif source == "malwarebazaar":
@@ -605,6 +616,10 @@ elif source == "otx":
     result = await pull_otx(session, trigger="schedule")
 elif source == "exploit_db":
     result = await pull_exploit_db(session, trigger="schedule")
+elif source in ("ukmto", "recaap", "imo"):
+    result = await pull_maritime(session, trigger="schedule", source=source)
+elif source == "expiry":
+    result = await run_expiry_sweep(session)
 ```
 
 ---
