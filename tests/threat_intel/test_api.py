@@ -286,6 +286,18 @@ async def test_watchlist_add_and_remove(client):
     assert unwatch_data2["removed"] is False
 
 
+@pytest.mark.asyncio
+async def test_watch_nonexistent_group_returns_404(client):
+    """Watching a non-existent group should return 404, not 500."""
+    resp = await client.post(
+        "/api/threat-intel/groups/nonexistent-id/watch",
+        json={"note": "should fail"},
+    )
+    assert resp.status == 404
+    data = await resp.json()
+    assert data["error"]["code"] == "not_found"
+
+
 # ---------------------------------------------------------------------------
 # Vulnerabilities: list
 # ---------------------------------------------------------------------------

@@ -46,8 +46,13 @@ def register_threat_intel_cron_jobs(cron_service: Any) -> None:
     """Register daily threat intel feed pull jobs (idempotent).
 
     Jobs:
-    - ``threat-intel-cisa-kev`` — daily CISA KEV pull
-    - ``threat-intel-threatfox`` — daily ThreatFox pull
+    - ``threat-intel-cisa-kev`` — daily CISA KEV pull (08:00 UTC)
+    - ``threat-intel-threatfox`` — daily ThreatFox pull (08:00 UTC)
+    - ``threat-intel-nvd`` — daily NVD pull (09:00 UTC, after KEV for merge)
+    - ``threat-intel-malwarebazaar`` — daily MalwareBazaar pull (10:00 UTC)
+    - ``threat-intel-feodo`` — daily Feodo pull (11:00 UTC)
+    - ``threat-intel-otx`` — weekly OTX industry search (Mon 06:00 UTC)
+    - ``threat-intel-exploit-db`` — weekly Exploit-DB diff (Mon 07:00 UTC)
 
     Safe to call multiple times — ``register_system_job`` replaces
     any existing job with the same ID.
@@ -62,6 +67,54 @@ def register_threat_intel_cron_jobs(cron_service: Any) -> None:
             job_id="threat-intel-threatfox",
             name="Daily ThreatFox Pull",
             source="threatfox",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-nvd",
+            name="Daily NVD CVSS>=7.0 Pull",
+            source="nvd",
+            cron_expr="0 9 * * *",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-malwarebazaar",
+            name="Daily MalwareBazaar Pull",
+            source="malwarebazaar",
+            cron_expr="0 10 * * *",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-feodo",
+            name="Daily Feodo Tracker Pull",
+            source="feodo",
+            cron_expr="0 11 * * *",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-otx",
+            name="Weekly OTX Industry Search",
+            source="otx",
+            cron_expr="0 6 * * 1",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-exploit-db",
+            name="Weekly Exploit-DB PoC Diff",
+            source="exploit_db",
+            cron_expr="0 7 * * 1",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-maritime-ukmto",
+            name="Weekly UKMTO Maritime Pull",
+            source="ukmto",
+            cron_expr="0 6 * * 2",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-maritime-recaap",
+            name="Monthly ReCAAP Maritime Pull",
+            source="recaap",
+            cron_expr="0 6 1 * *",
+        ),
+        _build_cron_job(
+            job_id="threat-intel-expiry-sweep",
+            name="Weekly Data Expiry Sweep",
+            source="expiry",
+            cron_expr="0 2 * * 0",
         ),
     ]
 
@@ -88,14 +141,23 @@ async def handle_cron_threat_intel(source: str) -> dict[str, Any]:
     This is called from the cron callback when a ``__threat_intel__:`` message
     is received. It runs the appropriate feed puller with ``trigger="schedule"``.
     """
-    from secbot.threat_intel.db import get_session, init_engine
+    from secbot.threat_intel.db import get_engine, get_session
     from secbot.threat_intel.feeds import (
         import_mitre_groups,
         pull_cisa_kev,
+        pull_exploit_db,
+        pull_feodo,
+        pull_malwarebazaar,
+        pull_maritime,
+        pull_nvd,
+        pull_otx,
         pull_threatfox,
     )
 
-    init_engine()
+    # Use get_engine() (lazy init) instead of init_engine() to avoid
+    # disposing and recreating the engine on every cron trigger — which
+    # would leak connections and wipe in-memory databases.
+    get_engine()
 
     async with get_session() as session:
         if source == "cisa_kev":
@@ -104,6 +166,21 @@ async def handle_cron_threat_intel(source: str) -> dict[str, Any]:
             result = await pull_threatfox(session, trigger="schedule")
         elif source == "mitre":
             result = await import_mitre_groups(session, trigger="schedule")
+        elif source == "nvd":
+            result = await pull_nvd(session, trigger="schedule")
+        elif source == "malwarebazaar":
+            result = await pull_malwarebazaar(session, trigger="schedule")
+        elif source == "feodo":
+            result = await pull_feodo(session, trigger="schedule")
+        elif source == "otx":
+            result = await pull_otx(session, trigger="schedule")
+        elif source == "exploit_db":
+            result = await pull_exploit_db(session, trigger="schedule")
+        elif source in ("ukmto", "recaap", "imo"):
+            result = await pull_maritime(session, trigger="schedule", source=source)
+        elif source == "expiry":
+            from secbot.threat_intel.repo import run_expiry_sweep
+            result = await run_expiry_sweep(session)
         else:
             _logger.warning("Unknown threat intel source: %s", source)
             return {"error": f"Unknown source: {source}"}

@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from secbot.threat_intel import DEFAULT_ACTOR
 from secbot.threat_intel.db import get_session
-from secbot.threat_intel.models import IndustryCPE
+from secbot.threat_intel.models import IndustryCPE, ThreatGroup
 from secbot.threat_intel.repo import (
     add_to_watchlist,
     get_overview,
@@ -62,6 +62,13 @@ def _bool_param(request: web.Request, name: str) -> bool | None:
     if val is None:
         return None
     return val.lower() in ("true", "1", "yes")
+
+
+def _float_param(request: web.Request, name: str, default: float) -> float:
+    try:
+        return float(request.query.get(name, default))
+    except (ValueError, TypeError):
+        return default
 
 
 async def _ensure_engine() -> None:
@@ -139,6 +146,13 @@ async def handle_watch_group(request: web.Request) -> web.Response:
         pass  # Body is optional
 
     async with get_session() as session:
+        # Validate group exists before adding to watchlist
+        result = await session.execute(
+            select(ThreatGroup.id).where(ThreatGroup.id == group_id)
+        )
+        if result.scalar_one_or_none() is None:
+            return _error(404, "not_found", f"Threat group {group_id} not found")
+
         entry = await add_to_watchlist(
             session, group_id=group_id, actor_id=DEFAULT_ACTOR, note=note
         )
@@ -329,7 +343,10 @@ async def handle_trigger_feed_pull(request: web.Request) -> web.Response:
     if not source:
         return _error(400, "missing_source", "Field 'source' is required")
 
-    valid_sources = {"cisa_kev", "threatfox", "mitre"}
+    valid_sources = {
+        "cisa_kev", "threatfox", "mitre", "nvd", "malwarebazaar",
+        "feodo", "otx", "exploit_db", "ukmto", "recaap", "imo", "expiry",
+    }
     if source not in valid_sources:
         return _error(
             400, "invalid_source",
@@ -340,6 +357,11 @@ async def handle_trigger_feed_pull(request: web.Request) -> web.Response:
     from secbot.threat_intel.feeds import (
         import_mitre_groups,
         pull_cisa_kev,
+        pull_exploit_db,
+        pull_feodo,
+        pull_malwarebazaar,
+        pull_nvd,
+        pull_otx,
         pull_threatfox,
     )
 
@@ -350,6 +372,22 @@ async def handle_trigger_feed_pull(request: web.Request) -> web.Response:
             result = await pull_cisa_kev(session, trigger="manual")
         elif source == "threatfox":
             result = await pull_threatfox(session, trigger="manual")
+        elif source == "nvd":
+            result = await pull_nvd(session, trigger="manual")
+        elif source == "malwarebazaar":
+            result = await pull_malwarebazaar(session, trigger="manual")
+        elif source == "feodo":
+            result = await pull_feodo(session, trigger="manual")
+        elif source == "otx":
+            result = await pull_otx(session, trigger="manual")
+        elif source == "exploit_db":
+            result = await pull_exploit_db(session, trigger="manual")
+        elif source in ("ukmto", "recaap", "imo"):
+            from secbot.threat_intel.feeds import pull_maritime
+            result = await pull_maritime(session, trigger="manual", source=source)
+        elif source == "expiry":
+            from secbot.threat_intel.repo import run_expiry_sweep
+            result = await run_expiry_sweep(session)
         else:
             return _error(400, "invalid_source", f"Unknown source: {source}")
 
@@ -461,7 +499,7 @@ async def handle_add_apt_alias(request: web.Request) -> web.Response:
         return _error(400, "missing_alias", "Field 'alias_name' is required")
 
     async with get_session() as session:
-        alias = await upsert_apt_alias(
+        alias, _created = await upsert_apt_alias(
             session,
             alias_name=alias_name,
             group_id=body.get("group_id"),
@@ -476,6 +514,263 @@ async def handle_add_apt_alias(request: web.Request) -> web.Response:
         "alias_name": alias_name,
         "message": "APT alias added/updated",
     })
+
+
+# ---------------------------------------------------------------------------
+# Graph API (P1)
+# ---------------------------------------------------------------------------
+
+async def handle_get_graph(request: web.Request) -> web.Response:
+    """GET /api/threat-intel/graph -- knowledge graph data."""
+    await _ensure_engine()
+    group_id = _query_param(request, "group_id")
+    watched = _bool_param(request, "watched")
+    group_ids = _query_param(request, "group_ids")
+    top_n = _int_param(request, "top_n", 30)
+    min_confidence = _float_param(request, "min_confidence", 0.0)
+    node_types = _query_param(request, "node_types")
+    expand_cluster = _query_param(request, "expand_cluster")
+
+    # Validate: exactly one mode
+    modes = sum(1 for x in [group_id, watched, group_ids] if x)
+    if modes != 1:
+        return _error(400, "invalid_mode", "Provide exactly one of: group_id, watched=true, group_ids")
+
+    from secbot.threat_intel.repo import get_graph_data
+
+    async with get_session() as session:
+        data = await get_graph_data(
+            session,
+            group_id=group_id,
+            watched=bool(watched),
+            group_ids=group_ids.split(",") if group_ids else None,
+            actor_id=DEFAULT_ACTOR,
+            top_n=top_n,
+            min_confidence=min_confidence,
+            node_types=node_types.split(",") if node_types else None,
+            expand_cluster=expand_cluster,
+        )
+    return web.json_response(data)
+
+
+# ---------------------------------------------------------------------------
+# Detail APIs (P1)
+# ---------------------------------------------------------------------------
+
+async def handle_get_vuln_detail(request: web.Request) -> web.Response:
+    """GET /api/threat-intel/vulns/{id} -- vulnerability detail."""
+    await _ensure_engine()
+    vuln_id = request.match_info["id"]
+    from secbot.threat_intel.repo import get_threat_vuln
+    async with get_session() as session:
+        data = await get_threat_vuln(session, vuln_id)
+    if data is None:
+        return _error(404, "not_found", f"Vulnerability {vuln_id} not found")
+    return web.json_response(data)
+
+
+async def handle_get_ip_detail(request: web.Request) -> web.Response:
+    """GET /api/threat-intel/ips/{id} -- IP detail."""
+    await _ensure_engine()
+    ip_id = request.match_info["id"]
+    from secbot.threat_intel.repo import get_threat_infra_ip_detail
+    async with get_session() as session:
+        data = await get_threat_infra_ip_detail(session, ip_id)
+    if data is None:
+        return _error(404, "not_found", f"IP {ip_id} not found")
+    return web.json_response(data)
+
+
+async def handle_get_malware_detail(request: web.Request) -> web.Response:
+    """GET /api/threat-intel/malware/{id} -- malware detail."""
+    await _ensure_engine()
+    malware_id = request.match_info["id"]
+    from secbot.threat_intel.repo import get_threat_malware_detail
+    async with get_session() as session:
+        data = await get_threat_malware_detail(session, malware_id)
+    if data is None:
+        return _error(404, "not_found", f"Malware {malware_id} not found")
+    return web.json_response(data)
+
+
+# ---------------------------------------------------------------------------
+# Batch Alias Import (P1)
+# ---------------------------------------------------------------------------
+
+async def handle_batch_import_aliases(request: web.Request) -> web.Response:
+    """POST /api/threat-intel/config/aliases/batch -- batch upsert APT aliases."""
+    await _ensure_engine()
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(400, "invalid_body", "Request body must be JSON")
+
+    aliases = body.get("aliases", [])
+    if not aliases or not isinstance(aliases, list):
+        return _error(400, "invalid_body", "Field 'aliases' must be a non-empty array")
+
+    from secbot.threat_intel.models import ThreatGroup
+    async with get_session() as session:
+        # Build mitre_id -> group_id lookup
+        result = await session.execute(select(ThreatGroup.id, ThreatGroup.mitre_id))
+        mitre_to_group = {row.mitre_id: row.id for row in result if row.mitre_id}
+
+        inserted = 0
+        updated = 0
+        failed = 0
+        errors: list[dict] = []
+
+        for entry in aliases:
+            try:
+                alias_name = entry.get("alias_name", "").strip()
+                if not alias_name:
+                    failed += 1
+                    errors.append({"alias_name": "(empty)", "error": "alias_name is required"})
+                    continue
+
+                mitre_id = entry.get("mitre_id")
+                group_id = mitre_to_group.get(mitre_id) if mitre_id else entry.get("group_id")
+
+                _, created = await upsert_apt_alias(
+                    session,
+                    alias_name=alias_name,
+                    group_id=group_id,
+                    naming_org=entry.get("naming_org"),
+                    confidence=entry.get("confidence", 0.8),
+                    source_url=entry.get("source_url"),
+                )
+                if created:
+                    inserted += 1
+                else:
+                    updated += 1
+            except Exception as exc:
+                failed += 1
+                errors.append({"alias_name": entry.get("alias_name", "?"), "error": str(exc)})
+
+    return web.json_response({
+        "total": len(aliases),
+        "inserted": inserted,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors,
+    })
+
+
+# ---------------------------------------------------------------------------
+# CPE Delete (P1)
+# ---------------------------------------------------------------------------
+
+async def handle_delete_industry_cpe(request: web.Request) -> web.Response:
+    """DELETE /api/threat-intel/config/industry-cpes/{id} -- remove an industry CPE."""
+    await _ensure_engine()
+    try:
+        cpe_id = int(request.match_info["id"])
+    except (ValueError, TypeError):
+        return _error(400, "invalid_id", "CPE id must be an integer")
+    async with get_session() as session:
+        result = await session.execute(
+            select(IndustryCPE).where(IndustryCPE.id == cpe_id)
+        )
+        cpe = result.scalar_one_or_none()
+        if cpe is None:
+            return _error(404, "not_found", f"Industry CPE {cpe_id} not found")
+        await session.delete(cpe)
+    return web.json_response({"id": cpe_id, "deleted": True})
+
+
+# ---------------------------------------------------------------------------
+# Maritime Review (P2)
+# ---------------------------------------------------------------------------
+
+async def handle_review_maritime(request: web.Request) -> web.Response:
+    """PATCH /api/threat-intel/maritime/{id} -- update verification status."""
+    await _ensure_engine()
+    event_id = request.match_info["id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(400, "invalid_body", "Request body must be JSON")
+
+    new_status = body.get("verification_status")
+    valid_statuses = {"unreviewed", "confirmed", "dismissed"}
+    if new_status not in valid_statuses:
+        return _error(
+            400, "invalid_status",
+            f"verification_status must be one of: {', '.join(sorted(valid_statuses))}",
+        )
+
+    from secbot.threat_intel.models import MaritimeEvent
+    async with get_session() as session:
+        result = await session.execute(
+            select(MaritimeEvent).where(MaritimeEvent.id == event_id)
+        )
+        event = result.scalar_one_or_none()
+        if event is None:
+            return _error(404, "not_found", f"Maritime event {event_id} not found")
+        event.verification_status = new_status
+
+    return web.json_response({
+        "id": event_id,
+        "verification_status": new_status,
+        "updated": True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Review Queue (P2)
+# ---------------------------------------------------------------------------
+
+async def handle_review_queue_list(request: web.Request) -> web.Response:
+    """GET /api/threat-intel/review-queue -- list low-confidence records."""
+    await _ensure_engine()
+    entity_type = _query_param(request, "type", "ip") or "ip"
+    max_conf = _float_param(request, "max_confidence", 0.65)
+    page = _int_param(request, "page", 1)
+    page_size = _int_param(request, "page_size", 20)
+
+    from secbot.threat_intel.repo import get_review_queue
+    async with get_session() as session:
+        data = await get_review_queue(
+            session, entity_type=entity_type,
+            max_confidence=max_conf, page=page, page_size=page_size,
+        )
+    return web.json_response(data)
+
+
+async def handle_review_action(request: web.Request) -> web.Response:
+    """POST /api/threat-intel/review-queue/{id}/action -- perform review action."""
+    await _ensure_engine()
+    item_id = request.match_info["id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(400, "invalid_body", "Request body must be JSON")
+
+    action = body.get("action")
+    if action not in ("confirm_mapping", "confirm_event", "remap", "dismiss"):
+        return _error(400, "invalid_action", f"Unknown action: {action}")
+
+    from secbot.threat_intel.repo import apply_review_action
+    async with get_session() as session:
+        result = await apply_review_action(
+            session, item_id=item_id, action=action, body=body,
+        )
+    if result is None:
+        return _error(404, "not_found", f"Review item {item_id} not found")
+    return web.json_response(result)
+
+
+# ---------------------------------------------------------------------------
+# Expiry Sweep (P2)
+# ---------------------------------------------------------------------------
+
+async def handle_trigger_expiry_sweep(request: web.Request) -> web.Response:
+    """POST /api/threat-intel/expiry-sweep -- trigger data expiry sweep."""
+    await _ensure_engine()
+    from secbot.threat_intel.repo import run_expiry_sweep
+    async with get_session() as session:
+        result = await run_expiry_sweep(session)
+    return web.json_response(result)
 
 
 # ---------------------------------------------------------------------------
@@ -497,15 +792,22 @@ def register_routes(app: web.Application) -> None:
 
     # IPs
     router.add_get("/api/threat-intel/ips", handle_list_ips)
+    router.add_get("/api/threat-intel/ips/{id}", handle_get_ip_detail)
 
     # Vulnerabilities
     router.add_get("/api/threat-intel/vulns", handle_list_vulns)
+    router.add_get("/api/threat-intel/vulns/{id}", handle_get_vuln_detail)
 
     # Malware
     router.add_get("/api/threat-intel/malware", handle_list_malware)
+    router.add_get("/api/threat-intel/malware/{id}", handle_get_malware_detail)
 
     # Maritime
     router.add_get("/api/threat-intel/maritime", handle_list_maritime)
+    router.add_patch("/api/threat-intel/maritime/{id}", handle_review_maritime)
+
+    # Graph (P1)
+    router.add_get("/api/threat-intel/graph", handle_get_graph)
 
     # Feeds
     router.add_get("/api/threat-intel/feeds/runs", handle_list_feed_runs)
@@ -514,7 +816,16 @@ def register_routes(app: web.Application) -> None:
     # Config
     router.add_get("/api/threat-intel/config/industry-cpes", handle_list_industry_cpes)
     router.add_post("/api/threat-intel/config/industry-cpes", handle_add_industry_cpe)
+    router.add_delete("/api/threat-intel/config/industry-cpes/{id}", handle_delete_industry_cpe)
     router.add_get("/api/threat-intel/config/aliases", handle_list_apt_aliases)
     router.add_post("/api/threat-intel/config/aliases", handle_add_apt_alias)
+    router.add_post("/api/threat-intel/config/aliases/batch", handle_batch_import_aliases)
+
+    # Review Queue (P2)
+    router.add_get("/api/threat-intel/review-queue", handle_review_queue_list)
+    router.add_post("/api/threat-intel/review-queue/{id}/action", handle_review_action)
+
+    # Expiry Sweep (P2)
+    router.add_post("/api/threat-intel/expiry-sweep", handle_trigger_expiry_sweep)
 
     logger.info("Threat Intel API routes registered")

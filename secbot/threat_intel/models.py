@@ -41,7 +41,7 @@ DEFAULT_ACTOR = "local"
 # ---------------------------------------------------------------------------
 
 IP_TYPES = ("c2", "scanner", "proxy", "drop")
-IP_STATUSES = ("active", "inactive")
+IP_STATUSES = ("active", "inactive", "archived")
 VULN_SEVERITIES = ("high", "critical")
 RELATIONSHIP_TYPES = ("exploited", "targeted", "reported")
 MALWARE_TYPES = ("rat", "backdoor", "ransomware", "stealer", "dropper", "botnet", "other")

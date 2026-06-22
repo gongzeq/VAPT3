@@ -487,6 +487,9 @@ async def list_threat_infra_ips(
         stmt = stmt.where(ThreatInfraIP.ip_type == ip_type)
     if status:
         stmt = stmt.where(ThreatInfraIP.status == status)
+    else:
+        # Default: exclude archived IPs
+        stmt = stmt.where(ThreatInfraIP.status != "archived")
     if q:
         stmt = stmt.where(ThreatInfraIP.ip_address.like(f"%{q}%"))
 
@@ -980,8 +983,12 @@ async def upsert_apt_alias(
     naming_org: Optional[str] = None,
     confidence: float = 0.9,
     source_url: Optional[str] = None,
-) -> AptAlias:
-    """Upsert an APT alias by (lower(alias_name), naming_org)."""
+) -> tuple[AptAlias, bool]:
+    """Upsert an APT alias by (lower(alias_name), naming_org).
+
+    Returns (alias, created) where *created* is True when a new row was
+    inserted and False when an existing row was updated.
+    """
     result = await session.execute(
         select(AptAlias).where(
             and_(
@@ -998,7 +1005,7 @@ async def upsert_apt_alias(
         existing.confidence = max(existing.confidence, confidence)
         if source_url is not None:
             existing.source_url = source_url
-        return existing
+        return existing, False
 
     alias = AptAlias(
         group_id=group_id,
@@ -1009,7 +1016,7 @@ async def upsert_apt_alias(
     )
     session.add(alias)
     await session.flush()
-    return alias
+    return alias, True
 
 
 # ---------------------------------------------------------------------------
@@ -1335,6 +1342,656 @@ async def get_overview(
             "top_families": top_families,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Graph Aggregation API (P1)
+# ---------------------------------------------------------------------------
+
+async def get_graph_data(
+    session: AsyncSession,
+    *,
+    group_id: Optional[str] = None,
+    watched: bool = False,
+    group_ids: Optional[list[str]] = None,
+    actor_id: str = DEFAULT_ACTOR,
+    top_n: int = 30,
+    min_confidence: float = 0.0,
+    node_types: Optional[list[str]] = None,
+    expand_cluster: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build knowledge graph data: nodes + edges with merging and clustering.
+
+    Modes (exactly one):
+    - group_id: single-group local graph
+    - watched=True: all Watchlist groups global graph
+    - group_ids: multi-group comparison graph
+    """
+    # Determine target group IDs
+    target_group_ids: list[str] = []
+
+    if group_id:
+        target_group_ids = [group_id]
+    elif watched:
+        result = await session.execute(
+            select(Watchlist.group_id).where(Watchlist.actor_id == actor_id)
+        )
+        target_group_ids = [row.group_id for row in result]
+    elif group_ids:
+        target_group_ids = group_ids
+
+    if not target_group_ids:
+        return {"nodes": [], "edges": [], "metadata": {
+            "total_nodes": 0, "total_edges": 0,
+            "clustered_nodes": 0, "groups_included": 0,
+        }}
+
+    # Fetch groups
+    result = await session.execute(
+        select(ThreatGroup).where(ThreatGroup.id.in_(target_group_ids))
+    )
+    groups = {g.id: g for g in result.scalars()}
+
+    # Fetch watched set
+    watched_result = await session.execute(
+        select(Watchlist.group_id).where(Watchlist.actor_id == actor_id)
+    )
+    watched_set = {row.group_id for row in watched_result}
+
+    # Expand cluster mode: return only expanded nodes
+    if expand_cluster and group_id:
+        return await _expand_cluster_nodes(
+            session, group_id=group_id, cluster_type=expand_cluster,
+        )
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    # Add group nodes
+    for gid, g in groups.items():
+        nodes.append({
+            "id": g.id,
+            "type": "group",
+            "label": g.name,
+            "data": {
+                "mitre_id": g.mitre_id,
+                "origin_country": g.origin_country,
+                "is_watched": gid in watched_set,
+            },
+        })
+
+    # Fetch and process IPs
+    ip_filter = [ThreatInfraIP.group_id.in_(target_group_ids)]
+    if node_types and "ip" not in node_types:
+        ip_filter = []  # Skip IPs
+
+    if ip_filter:
+        result = await session.execute(
+            select(ThreatInfraIP)
+            .where(and_(*ip_filter))
+            .where(ThreatInfraIP.status != "archived")
+        )
+        all_ips = result.scalars().all()
+
+        # Node merging: same IP address -> single node
+        ip_merge_map: dict[str, str] = {}
+        group_ip_counts: dict[str, int] = {}
+
+        for ip in all_ips:
+            if ip.group_id not in group_ip_counts:
+                group_ip_counts[ip.group_id] = 0
+            group_ip_counts[ip.group_id] += 1
+
+            if ip.ip_address not in ip_merge_map:
+                ip_merge_map[ip.ip_address] = ip.id
+
+        # Clustering: if group has > top_n IPs, create cluster node
+        clustered_groups: set[str] = set()
+        for gid, count in group_ip_counts.items():
+            if count > top_n:
+                cluster_node = {
+                    "id": f"cluster:ip:{gid}",
+                    "type": "cluster",
+                    "label": f"C2 IP x {count}",
+                    "data": {"cluster_type": "ip", "count": count, "group_id": gid},
+                }
+                nodes.append(cluster_node)
+                edges.append({
+                    "source": gid, "target": cluster_node["id"],
+                    "type": "uses_c2", "confidence": 1.0,
+                })
+                clustered_groups.add(gid)
+
+        # Add non-clustered IP nodes + edges
+        added_ip_nodes: set[str] = set()
+        for ip in all_ips:
+            if ip.group_id in clustered_groups:
+                continue
+            canonical_id = ip_merge_map[ip.ip_address]
+            if canonical_id not in added_ip_nodes:
+                nodes.append({
+                    "id": canonical_id,
+                    "type": "ip",
+                    "label": ip.ip_address,
+                    "data": {
+                        "ip_type": ip.ip_type,
+                        "status": ip.status,
+                        "geo_country": ip.geo_country,
+                        "malware_family": ip.malware_family,
+                    },
+                })
+                added_ip_nodes.add(canonical_id)
+            edges.append({
+                "source": ip.group_id,
+                "target": canonical_id,
+                "type": "uses_c2",
+                "confidence": ip.confidence,
+            })
+
+    # Fetch and process malware
+    if not node_types or "malware" in node_types:
+        result = await session.execute(
+            select(ThreatMalwareFamily)
+            .where(ThreatMalwareFamily.group_id.in_(target_group_ids))
+        )
+        all_malware = result.scalars().all()
+
+        malware_merge_map: dict[str, str] = {}
+        group_malware_counts: dict[str, int] = {}
+
+        for m in all_malware:
+            key = m.family_name.lower()
+            if m.group_id not in group_malware_counts:
+                group_malware_counts[m.group_id] = 0
+            group_malware_counts[m.group_id] += 1
+            if key not in malware_merge_map:
+                malware_merge_map[key] = m.id
+
+        clustered_malware_groups: set[str] = set()
+        for gid, count in group_malware_counts.items():
+            if count > top_n:
+                cluster_node = {
+                    "id": f"cluster:malware:{gid}",
+                    "type": "cluster",
+                    "label": f"Malware x {count}",
+                    "data": {"cluster_type": "malware", "count": count, "group_id": gid},
+                }
+                nodes.append(cluster_node)
+                edges.append({
+                    "source": gid, "target": cluster_node["id"],
+                    "type": "uses_malware", "confidence": 1.0,
+                })
+                clustered_malware_groups.add(gid)
+
+        added_malware_nodes: set[str] = set()
+        for m in all_malware:
+            if m.group_id in clustered_malware_groups:
+                continue
+            canonical_id = malware_merge_map[m.family_name.lower()]
+            if canonical_id not in added_malware_nodes:
+                nodes.append({
+                    "id": canonical_id,
+                    "type": "malware",
+                    "label": m.family_name,
+                    "data": {
+                        "type": m.type,
+                        "platform": m.platform,
+                    },
+                })
+                added_malware_nodes.add(canonical_id)
+            edges.append({
+                "source": m.group_id,
+                "target": canonical_id,
+                "type": "uses_malware",
+                "confidence": m.confidence,
+            })
+
+    # Fetch and process vulnerabilities (via group associations)
+    if not node_types or "vuln" in node_types:
+        result = await session.execute(
+            select(ThreatGroupVulnAssoc, ThreatVuln)
+            .join(ThreatVuln, ThreatGroupVulnAssoc.vulnerability_id == ThreatVuln.id)
+            .where(ThreatGroupVulnAssoc.group_id.in_(target_group_ids))
+        )
+        all_vuln_assocs = result.all()
+
+        added_vuln_nodes: set[str] = set()
+        for assoc, vuln in all_vuln_assocs:
+            if vuln.id not in added_vuln_nodes:
+                nodes.append({
+                    "id": vuln.id,
+                    "type": "vuln",
+                    "label": vuln.cve_id,
+                    "data": {
+                        "cvss_score": vuln.cvss_score,
+                        "severity": vuln.severity,
+                        "is_cisa_kev": vuln.is_cisa_kev,
+                        "is_supply_chain": vuln.is_supply_chain,
+                    },
+                })
+                added_vuln_nodes.add(vuln.id)
+
+            edge_type = "exploits" if assoc.relationship_type == "exploited" else "targets"
+            edges.append({
+                "source": assoc.group_id,
+                "target": vuln.id,
+                "type": edge_type,
+                "confidence": assoc.confidence,
+            })
+
+    # Apply confidence filter
+    edges = [e for e in edges if e["confidence"] >= min_confidence]
+
+    # Remove orphaned non-group nodes
+    connected_ids = {e["source"] for e in edges} | {e["target"] for e in edges}
+    nodes = [n for n in nodes if n["id"] in connected_ids or n["type"] == "group"]
+
+    clustered_count = sum(1 for n in nodes if n["type"] == "cluster")
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "clustered_nodes": clustered_count,
+            "groups_included": len(target_group_ids),
+        },
+    }
+
+
+async def _expand_cluster_nodes(
+    session: AsyncSession,
+    *,
+    group_id: str,
+    cluster_type: str,
+) -> dict[str, Any]:
+    """Expand a cluster node into its real sub-nodes."""
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    if cluster_type == "ip":
+        result = await session.execute(
+            select(ThreatInfraIP)
+            .where(ThreatInfraIP.group_id == group_id)
+            .where(ThreatInfraIP.status != "archived")
+        )
+        for ip in result.scalars():
+            nodes.append({
+                "id": ip.id,
+                "type": "ip",
+                "label": ip.ip_address,
+                "data": {
+                    "ip_type": ip.ip_type,
+                    "status": ip.status,
+                    "geo_country": ip.geo_country,
+                    "malware_family": ip.malware_family,
+                },
+            })
+            edges.append({
+                "source": group_id,
+                "target": ip.id,
+                "type": "uses_c2",
+                "confidence": ip.confidence,
+            })
+
+    elif cluster_type == "malware":
+        result = await session.execute(
+            select(ThreatMalwareFamily)
+            .where(ThreatMalwareFamily.group_id == group_id)
+        )
+        for m in result.scalars():
+            nodes.append({
+                "id": m.id,
+                "type": "malware",
+                "label": m.family_name,
+                "data": {"type": m.type, "platform": m.platform},
+            })
+            edges.append({
+                "source": group_id,
+                "target": m.id,
+                "type": "uses_malware",
+                "confidence": m.confidence,
+            })
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "clustered_nodes": 0,
+            "groups_included": 1,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Detail API functions (P1)
+# ---------------------------------------------------------------------------
+
+async def get_threat_vuln(session: AsyncSession, vuln_id: str) -> Optional[dict]:
+    """Get full vulnerability detail by ID."""
+    result = await session.execute(
+        select(ThreatVuln).where(ThreatVuln.id == vuln_id)
+    )
+    vuln = result.scalar_one_or_none()
+    if vuln is None:
+        return None
+
+    # Fetch exploiting groups
+    assoc_result = await session.execute(
+        select(ThreatGroupVulnAssoc, ThreatGroup)
+        .join(ThreatGroup, ThreatGroupVulnAssoc.group_id == ThreatGroup.id)
+        .where(ThreatGroupVulnAssoc.vulnerability_id == vuln_id)
+    )
+    exploiting_groups = [
+        {
+            "group_id": assoc.group_id,
+            "group_name": group.name,
+            "relationship_type": assoc.relationship_type,
+            "confidence": assoc.confidence,
+            "last_seen": assoc.last_seen.isoformat() if assoc.last_seen else None,
+        }
+        for assoc, group in assoc_result
+    ]
+
+    return {
+        "id": vuln.id,
+        "cve_id": vuln.cve_id,
+        "title": vuln.title,
+        "description": vuln.description,
+        "cvss_score": vuln.cvss_score,
+        "severity": vuln.severity,
+        "affected_products": vuln.affected_products or [],
+        "is_supply_chain": vuln.is_supply_chain,
+        "has_poc": vuln.has_poc,
+        "exploit_available": vuln.exploit_available,
+        "is_cisa_kev": vuln.is_cisa_kev,
+        "cisa_kev_date": vuln.cisa_kev_date.isoformat() if vuln.cisa_kev_date else None,
+        "published_date": vuln.published_date.isoformat() if vuln.published_date else None,
+        "primary_source": vuln.primary_source,
+        "sources": vuln.sources or [],
+        "source_refs": vuln.source_refs or [],
+        "tags": vuln.tags or [],
+        "exploiting_groups": exploiting_groups,
+        "last_ingested_at": vuln.last_ingested_at.isoformat() if vuln.last_ingested_at else None,
+        "created_at": vuln.created_at.isoformat() if vuln.created_at else None,
+        "updated_at": vuln.updated_at.isoformat() if vuln.updated_at else None,
+    }
+
+
+async def get_threat_infra_ip_detail(session: AsyncSession, ip_id: str) -> Optional[dict]:
+    """Get full infrastructure IP detail by ID."""
+    result = await session.execute(
+        select(ThreatInfraIP, ThreatGroup.name)
+        .join(ThreatGroup, ThreatInfraIP.group_id == ThreatGroup.id)
+        .where(ThreatInfraIP.id == ip_id)
+    )
+    row = result.first()
+    if row is None:
+        return None
+
+    ip, group_name = row
+    return {
+        "id": ip.id,
+        "group_id": ip.group_id,
+        "group_name": group_name,
+        "ip_address": ip.ip_address,
+        "ip_type": ip.ip_type,
+        "malware_family": ip.malware_family,
+        "geo_country": ip.geo_country,
+        "asn": ip.asn,
+        "first_seen": ip.first_seen.isoformat() if ip.first_seen else None,
+        "last_seen": ip.last_seen.isoformat() if ip.last_seen else None,
+        "status": ip.status,
+        "source": ip.source,
+        "confidence": ip.confidence,
+        "source_refs": ip.source_refs or [],
+        "tags": ip.tags or [],
+        "last_ingested_at": ip.last_ingested_at.isoformat() if ip.last_ingested_at else None,
+        "created_at": ip.created_at.isoformat() if ip.created_at else None,
+    }
+
+
+async def get_threat_malware_detail(session: AsyncSession, malware_id: str) -> Optional[dict]:
+    """Get full malware family detail by ID."""
+    result = await session.execute(
+        select(ThreatMalwareFamily, ThreatGroup.name)
+        .join(ThreatGroup, ThreatMalwareFamily.group_id == ThreatGroup.id)
+        .where(ThreatMalwareFamily.id == malware_id)
+    )
+    row = result.first()
+    if row is None:
+        return None
+
+    m, group_name = row
+    return {
+        "id": m.id,
+        "group_id": m.group_id,
+        "group_name": group_name,
+        "family_name": m.family_name,
+        "aliases": m.aliases or [],
+        "description": m.description,
+        "type": m.type,
+        "platform": m.platform or [],
+        "sample_hashes": m.sample_hashes or [],
+        "yara_rules": m.yara_rules or [],
+        "first_seen": m.first_seen.isoformat() if m.first_seen else None,
+        "last_active": m.last_active.isoformat() if m.last_active else None,
+        "source": m.source,
+        "confidence": m.confidence,
+        "source_refs": m.source_refs or [],
+        "tags": m.tags or [],
+        "last_ingested_at": m.last_ingested_at.isoformat() if m.last_ingested_at else None,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Data expiry & archival (P2)
+# ---------------------------------------------------------------------------
+
+async def run_expiry_sweep(session: AsyncSession) -> dict[str, int]:
+    """Run data expiry sweep. Returns counts of archived/deleted records."""
+    now = _utcnow()
+    archived_ips = 0
+    auto_inactive_ips = 0
+    deleted_maritime = 0
+    deleted_runs = 0
+
+    # 1. Auto-inactive: active IPs not seen in 180 days
+    result = await session.execute(
+        select(ThreatInfraIP).where(
+            and_(
+                ThreatInfraIP.status == "active",
+                ThreatInfraIP.last_seen < now - timedelta(days=180),
+            )
+        )
+    )
+    for ip in result.scalars():
+        ip.status = "inactive"
+        auto_inactive_ips += 1
+
+    # 2. Archive: inactive IPs not seen in 90 days
+    result = await session.execute(
+        select(ThreatInfraIP).where(
+            and_(
+                ThreatInfraIP.status == "inactive",
+                ThreatInfraIP.last_seen < now - timedelta(days=90),
+            )
+        )
+    )
+    for ip in result.scalars():
+        ip.status = "archived"
+        archived_ips += 1
+
+    # 3. Delete old dismissed maritime events (>1 year)
+    result = await session.execute(
+        select(MaritimeEvent).where(
+            and_(
+                MaritimeEvent.event_date < now - timedelta(days=365),
+                MaritimeEvent.verification_status == "dismissed",
+            )
+        )
+    )
+    for event in result.scalars():
+        await session.delete(event)
+        deleted_maritime += 1
+
+    # 4. Delete old feed runs (>90 days)
+    result = await session.execute(
+        select(FeedPullRun).where(
+            FeedPullRun.started_at < now - timedelta(days=90)
+        )
+    )
+    for run in result.scalars():
+        await session.delete(run)
+        deleted_runs += 1
+
+    return {
+        "auto_inactive_ips": auto_inactive_ips,
+        "archived_ips": archived_ips,
+        "deleted_maritime": deleted_maritime,
+        "deleted_runs": deleted_runs,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Low-confidence review queue (P2)
+# ---------------------------------------------------------------------------
+
+async def get_review_queue(
+    session: AsyncSession,
+    *,
+    entity_type: str = "ip",
+    max_confidence: float = 0.65,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    """Get low-confidence records for human review."""
+    limit, offset = _paginate(page, page_size)
+    items: list[dict] = []
+
+    if entity_type == "ip":
+        stmt = (
+            select(ThreatInfraIP, ThreatGroup.name)
+            .join(ThreatGroup, ThreatInfraIP.group_id == ThreatGroup.id)
+            .where(ThreatInfraIP.confidence < max_confidence)
+            .where(ThreatInfraIP.status != "archived")
+            .order_by(ThreatInfraIP.confidence.asc())
+        )
+        count_stmt = select(func.count()).select_from(
+            select(ThreatInfraIP)
+            .where(ThreatInfraIP.confidence < max_confidence)
+            .where(ThreatInfraIP.status != "archived")
+            .subquery()
+        )
+        total = (await session.execute(count_stmt)).scalar() or 0
+
+        result = await session.execute(stmt.limit(limit).offset(offset))
+        for ip, group_name in result:
+            items.append({
+                "id": ip.id,
+                "entity_type": "ip",
+                "label": ip.ip_address,
+                "confidence": ip.confidence,
+                "group_id": ip.group_id,
+                "group_name": group_name,
+                "source": ip.source,
+                "source_refs": ip.source_refs or [],
+                "review_action": "confirm_mapping",
+            })
+
+    elif entity_type == "maritime":
+        stmt = (
+            select(MaritimeEvent)
+            .where(MaritimeEvent.extraction_confidence < max_confidence)
+            .where(MaritimeEvent.verification_status == "unreviewed")
+            .order_by(MaritimeEvent.extraction_confidence.asc())
+        )
+        count_stmt = select(func.count()).select_from(
+            select(MaritimeEvent)
+            .where(MaritimeEvent.extraction_confidence < max_confidence)
+            .where(MaritimeEvent.verification_status == "unreviewed")
+            .subquery()
+        )
+        total = (await session.execute(count_stmt)).scalar() or 0
+
+        result = await session.execute(stmt.limit(limit).offset(offset))
+        for event in result.scalars():
+            items.append({
+                "id": event.id,
+                "entity_type": "maritime",
+                "label": event.title,
+                "confidence": event.extraction_confidence,
+                "group_id": None,
+                "group_name": None,
+                "source": event.source,
+                "source_refs": event.source_refs or [],
+                "review_action": "confirm_event",
+            })
+    else:
+        total = 0
+
+    return {"items": items, "page": page, "page_size": page_size, "total": total}
+
+
+async def apply_review_action(
+    session: AsyncSession,
+    *,
+    item_id: str,
+    action: str,
+    body: dict,
+) -> Optional[dict]:
+    """Apply a review action to a low-confidence record."""
+    entity_type = body.get("entity_type", "ip")
+
+    if entity_type == "ip":
+        result = await session.execute(
+            select(ThreatInfraIP).where(ThreatInfraIP.id == item_id)
+        )
+        ip = result.scalar_one_or_none()
+        if ip is None:
+            return None
+
+        if action == "confirm_mapping":
+            ip.confidence = max(ip.confidence, 0.8)
+        elif action == "remap":
+            new_group_id = body.get("new_group_id")
+            if not new_group_id:
+                return {"id": item_id, "action": action, "updated": False,
+                        "error": "new_group_id is required for remap"}
+            # Validate target group exists
+            grp = (await session.execute(
+                select(ThreatGroup.id).where(ThreatGroup.id == new_group_id)
+            )).scalar_one_or_none()
+            if grp is None:
+                return None  # handler translates to 404
+            ip.group_id = new_group_id
+            ip.confidence = 0.8
+        elif action == "dismiss":
+            ip.status = "archived"
+
+        return {"id": item_id, "action": action, "updated": True}
+
+    elif entity_type == "maritime":
+        result = await session.execute(
+            select(MaritimeEvent).where(MaritimeEvent.id == item_id)
+        )
+        event = result.scalar_one_or_none()
+        if event is None:
+            return None
+
+        if action == "confirm_event":
+            event.verification_status = "confirmed"
+            event.extraction_confidence = max(event.extraction_confidence, 0.8)
+        elif action == "dismiss":
+            event.verification_status = "dismissed"
+
+        return {"id": item_id, "action": action, "updated": True}
+
+    return None
 
 
 # ---------------------------------------------------------------------------
