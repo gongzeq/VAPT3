@@ -91,6 +91,9 @@ matrix = [
 discord = [
     "discord.py>=2.5.2,<3.0.0",
 ]
+threat-intel-p2 = [
+    "pdfplumber>=0.11.0",
+]
 langsmith = [
     "langsmith>=0.1.0",
 ]

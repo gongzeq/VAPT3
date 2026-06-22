@@ -1053,7 +1053,13 @@ async def finish_feed_pull_run(
     error_message: Optional[str] = None,
     metadata_json: Optional[dict] = None,
 ) -> Optional[FeedPullRun]:
-    """Mark a feed pull run as finished with final counts."""
+    """Mark a feed pull run as finished with final counts.
+
+    When ``status == "failed"``, broadcasts a ``threat_intel_feed_failed``
+    WebSocket event to all connected clients so the frontend can show a
+    dismissible toast notification. ``status == "partial"`` does NOT trigger
+    the broadcast.
+    """
     result = await session.execute(
         select(FeedPullRun).where(FeedPullRun.id == run_id)
     )
@@ -1069,6 +1075,38 @@ async def finish_feed_pull_run(
     run.unmapped_count = unmapped_count
     run.error_message = error_message
     run.metadata_json = metadata_json
+
+    # Broadcast failure event via WebSocket (best-effort, non-blocking)
+    if status == "failed":
+        try:
+            from secbot.channels.websocket import WebSocketChannel
+
+            ws = WebSocketChannel.get_active_instance()
+            if ws is not None:
+                from datetime import datetime as _dt
+
+                body = {
+                    "event": "agent_event",
+                    "chat_id": "",
+                    "type": "threat_intel_feed_failed",
+                    "payload": {
+                        "type": "threat_intel_feed_failed",
+                        "source": run.source,
+                        "run_id": run_id,
+                        "error_message": error_message or "Unknown error",
+                        "started_at": run.started_at.isoformat() if run.started_at else None,
+                        "failed_at": _utcnow().isoformat(),
+                    },
+                    "timestamp": _dt.now().astimezone().isoformat(timespec="seconds"),
+                }
+                await ws._broadcast_frame(body, chat_id=None)
+        except Exception:
+            _logger.warning(
+                "Failed to broadcast feed failure event for run %s",
+                run_id,
+                exc_info=True,
+            )
+
     return run
 
 

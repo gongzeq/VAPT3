@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -128,17 +130,66 @@ async def _fetch_ukmto(http: aiohttp.ClientSession) -> str:
     return text[:8000]  # Limit text size
 
 
+def extract_pdf_text(pdf_path: str) -> list[str]:
+    """Extract text from PDF, return page-by-page text chunks.
+
+    Uses ``pdfplumber`` as an optional dependency — degrades gracefully
+    to an empty list with a warning log if not installed.
+    """
+    chunks: list[str] = []
+    try:
+        import pdfplumber
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    chunks.append(text)
+    except ImportError:
+        _logger.warning("pdfplumber not installed, skipping PDF extraction")
+    except Exception as exc:
+        _logger.warning("PDF extraction failed: %s", exc)
+    return chunks
+
+
 async def _fetch_recaap(http: aiohttp.ClientSession) -> str:
-    """Fetch ReCAAP resources page as text."""
+    """Fetch ReCAAP resources page and linked PDF reports.
+
+    Downloads up to 3 linked PDF reports and extracts text with pdfplumber.
+    Falls back to HTML-only extraction if pdfplumber is not installed.
+    """
     async with http.get(RECAAP_URL, timeout=aiohttp.ClientTimeout(total=30)) as resp:
         if resp.status != 200:
             raise RuntimeError(f"ReCAAP fetch failed: HTTP {resp.status}")
         html = await resp.text()
 
-    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:8000]
+    # Extract PDF links from HTML
+    pdf_links = re.findall(r'href="([^"]+\.pdf)"', html, re.IGNORECASE)
+    all_text: list[str] = []
+
+    # Also include HTML text (for non-PDF content)
+    html_text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    html_text = re.sub(r"<[^>]+>", " ", html_text)
+    html_text = re.sub(r"\s+", " ", html_text).strip()
+    all_text.append(html_text[:4000])
+
+    # Download and extract PDFs (limit to 3 to avoid excessive downloads)
+    for pdf_url in pdf_links[:3]:
+        if not pdf_url.startswith("http"):
+            pdf_url = f"https://www.recaap.org{pdf_url}"
+        try:
+            async with http.get(pdf_url, timeout=aiohttp.ClientTimeout(total=60)) as pdf_resp:
+                if pdf_resp.status == 200:
+                    pdf_data = await pdf_resp.read()
+                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                        tmp.write(pdf_data)
+                        tmp_path = tmp.name
+                    chunks = extract_pdf_text(tmp_path)
+                    all_text.extend(chunks)
+                    os.unlink(tmp_path)
+        except Exception as exc:
+            _logger.warning("Failed to fetch/extract PDF %s: %s", pdf_url, exc)
+
+    return "\n\n".join(all_text)[:8000]
 
 
 async def _extract_maritime_events(
