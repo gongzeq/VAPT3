@@ -49,6 +49,7 @@ import { WatchlistPage } from "@/pages/threat-intel/WatchlistPage";
 import { AliasManagementPage } from "@/pages/threat-intel/AliasManagementPage";
 import { MaritimePage } from "@/pages/threat-intel/MaritimePage";
 import { ReviewQueuePage } from "@/pages/threat-intel/ReviewQueuePage";
+import { IndustryCPEPage } from "@/pages/threat-intel/IndustryCPEPage";
 
 /**
  * Default to ON so the refactor lands behind a default-true flag — flipping
@@ -293,6 +294,7 @@ export default function App() {
               <Route path="maritime" element={<MaritimePage />} />
               <Route path="watchlist" element={<WatchlistPage />} />
               <Route path="config/aliases" element={<AliasManagementPage />} />
+              <Route path="config/industry-cpes" element={<IndustryCPEPage />} />
               <Route path="review" element={<ReviewQueuePage />} />
               <Route path="feeds" element={<FeedsPage />} />
             </Route>

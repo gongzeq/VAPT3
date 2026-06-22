@@ -4,11 +4,22 @@
  * PRD §7.1: the threat intel module uses a **light** visual style
  * (background ``#F5F7FA``) to distinguish it from the dark VAPT console.
  * This layout applies the light background and renders the Navbar + Outlet.
+ *
+ * Also subscribes to global ``agent_event`` frames for feed failure
+ * notifications and shows a dismissible toast.
  */
 
+import { useEffect, useState, useCallback } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
-import { LayoutDashboard, Users, GitBranch, Bug, Shield, Eye, FileWarning, ClipboardCheck, Rss } from "lucide-react";
+import { LayoutDashboard, Users, GitBranch, Bug, Shield, Eye, FileWarning, ClipboardCheck, Rss, X, AlertCircle } from "lucide-react";
+import { useClient } from "@/providers/ClientProvider";
+
+interface FeedFailureToast {
+  source: string;
+  error_message: string;
+  run_id: string;
+}
 
 const navItems = [
   { to: "/threat-intel", label: "概览", icon: LayoutDashboard, end: true },
@@ -23,6 +34,26 @@ const navItems = [
 ];
 
 export function ThreatIntelLayout() {
+  const { client } = useClient();
+  const [toasts, setToasts] = useState<FeedFailureToast[]>([]);
+
+  const dismissToast = useCallback((runId: string) => {
+    setToasts((prev) => prev.filter((t) => t.run_id !== runId));
+  }, []);
+
+  useEffect(() => {
+    const unsub = client.onGlobalAgentEvent((payload, type) => {
+      if (type !== "threat_intel_feed_failed") return;
+      const data = payload as unknown as FeedFailureToast;
+      setToasts((prev) => [...prev, data]);
+      // Auto-dismiss after 10 seconds
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.run_id !== data.run_id));
+      }, 10_000);
+    });
+    return unsub;
+  }, [client]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
@@ -53,6 +84,32 @@ export function ThreatIntelLayout() {
       <main className="mx-auto max-w-[1600px] px-6 py-6">
         <Outlet />
       </main>
+
+      {/* Dismissible toast notifications for feed failures */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.run_id}
+              className="flex items-start gap-3 rounded-lg border border-red-200 bg-white px-4 py-3 shadow-lg"
+            >
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-900">Feed拉取失败</p>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {toast.source} 拉取失败: {toast.error_message}
+                </p>
+              </div>
+              <button
+                onClick={() => dismissToast(toast.run_id)}
+                className="shrink-0 text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

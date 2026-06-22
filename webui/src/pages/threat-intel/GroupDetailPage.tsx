@@ -5,19 +5,103 @@
  * Tabs: C2 IPs / Malware / Vulnerabilities / Aliases.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Star, StarOff, Globe, Calendar, Shield } from "lucide-react";
+import ReactFlow, {
+  Background,
+  Controls,
+  type Node,
+  type Edge,
+  type NodeTypes,
+} from "reactflow";
+import "reactflow/dist/style.css";
 import { useClient } from "@/providers/ClientProvider";
 import {
   fetchGroupDetail,
   watchGroup,
   unwatchGroup,
+  fetchGraph,
   type ThreatGroupDetail,
+  type GraphData,
+  type GraphNode,
 } from "@/lib/threat-intel-client";
 import { cn } from "@/lib/utils";
 
-type TabKey = "ips" | "malware" | "vulns" | "aliases";
+// ── Custom Node Components (reused from GraphPage) ─────────────────────
+
+function GroupNode({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 px-3 py-2 text-white shadow-lg">
+      <Shield className="h-4 w-4" />
+      <span className="text-sm font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
+function IPNode({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 px-2.5 py-1.5 text-white shadow-md">
+      <span className="text-xs font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
+function MalwareNode({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded bg-gradient-to-br from-rose-500 to-red-500 px-2.5 py-1.5 text-white shadow-md">
+      <span className="text-xs font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
+function VulnNode({ data }: { data: Record<string, unknown> }) {
+  const severity = data.severity as string;
+  const gradient = severity === "critical"
+    ? "from-rose-500 to-red-500"
+    : "from-amber-500 to-orange-500";
+  return (
+    <div className={`flex items-center gap-1.5 rounded-md bg-gradient-to-br ${gradient} px-2.5 py-1.5 text-white shadow-md`}>
+      <span className="text-xs font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
+const localNodeTypes: NodeTypes = {
+  group: GroupNode,
+  ip: IPNode,
+  malware: MalwareNode,
+  vuln: VulnNode,
+};
+
+const localEdgeStyles: Record<string, { stroke: string; strokeWidth: number }> = {
+  uses_c2: { stroke: "#6366F1", strokeWidth: 1.5 },
+  uses_malware: { stroke: "#F43F5E", strokeWidth: 1.5 },
+  exploits: { stroke: "#DC2626", strokeWidth: 3 },
+  targets: { stroke: "#F59E0B", strokeWidth: 1.5 },
+};
+
+// ── Radial Layout (Gap Fix §3.1) ───────────────────────────────────────
+
+function applyRadialLayout(nodes: Node[], centerX = 300, centerY = 250): Node[] {
+  const groupNode = nodes.find((n) => n.type === "group");
+  const otherNodes = nodes.filter((n) => n.type !== "group");
+  const radius = 200;
+  const angleStep = (2 * Math.PI) / Math.max(otherNodes.length, 1);
+
+  return [
+    ...(groupNode ? [{ ...groupNode, position: { x: centerX, y: centerY } }] : []),
+    ...otherNodes.map((node, i) => ({
+      ...node,
+      position: {
+        x: centerX + radius * Math.cos(i * angleStep),
+        y: centerY + radius * Math.sin(i * angleStep),
+      },
+    })),
+  ];
+}
+
+type TabKey = "ips" | "malware" | "vulns" | "aliases" | "graph";
 
 export function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +111,9 @@ export function GroupDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("ips");
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null);
 
   const loadGroup = useCallback(async () => {
     if (!id) return;
@@ -43,6 +130,16 @@ export function GroupDetailPage() {
   }, [token, id]);
 
   useEffect(() => { loadGroup(); }, [loadGroup]);
+
+  // Load local graph when switching to graph tab (Gap Fix §3)
+  useEffect(() => {
+    if (activeTab !== "graph" || !id || graphData) return;
+    setGraphLoading(true);
+    fetchGraph(token, { group_id: id, top_n: 100 })
+      .then((data) => setGraphData(data))
+      .catch(() => { /* ignore */ })
+      .finally(() => setGraphLoading(false));
+  }, [activeTab, id, token, graphData]);
 
   const handleToggleWatch = async () => {
     if (!group || !id) return;
@@ -73,6 +170,7 @@ export function GroupDetailPage() {
     { key: "malware", label: "木马家族", count: group.malware_families.length },
     { key: "vulns", label: "已知漏洞", count: group.vulnerabilities.length },
     { key: "aliases", label: "APT别名", count: group.apt_aliases.length },
+    { key: "graph", label: "图谱", count: 0 },
   ];
 
   return (
@@ -302,7 +400,92 @@ export function GroupDetailPage() {
             </tbody>
           </table>
         )}
+
+        {/* Local Graph Tab (Gap Fix §3) */}
+        {activeTab === "graph" && (
+          <div className="p-4">
+            {graphLoading ? (
+              <div className="flex h-[500px] items-center justify-center text-sm text-slate-400">图谱加载中…</div>
+            ) : !graphData || graphData.nodes.length === 0 ? (
+              <div className="flex h-[500px] items-center justify-center text-sm text-slate-400">暂无图谱数据</div>
+            ) : (
+              <LocalGraphView
+                graphData={graphData}
+                selectedNode={selectedGraphNode}
+                onSelectNode={setSelectedGraphNode}
+              />
+            )}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Local Graph View Component ─────────────────────────────────────────
+
+function LocalGraphView({
+  graphData,
+  selectedNode,
+  onSelectNode,
+}: {
+  graphData: GraphData;
+  selectedNode: GraphNode | null;
+  onSelectNode: (node: GraphNode | null) => void;
+}) {
+  const { positionedNodes, edges } = useMemo(() => {
+    const rawNodes: Node[] = graphData.nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: { x: 0, y: 0 },
+      data: { ...n.data, label: n.label },
+    }));
+    const rawEdges: Edge[] = graphData.edges.map((e, i) => ({
+      id: `e-${i}`,
+      source: e.source,
+      target: e.target,
+      type: "default",
+      style: localEdgeStyles[e.type] || localEdgeStyles.uses_c2,
+      animated: e.type === "exploits",
+    }));
+    return { positionedNodes: applyRadialLayout(rawNodes), edges: rawEdges };
+  }, [graphData]);
+
+  return (
+    <div className="flex gap-4">
+      <div className="h-[500px] flex-1 rounded-lg border border-slate-200 bg-white">
+        <ReactFlow
+          nodes={positionedNodes}
+          edges={edges}
+          nodeTypes={localNodeTypes}
+          fitView
+          attributionPosition="bottom-left"
+          onNodeClick={(_, node) => {
+            onSelectNode(graphData.nodes.find((n) => n.id === node.id) || null);
+          }}
+        >
+          <Background color="#e2e8f0" gap={20} />
+          <Controls />
+        </ReactFlow>
+      </div>
+      {selectedNode && (
+        <div className="w-72 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">{selectedNode.label}</h3>
+            <button onClick={() => onSelectNode(null)} className="text-slate-400 hover:text-slate-600">x</button>
+          </div>
+          <dl className="space-y-2 text-xs">
+            {Object.entries(selectedNode.data).map(([key, value]) => (
+              <div key={key}>
+                <dt className="text-slate-500">{key}</dt>
+                <dd className="font-medium">
+                  {typeof value === "boolean" ? (value ? "Yes" : "No") : String(value)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
     </div>
   );
 }

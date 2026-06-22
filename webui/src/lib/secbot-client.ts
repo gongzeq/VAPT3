@@ -16,6 +16,10 @@ type EventHandler = (ev: InboundEvent) => void;
 type StatusHandler = (status: ConnectionStatus) => void;
 type ActivityEventHandler = (frame: ActivityEventFrame) => void;
 
+/** Global ``agent_event`` handler for broadcasts not tied to a specific chat.
+ * Used by threat-intel feed failure notifications and other system-level events. */
+export type GlobalAgentEventHandler = (payload: Record<string, unknown>, type: string) => void;
+
 /** Structured connection-level errors surfaced to the UI.
  *
  * These are *not* InboundEvent errors from the server application layer —
@@ -71,6 +75,11 @@ export class SecbotClient {
   // the union of *all* chats, so we fan out these frames to a dedicated
   // global set *in addition to* (not instead of) the per-chat dispatch.
   private activityHandlers = new Set<ActivityEventHandler>();
+  // Global subscribers for ``agent_event`` frames that are broadcast without
+  // a specific ``chat_id`` (e.g. threat_intel_feed_failed). These are
+  // system-level notifications that need to reach the UI regardless of which
+  // chat the user is currently viewing.
+  private globalAgentEventHandlers = new Set<GlobalAgentEventHandler>();
   // chat_ids we've attached to since connect; re-attached after reconnects
   private knownChats = new Set<string>();
   private pendingNewChat: PendingNewChat | null = null;
@@ -153,6 +162,17 @@ export class SecbotClient {
     this.activityHandlers.add(handler);
     return () => {
       this.activityHandlers.delete(handler);
+    };
+  }
+
+  /** Subscribe to global ``agent_event`` frames (no ``chat_id`` required).
+   *
+   * These are system-level broadcasts like threat-intel feed failure
+   * notifications. The handler receives the payload and event type. */
+  onGlobalAgentEvent(handler: GlobalAgentEventHandler): Unsubscribe {
+    this.globalAgentEventHandlers.add(handler);
+    return () => {
+      this.globalAgentEventHandlers.delete(handler);
     };
   }
 
@@ -295,6 +315,14 @@ export class SecbotClient {
 
     if (eventName === "agent_event") {
       const chatId = (parsed as { chat_id?: string }).chat_id;
+      const agentType = (parsed as { type?: string }).type;
+      const agentPayload = (parsed as { payload?: Record<string, unknown> }).payload;
+      // Fan out to global handlers (system-level broadcasts without chat_id)
+      if (agentType && agentPayload) {
+        for (const h of this.globalAgentEventHandlers) {
+          try { h(agentPayload, agentType); } catch { /* best-effort */ }
+        }
+      }
       if (chatId) this.dispatch(chatId, parsed as InboundEvent);
       return;
     }

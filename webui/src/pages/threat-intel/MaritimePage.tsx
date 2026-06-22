@@ -1,5 +1,9 @@
 /**
  * Maritime Events Page — PRD §7.2 海事安全事件页.
+ *
+ * Gap Fixes:
+ * - §11: Date range filter (from/to)
+ * - §12: Pagination controls
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -21,8 +25,13 @@ interface MaritimeEvent {
   verification_status: string;
 }
 
+const PAGE_SIZE = 20;
+
 // We need to use the maritime list endpoint from the existing API
-async function fetchMaritimeEvents(token: string, params?: Record<string, string>): Promise<{ items: MaritimeEvent[]; total: number }> {
+async function fetchMaritimeEvents(
+  token: string,
+  params?: Record<string, string>,
+): Promise<{ items: MaritimeEvent[]; total: number }> {
   const search = new URLSearchParams(params);
   const qs = search.toString();
   const res = await fetch(`/api/threat-intel/maritime${qs ? `?${qs}` : ""}`, {
@@ -45,7 +54,16 @@ export function MaritimePage() {
   const [events, setEvents] = useState<MaritimeEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ event_type: "", severity: "", verification_status: "" });
+  const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState({
+    event_type: "",
+    severity: "",
+    verification_status: "",
+    from: "",
+    to: "",
+  });
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,13 +72,20 @@ export function MaritimePage() {
         event_type: filter.event_type,
         severity: filter.severity,
         verification_status: filter.verification_status,
+        from: filter.from,
+        to: filter.to,
+        page: String(page),
+        page_size: String(PAGE_SIZE),
       });
       setEvents(result.items || []);
       setTotal(result.total || 0);
     } catch { /* ignore */ } finally { setLoading(false); }
-  }, [token, filter]);
+  }, [token, filter, page]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1); }, [filter]);
 
   const handleReview = async (eventId: string, status: "confirmed" | "dismissed") => {
     await reviewMaritimeEvent(token, eventId, status);
@@ -74,27 +99,54 @@ export function MaritimePage() {
         <span className="text-sm text-slate-600">共 {total} 条</span>
       </div>
 
-      <div className="flex gap-2">
-        <select value={filter.event_type} onChange={(e) => setFilter({ ...filter, event_type: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={filter.event_type}
+          onChange={(e) => setFilter({ ...filter, event_type: e.target.value })}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        >
           <option value="">全部类型</option>
           <option value="piracy">海盗袭击</option>
           <option value="security_warning">安全警告</option>
           <option value="gnss_interference">GNSS干扰</option>
           <option value="navigation_warning">航行警告</option>
         </select>
-        <select value={filter.severity} onChange={(e) => setFilter({ ...filter, severity: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+        <select
+          value={filter.severity}
+          onChange={(e) => setFilter({ ...filter, severity: e.target.value })}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        >
           <option value="">全部严重性</option>
           <option value="critical">严重</option>
           <option value="high">高</option>
           <option value="medium">中</option>
           <option value="low">低</option>
         </select>
-        <select value={filter.verification_status} onChange={(e) => setFilter({ ...filter, verification_status: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+        <select
+          value={filter.verification_status}
+          onChange={(e) => setFilter({ ...filter, verification_status: e.target.value })}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        >
           <option value="">全部状态</option>
           <option value="unreviewed">待审</option>
           <option value="confirmed">已确认</option>
           <option value="dismissed">已驳回</option>
         </select>
+
+        {/* Gap 11: Date range filter */}
+        <input
+          type="date"
+          value={filter.from}
+          onChange={(e) => setFilter({ ...filter, from: e.target.value })}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <span className="flex items-center text-slate-400">至</span>
+        <input
+          type="date"
+          value={filter.to}
+          onChange={(e) => setFilter({ ...filter, to: e.target.value })}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
       </div>
 
       {loading ? (
@@ -133,8 +185,18 @@ export function MaritimePage() {
                   </div>
                   {event.verification_status === "unreviewed" && (
                     <div className="flex gap-2">
-                      <button onClick={() => handleReview(event.id, "confirmed")} className="rounded bg-green-50 px-3 py-1 text-sm text-green-600 hover:bg-green-100">确认</button>
-                      <button onClick={() => handleReview(event.id, "dismissed")} className="rounded bg-slate-50 px-3 py-1 text-sm text-slate-600 hover:bg-slate-100">驳回</button>
+                      <button
+                        onClick={() => handleReview(event.id, "confirmed")}
+                        className="rounded bg-green-50 px-3 py-1 text-sm text-green-600 hover:bg-green-100"
+                      >
+                        确认
+                      </button>
+                      <button
+                        onClick={() => handleReview(event.id, "dismissed")}
+                        className="rounded bg-slate-50 px-3 py-1 text-sm text-slate-600 hover:bg-slate-100"
+                      >
+                        驳回
+                      </button>
                     </div>
                   )}
                 </div>
@@ -146,13 +208,41 @@ export function MaritimePage() {
                   </p>
                 )}
                 {event.source_url && (
-                  <a href={event.source_url} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                  <a
+                    href={event.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+                  >
                     <ExternalLink className="h-3 w-3" /> 来源: {event.source}
                   </a>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Gap 12: Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="rounded border border-slate-200 px-3 py-1 text-sm disabled:opacity-50"
+          >
+            上一页
+          </button>
+          <span className="text-sm text-slate-600">
+            {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="rounded border border-slate-200 px-3 py-1 text-sm disabled:opacity-50"
+          >
+            下一页
+          </button>
         </div>
       )}
     </div>
