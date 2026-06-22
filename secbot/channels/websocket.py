@@ -919,6 +919,11 @@ class WebSocketChannel(BaseChannel):
                 return connection.respond(403, "Forbidden")
             return self._authorize_websocket_handshake(connection, query)
 
+        # 4b. Threat Intel API — proxy to the threat_intel repo so the
+        # embedded SPA receives JSON instead of falling through to index.html.
+        if got.startswith("/api/threat-intel"):
+            return await self._handle_threat_intel_api(got, query, request)
+
         # 5. Static SPA serving (only if a build directory was wired in).
         if self._static_dist_path is not None:
             response = self._serve_static(got)
@@ -2710,6 +2715,483 @@ class WebSocketChannel(BaseChannel):
         if not ok:
             return _http_error(404, "session not found")
         return _http_json_response({"key": decoded_key, "archived": archived})
+
+    # ------------------------------------------------------------------
+    # Threat Intel API proxy (GET routes)
+    # ------------------------------------------------------------------
+
+    async def _handle_threat_intel_api(
+        self,
+        path: str,
+        query: dict[str, list[str]],
+        request: WsRequest,
+    ) -> Response:
+        """Dispatch /api/threat-intel/* GET requests to the repo layer.
+
+        The websockets HTTP parser only accepts GET, so mutating verbs
+        (POST / DELETE / PATCH) are not reachable here.  The embedded SPA
+        uses GET for all read surfaces; write operations (watch/unwatch,
+        feed trigger) are intentionally excluded from the gateway.
+        """
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+
+        # Lazy imports — keep the threat_intel package out of import time.
+        try:
+            from secbot.threat_intel.db import get_engine, get_session
+            from secbot.threat_intel.repo import (
+                add_to_watchlist,
+                get_overview,
+                get_threat_group,
+                get_threat_vuln,
+                get_threat_infra_ip_detail,
+                get_threat_malware_detail,
+                get_graph_data,
+                get_review_queue,
+                list_feed_pull_runs,
+                list_maritime_events,
+                list_ransomware_events,
+                list_threat_groups,
+                list_threat_infra_ips,
+                list_threat_infra_urls,
+                list_threat_malware,
+                list_threat_vulns,
+                remove_from_watchlist,
+            )
+            from secbot.threat_intel import DEFAULT_ACTOR as _TI_ACTOR
+        except Exception:
+            self.logger.exception("threat-intel: module import failed")
+            return _http_error(500, "Threat Intel module unavailable")
+
+        # Ensure engine + tables exist on first request.
+        try:
+            get_engine()
+            from secbot.threat_intel.repo import create_tables
+            await create_tables()
+        except Exception:
+            self.logger.exception("threat-intel: engine init failed")
+            return _http_error(500, "Threat Intel database unavailable")
+
+        def _q(key: str, default: str | None = None) -> str | None:
+            v = _query_first(query, key)
+            return v if v is not None else default
+
+        def _int(key: str, default: int) -> int:
+            try:
+                return int(_query_first(query, key) or default)
+            except (ValueError, TypeError):
+                return default
+
+        def _float(key: str, default: float) -> float:
+            try:
+                return float(_query_first(query, key) or default)
+            except (ValueError, TypeError):
+                return default
+
+        def _bool(key: str) -> bool | None:
+            v = _query_first(query, key)
+            if v is None:
+                return None
+            return v.lower() in ("true", "1", "yes")
+
+        # Strip the common prefix once.
+        sub = path[len("/api/threat-intel"):]
+        if not sub:
+            sub = "/"
+
+        try:
+            # ---- Overview ----
+            if sub == "/overview":
+                async with get_session() as session:
+                    data = await get_overview(session, actor_id=_TI_ACTOR)
+                return _http_json_response(data)
+
+            # ---- Groups ----
+            if sub == "/groups":
+                watched = _bool("watched")
+                async with get_session() as session:
+                    result = await list_threat_groups(
+                        session,
+                        q=_q("q"),
+                        watched_only=bool(watched) if watched is not None else False,
+                        actor_id=_TI_ACTOR,
+                        origin_country=_q("origin_country"),
+                        target_sector=_q("target_sector"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            m = re.match(r"^/groups/([^/]+)$", sub)
+            if m:
+                group_id = _decode_api_key(m.group(1)) or m.group(1)
+                async with get_session() as session:
+                    data = await get_threat_group(session, group_id, actor_id=_TI_ACTOR)
+                if data is None:
+                    return _http_json_response(
+                        {"error": {"code": "not_found", "message": f"Group {group_id} not found"}},
+                        status=404,
+                    )
+                return _http_json_response(data)
+
+            # Watch / unwatch — GET-only (websockets HTTP parser constraint).
+            # Action rides on ``?action=add|remove``.
+            m = re.match(r"^/groups/([^/]+)/watch$", sub)
+            if m:
+                group_id = _decode_api_key(m.group(1)) or m.group(1)
+                action = _q("action", "add")
+                note = _q("note")
+                async with get_session() as session:
+                    if action == "remove":
+                        removed = await remove_from_watchlist(
+                            session, group_id=group_id, actor_id=_TI_ACTOR,
+                        )
+                        return _http_json_response({
+                            "group_id": group_id,
+                            "watched": False,
+                            "removed": removed,
+                        })
+                    else:
+                        entry = await add_to_watchlist(
+                            session, group_id=group_id,
+                            actor_id=_TI_ACTOR, note=note,
+                        )
+                        return _http_json_response({
+                            "group_id": group_id,
+                            "watched": True,
+                            "note": entry.note,
+                        })
+
+            # ---- IPs ----
+            if sub == "/ips":
+                async with get_session() as session:
+                    result = await list_threat_infra_ips(
+                        session,
+                        group_id=_q("group_id"),
+                        ip_type=_q("ip_type"),
+                        status=_q("status"),
+                        q=_q("q"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            m = re.match(r"^/ips/([^/]+)$", sub)
+            if m:
+                ip_id = _decode_api_key(m.group(1)) or m.group(1)
+                async with get_session() as session:
+                    data = await get_threat_infra_ip_detail(session, ip_id)
+                if data is None:
+                    return _http_json_response(
+                        {"error": {"code": "not_found", "message": f"IP {ip_id} not found"}},
+                        status=404,
+                    )
+                return _http_json_response(data)
+
+            # ---- Vulnerabilities ----
+            if sub == "/vulns":
+                async with get_session() as session:
+                    result = await list_threat_vulns(
+                        session,
+                        q=_q("q"),
+                        severity=_q("severity"),
+                        is_supply_chain=_bool("is_supply_chain"),
+                        is_cisa_kev=_bool("is_cisa_kev"),
+                        has_poc=_bool("has_poc"),
+                        exploit_available=_bool("exploit_available"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            m = re.match(r"^/vulns/([^/]+)$", sub)
+            if m:
+                vuln_id = _decode_api_key(m.group(1)) or m.group(1)
+                async with get_session() as session:
+                    data = await get_threat_vuln(session, vuln_id)
+                if data is None:
+                    return _http_json_response(
+                        {"error": {"code": "not_found", "message": f"Vuln {vuln_id} not found"}},
+                        status=404,
+                    )
+                return _http_json_response(data)
+
+            # ---- Malware ----
+            if sub == "/malware":
+                async with get_session() as session:
+                    result = await list_threat_malware(
+                        session,
+                        group_id=_q("group_id"),
+                        type=_q("type"),
+                        platform=_q("platform"),
+                        q=_q("q"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            m = re.match(r"^/malware/([^/]+)$", sub)
+            if m:
+                malware_id = _decode_api_key(m.group(1)) or m.group(1)
+                async with get_session() as session:
+                    data = await get_threat_malware_detail(session, malware_id)
+                if data is None:
+                    return _http_json_response(
+                        {"error": {"code": "not_found", "message": f"Malware {malware_id} not found"}},
+                        status=404,
+                    )
+                return _http_json_response(data)
+
+            # ---- Maritime ----
+            if sub == "/maritime":
+                from_date = None
+                to_date = None
+                from_raw = _q("from")
+                to_raw = _q("to")
+                if from_raw:
+                    try:
+                        from_date = datetime.fromisoformat(from_raw)
+                    except ValueError:
+                        pass
+                if to_raw:
+                    try:
+                        to_date = datetime.fromisoformat(to_raw)
+                    except ValueError:
+                        pass
+                async with get_session() as session:
+                    result = await list_maritime_events(
+                        session,
+                        event_type=_q("event_type"),
+                        severity=_q("severity"),
+                        verification_status=_q("verification_status"),
+                        from_date=from_date,
+                        to_date=to_date,
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            # ---- Graph (P1) ----
+            if sub == "/graph":
+                group_ids_raw = _q("group_ids")
+                node_types_raw = _q("node_types")
+                async with get_session() as session:
+                    data = await get_graph_data(
+                        session,
+                        group_id=_q("group_id"),
+                        watched=bool(_bool("watched")),
+                        group_ids=group_ids_raw.split(",") if group_ids_raw else None,
+                        actor_id=_TI_ACTOR,
+                        top_n=_int("top_n", 30),
+                        min_confidence=_float("min_confidence", 0.0),
+                        node_types=node_types_raw.split(",") if node_types_raw else None,
+                        expand_cluster=_q("expand_cluster"),
+                    )
+                return _http_json_response(data)
+
+            # ---- Feed runs ----
+            if sub == "/feeds/runs":
+                async with get_session() as session:
+                    result = await list_feed_pull_runs(
+                        session,
+                        source=_q("source"),
+                        status=_q("status"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            # ---- Feed pull (manual trigger) ----
+            # The websockets HTTP parser only accepts GET, so the feed pull
+            # is exposed as ``GET /feeds/pull?source=<name>`` instead of POST.
+            if sub == "/feeds/pull":
+                source = _q("source", "")
+                if not source:
+                    return _http_json_response(
+                        {"error": {"code": "missing_source",
+                                    "message": "Query param 'source' is required"}},
+                        status=400,
+                    )
+                valid_sources = {
+                    "cisa_kev", "threatfox", "mitre", "nvd", "malwarebazaar",
+                    "feodo", "otx", "exploit_db", "ukmto", "recaap", "imo",
+                    "expiry", "urlhaus", "ransomware_live", "asam", "osv",
+                    "phishtank",
+                }
+                if source not in valid_sources:
+                    return _http_json_response(
+                        {"error": {"code": "invalid_source",
+                                    "message": f"Source must be one of: {', '.join(sorted(valid_sources))}"}},
+                        status=400,
+                    )
+
+                from secbot.threat_intel.feeds import (
+                    import_mitre_groups,
+                    pull_asam,
+                    pull_cisa_kev,
+                    pull_exploit_db,
+                    pull_feodo,
+                    pull_malwarebazaar,
+                    pull_nvd,
+                    pull_osv,
+                    pull_otx,
+                    pull_phishtank,
+                    pull_ransomware_live,
+                    pull_threatfox,
+                    pull_urlhaus,
+                )
+
+                async with get_session() as session:
+                    if source == "mitre":
+                        result = await import_mitre_groups(session, trigger="manual")
+                    elif source == "cisa_kev":
+                        result = await pull_cisa_kev(session, trigger="manual")
+                    elif source == "threatfox":
+                        result = await pull_threatfox(session, trigger="manual")
+                    elif source == "nvd":
+                        result = await pull_nvd(session, trigger="manual")
+                    elif source == "malwarebazaar":
+                        result = await pull_malwarebazaar(session, trigger="manual")
+                    elif source == "feodo":
+                        result = await pull_feodo(session, trigger="manual")
+                    elif source == "otx":
+                        result = await pull_otx(session, trigger="manual")
+                    elif source == "exploit_db":
+                        result = await pull_exploit_db(session, trigger="manual")
+                    elif source in ("ukmto", "recaap", "imo"):
+                        from secbot.threat_intel.feeds import pull_maritime
+                        result = await pull_maritime(session, trigger="manual", source=source)
+                    elif source == "urlhaus":
+                        result = await pull_urlhaus(session, trigger="manual")
+                    elif source == "ransomware_live":
+                        result = await pull_ransomware_live(session, trigger="manual")
+                    elif source == "asam":
+                        result = await pull_asam(session, trigger="manual")
+                    elif source == "osv":
+                        result = await pull_osv(session, trigger="manual")
+                    elif source == "phishtank":
+                        result = await pull_phishtank(session, trigger="manual")
+                    elif source == "expiry":
+                        from secbot.threat_intel.repo import run_expiry_sweep
+                        result = await run_expiry_sweep(session)
+                    else:
+                        return _http_json_response(
+                            {"error": {"code": "invalid_source",
+                                        "message": f"Unknown source: {source}"}},
+                            status=400,
+                        )
+                return _http_json_response(result)
+
+            # ---- Config: Industry CPEs ----
+            if sub == "/config/industry-cpes":
+                from secbot.threat_intel.models import IndustryCPE
+                from sqlalchemy import select as _sa_select
+                async with get_session() as session:
+                    result = await session.execute(
+                        _sa_select(IndustryCPE).order_by(
+                            IndustryCPE.industry_tag, IndustryCPE.product_name
+                        )
+                    )
+                    rows = result.scalars().all()
+                items = [
+                    {
+                        "id": r.id,
+                        "cpe_string": r.cpe_string,
+                        "product_name": r.product_name,
+                        "vendor": r.vendor,
+                        "industry_tag": r.industry_tag,
+                        "confidence": r.confidence,
+                        "source": r.source,
+                        "note": r.note,
+                    }
+                    for r in rows
+                ]
+                return _http_json_response({"items": items, "total": len(items)})
+
+            # ---- Config: APT Aliases ----
+            if sub == "/config/aliases":
+                from secbot.threat_intel.models import AptAlias
+                from sqlalchemy import select as _sa_select
+                async with get_session() as session:
+                    result = await session.execute(
+                        _sa_select(AptAlias).order_by(AptAlias.alias_name)
+                    )
+                    rows = result.scalars().all()
+                items = [
+                    {
+                        "id": r.id,
+                        "group_id": r.group_id,
+                        "alias_name": r.alias_name,
+                        "naming_org": r.naming_org,
+                        "confidence": r.confidence,
+                        "source_url": r.source_url,
+                    }
+                    for r in rows
+                ]
+                return _http_json_response({"items": items, "total": len(items)})
+
+            # ---- Threat Infrastructure URLs ----
+            if sub == "/urls":
+                async with get_session() as session:
+                    result = await list_threat_infra_urls(
+                        session,
+                        group_id=_q("group_id"),
+                        url_type=_q("url_type"),
+                        source=_q("source"),
+                        status=_q("status"),
+                        q=_q("q"),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            # ---- Ransomware Events ----
+            if sub == "/ransomware":
+                from_raw = _q("from")
+                to_raw = _q("to")
+                from_dt = to_dt = None
+                if from_raw:
+                    try:
+                        from_dt = datetime.fromisoformat(from_raw)
+                    except ValueError:
+                        pass
+                if to_raw:
+                    try:
+                        to_dt = datetime.fromisoformat(to_raw)
+                    except ValueError:
+                        pass
+                async with get_session() as session:
+                    result = await list_ransomware_events(
+                        session,
+                        group_name=_q("group_name"),
+                        victim_industry=_q("victim_industry"),
+                        victim_country=_q("victim_country"),
+                        severity=_q("severity"),
+                        from_date=from_dt,
+                        to_date=to_dt,
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(result)
+
+            # ---- Review Queue (P2) ----
+            if sub == "/review-queue":
+                async with get_session() as session:
+                    data = await get_review_queue(
+                        session,
+                        entity_type=_q("type", "ip") or "ip",
+                        max_confidence=_float("max_confidence", 0.65),
+                        page=_int("page", 1),
+                        page_size=_int("page_size", 20),
+                    )
+                return _http_json_response(data)
+
+        except Exception:
+            self.logger.exception("threat-intel: handler error for {}", path)
+            return _http_error(500, "Threat Intel internal error")
+
+        # No matching sub-path.
+        return _http_error(404, f"Unknown threat-intel endpoint: {path}")
 
     def _serve_static(self, request_path: str) -> Response | None:
         """Resolve *request_path* against the built SPA directory; SPA fallback to index.html."""

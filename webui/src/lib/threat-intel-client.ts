@@ -242,19 +242,16 @@ export async function watchGroup(
   groupId: string,
   note?: string,
 ): Promise<void> {
-  await request(`${BASE}/groups/${groupId}/watch`, token, {
-    method: "POST",
-    body: JSON.stringify(note ? { note } : {}),
-  });
+  const params = new URLSearchParams({ action: "add" });
+  if (note) params.set("note", note);
+  await request(`${BASE}/groups/${groupId}/watch?${params}`, token);
 }
 
 export async function unwatchGroup(
   token: string,
   groupId: string,
 ): Promise<void> {
-  await request(`${BASE}/groups/${groupId}/watch`, token, {
-    method: "DELETE",
-  });
+  await request(`${BASE}/groups/${groupId}/watch?action=remove`, token);
 }
 
 export async function fetchThreatIPs(
@@ -354,10 +351,12 @@ export async function triggerFeedPull(
   token: string,
   source: string,
 ): Promise<FeedPullResult> {
-  return request<FeedPullResult>(`${BASE}/feeds/pull`, token, {
-    method: "POST",
-    body: JSON.stringify({ source }),
-  });
+  // The websockets gateway only accepts GET; the feed pull is exposed as
+  // ``GET /feeds/pull?source=<name>`` instead of POST.
+  return request<FeedPullResult>(
+    `${BASE}/feeds/pull?source=${encodeURIComponent(source)}`,
+    token,
+  );
 }
 
 // ── Graph Types & API (P1) ─────────────────────────────────────────────
