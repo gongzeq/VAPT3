@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/threat-intel/index.md", "reason": "主 spec：upsert 模式、生命周期、命名约定、前置检查清单"}
+{"file": ".trellis/spec/threat-intel/feed-integration.md", "reason": "Feed 接入规范：请求结构、错误处理、rate-limit、forbidden patterns"}
+{"file": ".trellis/spec/threat-intel/gap-fixes.md", "reason": "历史 gap 修复模式参考，避免重复已知问题"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库模型与迁移规范（CR-04 Alembic 迁移）"}
+{"file": ".trellis/spec/backend/rest-api-contract.md", "reason": "API 路由命名与响应结构规范（CR-06 新端点测试）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理模式（CR-02 API key 缺失错误消息）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量标准（CR-07/08/09 代码清理）"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}

@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/threat-intel/index.md", "reason": "威胁情报模块主spec：P0基线架构、upsert模式、API层契约、前端亮色风格规范——所有Gap修复必须遵循"}
+{"file": ".trellis/spec/threat-intel/gap-fixes.md", "reason": "前一轮13个Gap修复spec：含禁止模式、验收标准、实现顺序——本轮Gap修复需参考已有模式避免重复犯错"}
+{"file": ".trellis/spec/threat-intel/detail-and-management.md", "reason": "详情页与管理UI契约：Gap 7组织详情URL Tab、Gap 9复核队列URL支持、Gap 10配置页导航入口的直接spec依据"}
+{"file": ".trellis/spec/threat-intel/graph-contract.md", "reason": "知识图谱契约：Gap 6图谱新增URL节点类型的后端聚合API和前端渲染规范"}
+{"file": ".trellis/spec/threat-intel/p2-pipeline.md", "reason": "P2管线spec：Gap 8过期清理策略（URL/勒索事件生命周期）、Gap 9复核队列entity_type扩展的契约依据"}
+{"file": ".trellis/spec/backend/rest-api-contract.md", "reason": "REST API契约：Gap 4概览统计扩展、新增API端点的分页/错误格式规范"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库规范：repo.py中get_overview/get_graph_data/get_threat_group/run_expiry_sweep/get_review_queue修改需遵循SQLAlchemy异步会话和upsert规范"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端开发硬规则：新页面组件≤400行、TypeScript strict、无raw hex、亮色风格——Gap 1-3新列表页和Gap 5概览修复必须遵循"}
+{"file": ".trellis/spec/frontend/architecture.md", "reason": "前端架构spec：路由注册模式、组件树结构、API客户端模式——Gap 1-3新路由和页面组件需遵循"}
+{"file": ".trellis/spec/frontend/component-patterns.md", "reason": "组件模式spec：列表页表格模式、destructive确认对话框——Gap 1-3列表页和Gap 10配置页删除操作需参考"}
+{"file": ".trellis/spec/guides/frontend-backend-gap.md", "reason": "前后端Gap分析方法论：指导系统性识别前后端数据契约不对齐问题"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}

@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/threat-intel/index.md", "reason": "验证 upsert 键、生命周期、命名是否符合主 spec"}
+{"file": ".trellis/spec/threat-intel/feed-integration.md", "reason": "验证 feed puller 是否遵循 forbidden patterns 和 rate-limit 规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "代码质量检查标准（lint、类型、死代码）"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "验证迁移文件与模型定义一致性"}
+{"file": ".trellis/spec/backend/rest-api-contract.md", "reason": "验证 API 响应结构与端点命名"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "验证错误消息与降级处理"}
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
