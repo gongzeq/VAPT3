@@ -20,6 +20,8 @@ import {
   Activity,
   Clock,
   AlertCircle,
+  Link2,
+  Lock,
 } from "lucide-react";
 import { useClient } from "@/providers/ClientProvider";
 import { fetchOverview, type OverviewData } from "@/lib/threat-intel-client";
@@ -144,7 +146,7 @@ export function OverviewPage() {
           title="高危漏洞速览"
           icon={<AlertTriangle className="h-5 w-5" />}
           accent="red"
-          badge="即将上线"
+          onClick={() => navigate("/threat-intel/vulns")}
         >
           <div className="space-y-1">
             <div className="flex items-baseline gap-2">
@@ -170,7 +172,7 @@ export function OverviewPage() {
           title="活跃C2统计"
           icon={<Server className="h-5 w-5" />}
           accent="orange"
-          badge="即将上线"
+          onClick={() => navigate("/threat-intel/ips")}
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -195,7 +197,7 @@ export function OverviewPage() {
           title="海事安全事件"
           icon={<Ship className="h-5 w-5" />}
           accent="blue"
-          badge="即将上线"
+          onClick={() => navigate("/threat-intel/maritime")}
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -218,7 +220,7 @@ export function OverviewPage() {
           title="木马家族活跃"
           icon={<Bug className="h-5 w-5" />}
           accent="rose"
-          badge="即将上线"
+          onClick={() => navigate("/threat-intel/malware")}
         >
           <div className="space-y-1">
             <div className="text-2xl font-bold text-slate-900">
@@ -238,15 +240,63 @@ export function OverviewPage() {
           </div>
         </OverviewCard>
 
-        {/* Card 6: Radar (placeholder for P1 graph) */}
+        {/* Card 6: Malicious URLs (Gap 4) */}
+        <OverviewCard
+          title="恶意URL"
+          icon={<Link2 className="h-5 w-5" />}
+          accent="amber"
+          onClick={() => navigate("/threat-intel/urls")}
+        >
+          <div className="space-y-1">
+            <div className="text-2xl font-bold text-slate-900">
+              {data.malicious_urls?.total ?? 0}
+              <span className="ml-1 text-sm font-normal text-slate-500">条URL</span>
+            </div>
+            {data.malicious_urls && data.malicious_urls.by_source.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {data.malicious_urls.by_source.slice(0, 3).map((s, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{s.source}</span>
+                    <span className="font-medium text-amber-600">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </OverviewCard>
+
+        {/* Card 7: Ransomware Events (Gap 4) */}
+        <OverviewCard
+          title="勒索事件"
+          icon={<Lock className="h-5 w-5" />}
+          accent="red"
+          onClick={() => navigate("/threat-intel/ransomware")}
+        >
+          <div className="space-y-1">
+            <div className="text-2xl font-bold text-slate-900">
+              {data.ransomware_events?.total ?? 0}
+              <span className="ml-1 text-sm font-normal text-slate-500">起事件</span>
+            </div>
+            <div className="text-sm text-slate-600">
+              近7天 {data.ransomware_events?.recent_count ?? 0} 起新事件
+            </div>
+            {data.ransomware_events && data.ransomware_events.latest && (
+              <div className="mt-2 rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                {data.ransomware_events.latest.victim_name} — {data.ransomware_events.latest.group_name}
+              </div>
+            )}
+          </div>
+        </OverviewCard>
+
+        {/* Card 8: Threat Radar (knowledge graph) */}
         <OverviewCard
           title="威胁雷达"
           icon={<Radar className="h-5 w-5" />}
           accent="violet"
-          onClick={() => navigate("/threat-intel/groups")}
+          onClick={() => navigate("/threat-intel/graph")}
         >
           <div className="flex h-full items-center justify-center text-sm text-slate-400">
-            知识图谱 (P1)
+            知识图谱
           </div>
         </OverviewCard>
       </div>
@@ -263,6 +313,7 @@ const ACCENT_MAP: Record<string, string> = {
   blue: "border-blue-200 bg-white hover:border-blue-300 hover:shadow-md",
   rose: "border-rose-200 bg-white hover:border-rose-300 hover:shadow-md",
   violet: "border-violet-200 bg-white hover:border-violet-300 hover:shadow-md",
+  amber: "border-amber-200 bg-white hover:border-amber-300 hover:shadow-md",
 };
 
 const ICON_ACCENT: Record<string, string> = {
@@ -272,6 +323,7 @@ const ICON_ACCENT: Record<string, string> = {
   blue: "bg-blue-50 text-blue-600",
   rose: "bg-rose-50 text-rose-600",
   violet: "bg-violet-50 text-violet-600",
+  amber: "bg-amber-50 text-amber-600",
 };
 
 interface OverviewCardProps {

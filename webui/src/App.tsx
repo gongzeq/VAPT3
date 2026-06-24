@@ -50,6 +50,9 @@ import { AliasManagementPage } from "@/pages/threat-intel/AliasManagementPage";
 import { MaritimePage } from "@/pages/threat-intel/MaritimePage";
 import { ReviewQueuePage } from "@/pages/threat-intel/ReviewQueuePage";
 import { IndustryCPEPage } from "@/pages/threat-intel/IndustryCPEPage";
+import { UrlsPage } from "@/pages/threat-intel/UrlsPage";
+import { RansomwarePage } from "@/pages/threat-intel/RansomwarePage";
+import { IPListPage } from "@/pages/threat-intel/IPListPage";
 
 /**
  * Default to ON so the refactor lands behind a default-true flag — flipping
@@ -290,7 +293,10 @@ export default function App() {
               <Route path="vulns/:id" element={<VulnDetailPage />} />
               <Route path="malware" element={<MalwareListPage />} />
               <Route path="malware/:id" element={<MalwareDetailPage />} />
+              <Route path="ips" element={<IPListPage />} />
               <Route path="ips/:id" element={<IPDetailPage />} />
+              <Route path="urls" element={<UrlsPage />} />
+              <Route path="ransomware" element={<RansomwarePage />} />
               <Route path="maritime" element={<MaritimePage />} />
               <Route path="watchlist" element={<WatchlistPage />} />
               <Route path="config/aliases" element={<AliasManagementPage />} />

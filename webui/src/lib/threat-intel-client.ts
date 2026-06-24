@@ -15,13 +15,17 @@ async function request<T>(
   token: string,
   init?: RequestInit,
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> ?? {}),
+    Authorization: `Bearer ${token}`,
+  };
+  // Only send Content-Type for requests with a body.
+  if (init?.body) {
+    headers["Content-Type"] = "application/json";
+  }
   const res = await fetch(url, {
     ...(init ?? {}),
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     credentials: "same-origin",
   });
   if (!res.ok) {
@@ -71,6 +75,20 @@ export interface OverviewData {
     recent_samples_7d: number;
     top_families: { family: string; group: string; sample_count: number }[];
   };
+  malicious_urls: {
+    total: number;
+    by_source: { source: string; count: number }[];
+  };
+  ransomware_events: {
+    total: number;
+    recent_count: number;
+    latest: {
+      victim_name: string;
+      group_name: string;
+      breach_date: string | null;
+      severity: string;
+    } | null;
+  };
 }
 
 export interface WatchedActivity {
@@ -96,6 +114,36 @@ export interface ThreatGroupSummary {
   is_watched: boolean;
 }
 
+export interface ThreatURLSummary {
+  id: string;
+  group_id: string | null;
+  url: string;
+  url_type: string;
+  malware_family: string | null;
+  threat_type: string | null;
+  geo_country: string | null;
+  host: string | null;
+  first_seen: string | null;
+  last_seen: string | null;
+  status: string;
+  source: string;
+  confidence: number;
+}
+
+export interface RansomwareEventSummary {
+  id: string;
+  group_name: string;
+  victim_name: string;
+  victim_industry: string | null;
+  victim_country: string | null;
+  description: string | null;
+  post_url: string | null;
+  breach_date: string | null;
+  data_leaked: boolean;
+  severity: string;
+  source: string;
+}
+
 export interface ThreatGroupDetail extends ThreatGroupSummary {
   techniques: string[];
   source_refs: SourceRef[];
@@ -103,6 +151,7 @@ export interface ThreatGroupDetail extends ThreatGroupSummary {
   malware_families: MalwareFamilySummary[];
   vulnerabilities: GroupVulnSummary[];
   apt_aliases: AptAliasEntry[];
+  infra_urls: ThreatURLSummary[];
 }
 
 export interface ThreatInfraIPSummary {
@@ -363,7 +412,7 @@ export async function triggerFeedPull(
 
 export interface GraphNode {
   id: string;
-  type: "group" | "ip" | "malware" | "vuln" | "cluster";
+  type: "group" | "ip" | "malware" | "vuln" | "url" | "cluster";
   label: string;
   data: Record<string, unknown>;
 }
@@ -371,7 +420,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: string;
   target: string;
-  type: "uses_c2" | "uses_malware" | "exploits" | "targets";
+  type: "uses_c2" | "uses_malware" | "exploits" | "targets" | "uses_url";
   confidence: number;
 }
 
@@ -391,6 +440,7 @@ export async function fetchGraph(
   params: {
     group_id?: string;
     watched?: boolean;
+    all?: boolean;
     group_ids?: string[];
     top_n?: number;
     min_confidence?: number;
@@ -401,6 +451,7 @@ export async function fetchGraph(
   const search = new URLSearchParams();
   if (params.group_id) search.set("group_id", params.group_id);
   if (params.watched !== undefined) search.set("watched", String(params.watched));
+  if (params.all !== undefined) search.set("all", String(params.all));
   if (params.group_ids) search.set("group_ids", params.group_ids.join(","));
   if (params.top_n) search.set("top_n", String(params.top_n));
   if (params.min_confidence !== undefined) search.set("min_confidence", String(params.min_confidence));
@@ -528,6 +579,66 @@ export async function batchImportAliases(
   });
 }
 
+// ── Threat Infrastructure URL API (P3) ─────────────────────────────────
+
+export async function fetchThreatURLs(
+  token: string,
+  params?: {
+    group_id?: string;
+    url_type?: string;
+    source?: string;
+    status?: string;
+    q?: string;
+    page?: number;
+    page_size?: number;
+  },
+): Promise<PaginatedResponse<ThreatURLSummary>> {
+  const search = new URLSearchParams();
+  if (params?.group_id) search.set("group_id", params.group_id);
+  if (params?.url_type) search.set("url_type", params.url_type);
+  if (params?.source) search.set("source", params.source);
+  if (params?.status) search.set("status", params.status);
+  if (params?.q) search.set("q", params.q);
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.page_size) search.set("page_size", String(params.page_size));
+  const qs = search.toString();
+  return request<PaginatedResponse<ThreatURLSummary>>(
+    `${BASE}/urls${qs ? `?${qs}` : ""}`,
+    token,
+  );
+}
+
+// ── Ransomware Events API (P3) ─────────────────────────────────────────
+
+export async function fetchRansomwareEvents(
+  token: string,
+  params?: {
+    group_name?: string;
+    victim_industry?: string;
+    victim_country?: string;
+    severity?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    page_size?: number;
+  },
+): Promise<PaginatedResponse<RansomwareEventSummary>> {
+  const search = new URLSearchParams();
+  if (params?.group_name) search.set("group_name", params.group_name);
+  if (params?.victim_industry) search.set("victim_industry", params.victim_industry);
+  if (params?.victim_country) search.set("victim_country", params.victim_country);
+  if (params?.severity) search.set("severity", params.severity);
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.page_size) search.set("page_size", String(params.page_size));
+  const qs = search.toString();
+  return request<PaginatedResponse<RansomwareEventSummary>>(
+    `${BASE}/ransomware${qs ? `?${qs}` : ""}`,
+    token,
+  );
+}
+
 // ── Maritime Review API (P2) ──────────────────────────────────────────
 
 export async function reviewMaritimeEvent(
@@ -545,7 +656,7 @@ export async function reviewMaritimeEvent(
 
 export interface ReviewQueueItem {
   id: string;
-  entity_type: "ip" | "maritime";
+  entity_type: "ip" | "maritime" | "url";
   label: string;
   confidence: number;
   group_id: string | null;
@@ -584,4 +695,42 @@ export async function submitReviewAction(
 
 export async function triggerExpirySweep(token: string): Promise<Record<string, number>> {
   return request(`${BASE}/expiry-sweep`, token, { method: "POST" });
+}
+
+// ── API Key Configuration ─────────────────────────────────────────────
+
+export interface ApiKeyConfig {
+  feed_source: string;
+  api_key_masked: string | null;
+  has_key: boolean;
+  description: string | null;
+  is_required: boolean;
+  updated_at: string | null;
+}
+
+export async function fetchApiKeys(token: string): Promise<ApiKeyConfig[]> {
+  const res = await request<{ items: ApiKeyConfig[] }>(`${BASE}/config/api-keys`, token);
+  return res.items;
+}
+
+export async function updateApiKey(
+  token: string,
+  feedSource: string,
+  apiKey: string,
+): Promise<ApiKeyConfig> {
+  // WebSocket gateway only supports GET; use query params for write operations.
+  const params = new URLSearchParams({ action: "set", api_key: apiKey });
+  return request<ApiKeyConfig>(
+    `${BASE}/config/api-keys/${feedSource}?${params}`,
+    token,
+  );
+}
+
+export async function deleteApiKey(
+  token: string,
+  feedSource: string,
+): Promise<void> {
+  // WebSocket gateway only supports GET; use query params for write operations.
+  const params = new URLSearchParams({ action: "delete" });
+  await request(`${BASE}/config/api-keys/${feedSource}?${params}`, token);
 }

@@ -12,7 +12,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Outlet, NavLink } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
-import { LayoutDashboard, Users, GitBranch, Bug, Shield, Eye, FileWarning, ClipboardCheck, Rss, X, AlertCircle } from "lucide-react";
+import { LayoutDashboard, Users, GitBranch, Bug, Shield, Eye, FileWarning, ClipboardCheck, Rss, X, AlertCircle, Link2, Server, Lock, Settings } from "lucide-react";
 import { useClient } from "@/providers/ClientProvider";
 
 interface FeedFailureToast {
@@ -27,9 +27,14 @@ const navItems = [
   { to: "/threat-intel/graph", label: "知识图谱", icon: GitBranch },
   { to: "/threat-intel/vulns", label: "漏洞", icon: Shield },
   { to: "/threat-intel/malware", label: "木马样本", icon: Bug },
+  { to: "/threat-intel/ips", label: "C2 IP", icon: Server },
+  { to: "/threat-intel/urls", label: "恶意URL", icon: Link2 },
+  { to: "/threat-intel/ransomware", label: "勒索事件", icon: Lock },
   { to: "/threat-intel/maritime", label: "海事事件", icon: FileWarning },
   { to: "/threat-intel/watchlist", label: "关注管理", icon: Eye },
   { to: "/threat-intel/review", label: "复核队列", icon: ClipboardCheck },
+  { to: "/threat-intel/config/aliases", label: "APT别名", icon: Settings },
+  { to: "/threat-intel/config/industry-cpes", label: "行业CPE", icon: Settings },
   { to: "/threat-intel/feeds", label: "Feed运行", icon: Rss },
 ];
 

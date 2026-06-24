@@ -16,7 +16,7 @@ import ReactFlow, {
   type ReactFlowInstance,
 } from "reactflow";
 import { forceSimulation, forceManyBody, forceLink, forceCenter } from "d3-force";
-import { Shield, Server, Bug, AlertTriangle, Layers, Star, Search, Filter, Activity } from "lucide-react";
+import { Shield, Server, Bug, AlertTriangle, Layers, Star, Search, Filter, Activity, Globe, Eye, Link2 } from "lucide-react";
 import "reactflow/dist/style.css";
 import { useClient } from "@/providers/ClientProvider";
 import {
@@ -80,11 +80,21 @@ function ClusterNode({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+function URLNode({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded bg-gradient-to-br from-cyan-500 to-teal-500 px-2.5 py-1.5 text-white shadow-md">
+      <Link2 className="h-3 w-3" />
+      <span className="max-w-[120px] truncate text-xs font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
 const nodeTypes: NodeTypes = {
   group: GroupNode,
   ip: IPNode,
   malware: MalwareNode,
   vuln: VulnNode,
+  url: URLNode,
   cluster: ClusterNode,
 };
 
@@ -93,6 +103,7 @@ const edgeStyles: Record<string, { stroke: string; strokeWidth: number; strokeDa
   uses_malware: { stroke: "#F43F5E", strokeWidth: 1.5 },
   exploits: { stroke: "#DC2626", strokeWidth: 3 },
   targets: { stroke: "#F59E0B", strokeWidth: 1.5, strokeDasharray: "5,5" },
+  uses_url: { stroke: "#06B6D4", strokeWidth: 1.5, strokeDasharray: "3,3" },
 };
 
 // ── d3-force Layout (Gap Fix §5) ───────────────────────────────────────
@@ -146,7 +157,7 @@ function GraphToolbar({
 }: GraphToolbarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-  const [nodeTypes, setNodeTypes] = useState<string[]>(["group", "ip", "malware", "vuln"]);
+  const [nodeTypes, setNodeTypes] = useState<string[]>(["group", "ip", "malware", "vuln", "url"]);
   const [minConfidence, setMinConfidence] = useState(0);
   const [showGroupSelect, setShowGroupSelect] = useState(false);
 
@@ -233,6 +244,7 @@ function GraphToolbar({
           { type: "ip", label: "IP", color: "bg-amber-500" },
           { type: "malware", label: "木马", color: "bg-rose-500" },
           { type: "vuln", label: "漏洞", color: "bg-red-500" },
+          { type: "url", label: "URL", color: "bg-cyan-500" },
         ].map((item) => (
           <label key={item.type} className="flex cursor-pointer items-center gap-1 text-xs text-slate-600">
             <input
@@ -309,10 +321,13 @@ export function GraphPage() {
   const [watchedGroups, setWatchedGroups] = useState<ThreatGroupSummary[]>([]);
   const [lastSuccessAt, setLastSuccessAt] = useState<string | null>(null);
 
+  // Graph mode: "all" shows all groups with satellite data, "watched" shows only watched groups
+  const [graphMode, setGraphMode] = useState<"all" | "watched">("all");
+
   // Toolbar state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
-  const [nodeTypeFilter, setNodeTypeFilter] = useState<string[]>(["group", "ip", "malware", "vuln"]);
+  const [nodeTypeFilter, setNodeTypeFilter] = useState<string[]>(["group", "ip", "malware", "vuln", "url"]);
   const [minConfidence, setMinConfidence] = useState(0);
 
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
@@ -340,14 +355,21 @@ export function GraphPage() {
     setError(null);
     try {
       const params: Parameters<typeof fetchGraph>[1] = {
-        watched: selectedGroupIds.length === 0,
         top_n: topN,
         min_confidence: minConfidence,
         node_types: nodeTypeFilter,
       };
+
       if (selectedGroupIds.length > 0) {
+        // User explicitly selected specific groups
         params.group_ids = selectedGroupIds;
+      } else if (graphMode === "all") {
+        params.all = true;
+      } else {
+        // watched mode
+        params.watched = true;
       }
+
       const data = await fetchGraph(token, params);
 
       // Auto-adjust top_n if too many nodes
@@ -362,7 +384,7 @@ export function GraphPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, topN, selectedGroupIds, nodeTypeFilter, minConfidence]);
+  }, [token, topN, graphMode, selectedGroupIds, nodeTypeFilter, minConfidence]);
 
   // Debounce graph reload on toolbar changes
   useEffect(() => {
@@ -449,12 +471,39 @@ export function GraphPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">知识图谱</h1>
-        <button
-          onClick={loadGraph}
-          className="rounded-lg bg-indigo-500 px-3 py-1.5 text-white hover:bg-indigo-600"
-        >
-          刷新
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Mode Toggle: 全部 / 关注 */}
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
+            <button
+              onClick={() => setGraphMode("all")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+                graphMode === "all"
+                  ? "bg-indigo-500 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              全部
+            </button>
+            <button
+              onClick={() => setGraphMode("watched")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${
+                graphMode === "watched"
+                  ? "bg-indigo-500 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              关注
+            </button>
+          </div>
+          <button
+            onClick={loadGraph}
+            className="rounded-lg bg-indigo-500 px-3 py-1.5 text-white hover:bg-indigo-600"
+          >
+            刷新
+          </button>
+        </div>
       </div>
 
       {/* Toolbar (Gap Fix §4) */}
@@ -478,7 +527,9 @@ export function GraphPage() {
         </div>
       ) : !graphData || graphData.nodes.length === 0 ? (
         <div className="flex h-[600px] items-center justify-center text-slate-400">
-          尚无关注组织，请先在组织列表中添加关注
+          {graphMode === "watched"
+            ? "暂无关注组织，请在组织列表中添加关注或切换到“全部”模式"
+            : "尚无关联数据，请先运行 MITRE ATT&CK 导入"}
         </div>
       ) : (
         <div className="flex gap-4">
@@ -501,6 +552,7 @@ export function GraphPage() {
                     case "ip": return "#F59E0B";
                     case "malware": return "#F43F5E";
                     case "vuln": return "#DC2626";
+                    case "url": return "#06B6D4";
                     default: return "#CBD5E1";
                   }
                 }}
@@ -566,6 +618,9 @@ export function GraphPage() {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-md bg-gradient-to-br from-amber-500 to-orange-500" /> 漏洞
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-md bg-gradient-to-br from-cyan-500 to-teal-500" /> URL
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border-2 border-dashed border-slate-300 bg-slate-200" /> 聚类

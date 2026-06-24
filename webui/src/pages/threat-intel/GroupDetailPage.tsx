@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Star, StarOff, Globe, Calendar, Shield } from "lucide-react";
+import { ArrowLeft, Star, StarOff, Globe, Calendar, Shield, Link2 } from "lucide-react";
 import ReactFlow, {
   Background,
   Controls,
@@ -67,11 +67,21 @@ function VulnNode({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+function URLNode({ data }: { data: Record<string, unknown> }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded bg-gradient-to-br from-cyan-500 to-teal-500 px-2.5 py-1.5 text-white shadow-md">
+      <Link2 className="h-3 w-3" />
+      <span className="max-w-[100px] truncate text-xs font-medium">{data.label as string}</span>
+    </div>
+  );
+}
+
 const localNodeTypes: NodeTypes = {
   group: GroupNode,
   ip: IPNode,
   malware: MalwareNode,
   vuln: VulnNode,
+  url: URLNode,
 };
 
 const localEdgeStyles: Record<string, { stroke: string; strokeWidth: number }> = {
@@ -79,6 +89,7 @@ const localEdgeStyles: Record<string, { stroke: string; strokeWidth: number }> =
   uses_malware: { stroke: "#F43F5E", strokeWidth: 1.5 },
   exploits: { stroke: "#DC2626", strokeWidth: 3 },
   targets: { stroke: "#F59E0B", strokeWidth: 1.5 },
+  uses_url: { stroke: "#06B6D4", strokeWidth: 1.5 },
 };
 
 // ── Radial Layout (Gap Fix §3.1) ───────────────────────────────────────
@@ -101,7 +112,7 @@ function applyRadialLayout(nodes: Node[], centerX = 300, centerY = 250): Node[] 
   ];
 }
 
-type TabKey = "ips" | "malware" | "vulns" | "aliases" | "graph";
+type TabKey = "ips" | "malware" | "vulns" | "urls" | "aliases" | "graph";
 
 export function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -169,6 +180,7 @@ export function GroupDetailPage() {
     { key: "ips", label: "C2 IP", count: group.infra_ips.length },
     { key: "malware", label: "木马家族", count: group.malware_families.length },
     { key: "vulns", label: "已知漏洞", count: group.vulnerabilities.length },
+    { key: "urls", label: "恶意URL", count: group.infra_urls?.length ?? 0 },
     { key: "aliases", label: "APT别名", count: group.apt_aliases.length },
     { key: "graph", label: "图谱", count: 0 },
   ];
@@ -416,6 +428,46 @@ export function GroupDetailPage() {
               />
             )}
           </div>
+        )}
+
+        {/* URL Tab (Gap 7) */}
+        {activeTab === "urls" && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs text-slate-500">
+                <th className="px-4 py-2.5 font-medium">URL</th>
+                <th className="px-4 py-2.5 font-medium">类型</th>
+                <th className="px-4 py-2.5 font-medium">木马家族</th>
+                <th className="px-4 py-2.5 font-medium">来源</th>
+                <th className="px-4 py-2.5 font-medium">最近发现</th>
+                <th className="px-4 py-2.5 font-medium">状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(group.infra_urls ?? []).map((u) => (
+                <tr key={u.id} className="border-b border-slate-100 last:border-0">
+                  <td className="px-4 py-2.5 font-mono text-slate-700 truncate max-w-[300px]">{u.url}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{u.url_type}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{u.malware_family || "—"}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{u.source}</td>
+                  <td className="px-4 py-2.5 text-slate-500">
+                    {u.last_seen ? new Date(u.last_seen).toLocaleDateString("zh-CN") : "—"}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={cn(
+                      "rounded-md px-2 py-0.5 text-xs font-medium",
+                      u.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500",
+                    )}>
+                      {u.status === "active" ? "活跃" : "非活跃"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {(group.infra_urls ?? []).length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">暂无恶意URL数据</td></tr>
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
