@@ -914,3 +914,38 @@ Refactored Orchestrator prompt toward dynamic planning, moved routing knowledge 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: 威胁情报模块全面Gap审计与修复（10个Gap）
+
+**Date**: 2026-06-24
+**Task**: 威胁情报模块全面Gap审计与修复（10个Gap）
+**Branch**: `main`
+
+### Summary
+
+系统性审查威胁情报模块前后端实现，识别并修复10个对齐Gap：P0新增URL/勒索/IP列表页，P1概览统计扩展+徽章修复，P2图谱URL节点+组织URL Tab，P3过期清理+复核队列+导航入口。后端repo.py新增overview统计/图谱URL节点/组织URL/过期清理/复核队列5处扩展；前端新增3个列表页+API客户端函数+路由+导航+概览卡片+图谱URL渲染+组织URL Tab。Spec更新12表基线和URL/勒索过期策略。质量检查全通过（ruff/tsc/eslint 0 errors，跨层类型一致）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fbd3341f` | (see git log) |
+| `51d4d8328` | (see git log) |
+| `c8dccee26` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
