@@ -22,7 +22,7 @@ The following patterns are **established in P0** and MUST be followed by all P1/
 - **ORM**: SQLAlchemy 2.x async, `DeclarativeBase` in `secbot/threat_intel/models.py`.
 - **Session entry**: `secbot/threat_intel/db.py::get_session()` — the **only** legal session context.
 - **PRAGMA**: WAL, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`.
-- **10 tables**: `threat_group`, `threat_infra_ip`, `threat_vuln`, `threat_group_vuln_assoc`, `threat_malware_family`, `maritime_event`, `watchlist`, `industry_cpe`, `apt_alias`, `feed_pull_run`.
+- **12 tables**: `threat_group`, `threat_infra_ip`, `threat_vuln`, `threat_group_vuln_assoc`, `threat_malware_family`, `maritime_event`, `watchlist`, `industry_cpe`, `apt_alias`, `feed_pull_run`, `threat_infra_url` (P3), `ransomware_event` (P3).
 
 ### Primary Keys & Multi-Tenant
 
@@ -42,6 +42,8 @@ Every write uses upsert — duplicate Feed pulls MUST NOT create semantic duplic
 | ThreatGroupVulnAssoc | `(group_id, vulnerability_id, relationship_type)` |
 | ThreatMalwareFamily | `(group_id, lower(family_name))` |
 | MaritimeEvent | `(source, source_url, event_date)` or `(source, title, event_date)` |
+| ThreatInfraURL | `(source, source_ref)` or `(source, url)` |
+| RansomwareEvent | `(source, victim_name, breach_date)` |
 | Watchlist | `(actor_id, group_id)` |
 | AptAlias | `(lower(alias_name), naming_org)` |
 

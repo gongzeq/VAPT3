@@ -436,6 +436,9 @@ recent_maritime = (await session.execute(
 |--------|------------|--------|
 | ThreatInfraIP | `status="inactive"` AND `last_seen < now - 90 days` | Set `status="archived"` (new enum value) or delete |
 | ThreatInfraIP | `status="active"` AND `last_seen < now - 180 days` | Auto-set `status="inactive"` then archive after 90 more days |
+| ThreatInfraURL | `status="active"` AND `last_seen < now - 180 days` | Auto-set `status="inactive"` |
+| ThreatInfraURL | `status="inactive"` AND `last_seen < now - 90 days` | Set `status="archived"` |
+| RansomwareEvent | `breach_date < now - 365 days` | Delete (all events, regardless of severity) |
 | MaritimeEvent | `event_date < now - 365 days` AND `verification_status="dismissed"` | Delete |
 | FeedPullRun | `started_at < now - 90 days` | Delete (keep recent 90 days) |
 
@@ -447,6 +450,10 @@ recent_maritime = (await session.execute(
 - List API default view (unless `status=archived` filter is passed)
 
 **MaritimeEvent**: Hard delete for dismissed events >1 year old. Confirmed events are never deleted.
+
+**ThreatInfraURL**: Same 3-stage lifecycle as ThreatInfraIP (active → inactive at 180d → archived at 90d more). Archived URLs excluded from overview, graph, and list API default view.
+
+**RansomwareEvent**: Hard delete for all events >1 year old. Ransomware events are time-sensitive threat intelligence; historical data beyond 1 year has limited operational value.
 
 **FeedPullRun**: Hard delete. Historical data is not needed beyond 90 days.
 
@@ -510,11 +517,19 @@ async def run_expiry_sweep(session: AsyncSession) -> dict[str, int]:
         await session.delete(run)
         deleted_runs += 1
 
+    # 5. Auto-inactive URLs not seen in 180 days (P3)
+    # 6. Archive inactive URLs not seen in 90 days (P3)
+    # 7. Delete ransomware events >1 year old (P3)
+    # ... (same pattern as IP expiry for URLs, hard delete for ransomware)
+
     return {
         "auto_inactive_ips": auto_inactive_ips,
         "archived_ips": archived_ips,
         "deleted_maritime": deleted_maritime,
         "deleted_runs": deleted_runs,
+        "auto_inactive_urls": auto_inactive_urls,
+        "archived_urls": archived_urls,
+        "deleted_ransomware": deleted_ransomware,
     }
 ```
 
