@@ -22,9 +22,12 @@ from secbot.threat_intel.models import (
     AptAlias,
     FeedPullRun,
     MaritimeEvent,
+    RansomwareEvent,
     ThreatGroup,
     ThreatGroupVulnAssoc,
     ThreatInfraIP,
+    ThreatInfraURL,
+    ThreatIntelConfig,
     ThreatMalwareFamily,
     ThreatVuln,
     Watchlist,
@@ -68,6 +71,13 @@ def generate_ulid() -> str:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """Treat naive datetimes (e.g. read back from SQLite) as UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +332,12 @@ async def get_threat_group(
     )
     aliases = alias_result.scalars().all()
 
+    # Related URLs (Gap 7)
+    urls_result = await session.execute(
+        select(ThreatInfraURL).where(ThreatInfraURL.group_id == group_id)
+    )
+    urls = urls_result.scalars().all()
+
     return {
         "id": group.id,
         "name": group.name,
@@ -387,6 +403,23 @@ async def get_threat_group(
                 "confidence": a.confidence,
             }
             for a in aliases
+        ],
+        "infra_urls": [
+            {
+                "id": u.id,
+                "url": u.url,
+                "url_type": u.url_type,
+                "malware_family": u.malware_family,
+                "threat_type": u.threat_type,
+                "geo_country": u.geo_country,
+                "host": u.host,
+                "first_seen": u.first_seen.isoformat() if u.first_seen else None,
+                "last_seen": u.last_seen.isoformat() if u.last_seen else None,
+                "status": u.status,
+                "source": u.source,
+                "confidence": u.confidence,
+            }
+            for u in urls
         ],
     }
 
@@ -1196,12 +1229,14 @@ async def get_overview(
             if row.status == "failed":
                 failed_sources_set.add(row.source)
 
-    last_success_at = max(freshness_map.values()) if freshness_map else None
+    last_success_at = (
+        max(_ensure_utc(v) for v in freshness_map.values()) if freshness_map else None
+    )
 
     # Stale sources: last success > 48h ago or no success
     stale_sources = []
     for src, last_ok in freshness_map.items():
-        if last_ok is None or (now - last_ok).total_seconds() > 48 * 3600:
+        if last_ok is None or (now - _ensure_utc(last_ok)).total_seconds() > 48 * 3600:
             stale_sources.append(src)
 
     # 2. Watched groups activity
@@ -1326,6 +1361,33 @@ async def get_overview(
         select(func.count()).select_from(ThreatMalwareFamily)
     )).scalar() or 0
 
+    # 7. Malicious URLs (Gap 4)
+    total_urls = (await session.execute(
+        select(func.count()).select_from(ThreatInfraURL)
+        .where(ThreatInfraURL.status != "archived")
+    )).scalar() or 0
+
+    urls_by_source_result = await session.execute(
+        select(ThreatInfraURL.source, func.count().label("cnt"))
+        .where(ThreatInfraURL.status != "archived")
+        .group_by(ThreatInfraURL.source)
+        .order_by(func.count().desc())
+        .limit(5)
+    )
+    urls_by_source = [{"source": row.source, "count": row.cnt} for row in urls_by_source_result]
+
+    # 8. Ransomware events (Gap 4)
+    total_ransomware = (await session.execute(
+        select(func.count()).select_from(RansomwareEvent)
+    )).scalar() or 0
+
+    recent_ransomware = (await session.execute(
+        select(RansomwareEvent)
+        .where(RansomwareEvent.breach_date >= seven_days_ago)
+        .order_by(RansomwareEvent.breach_date.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
     top_families_result = await session.execute(
         select(
             ThreatMalwareFamily.family_name,
@@ -1379,6 +1441,23 @@ async def get_overview(
             "recent_samples_7d": 0,  # P0: no sample-based counting
             "top_families": top_families,
         },
+        "malicious_urls": {
+            "total": total_urls,
+            "by_source": urls_by_source,
+        },
+        "ransomware_events": {
+            "total": total_ransomware,
+            "recent_count": (await session.execute(
+                select(func.count()).select_from(RansomwareEvent)
+                .where(RansomwareEvent.breach_date >= seven_days_ago)
+            )).scalar() or 0,
+            "latest": {
+                "victim_name": recent_ransomware.victim_name if recent_ransomware else None,
+                "group_name": recent_ransomware.group_name if recent_ransomware else None,
+                "breach_date": recent_ransomware.breach_date.isoformat() if recent_ransomware and recent_ransomware.breach_date else None,
+                "severity": recent_ransomware.severity if recent_ransomware else None,
+            } if recent_ransomware else None,
+        },
     }
 
 
@@ -1391,6 +1470,7 @@ async def get_graph_data(
     *,
     group_id: Optional[str] = None,
     watched: bool = False,
+    all_mode: bool = False,
     group_ids: Optional[list[str]] = None,
     actor_id: str = DEFAULT_ACTOR,
     top_n: int = 30,
@@ -1403,6 +1483,7 @@ async def get_graph_data(
     Modes (exactly one):
     - group_id: single-group local graph
     - watched=True: all Watchlist groups global graph
+    - all_mode=True: all groups with satellite data (malware/IP/vuln)
     - group_ids: multi-group comparison graph
     """
     # Determine target group IDs
@@ -1410,6 +1491,29 @@ async def get_graph_data(
 
     if group_id:
         target_group_ids = [group_id]
+    elif all_mode:
+        # "全部" mode: find all groups that have satellite data
+        # Query groups with malware families
+        result = await session.execute(
+            select(ThreatMalwareFamily.group_id).distinct()
+        )
+        malware_gids = {row[0] for row in result}
+        # Query groups with IPs
+        result = await session.execute(
+            select(ThreatInfraIP.group_id).distinct()
+        )
+        ip_gids = {row[0] for row in result}
+        # Query groups with vuln associations
+        result = await session.execute(
+            select(ThreatGroupVulnAssoc.group_id).distinct()
+        )
+        vuln_gids = {row[0] for row in result}
+        # Query groups with URLs
+        result = await session.execute(
+            select(ThreatInfraURL.group_id).distinct()
+        )
+        url_gids = {row[0] for row in result if row[0] is not None}
+        target_group_ids = list(malware_gids | ip_gids | vuln_gids | url_gids)
     elif watched:
         result = await session.execute(
             select(Watchlist.group_id).where(Watchlist.actor_id == actor_id)
@@ -1615,6 +1719,68 @@ async def get_graph_data(
                 "target": vuln.id,
                 "type": edge_type,
                 "confidence": assoc.confidence,
+            })
+
+    # Fetch and process URLs (Gap 6)
+    if not node_types or "url" in node_types:
+        result = await session.execute(
+            select(ThreatInfraURL)
+            .where(ThreatInfraURL.group_id.in_(target_group_ids))
+            .where(ThreatInfraURL.status != "archived")
+        )
+        all_urls = result.scalars().all()
+
+        url_merge_map: dict[str, str] = {}
+        group_url_counts: dict[str, int] = {}
+
+        for u in all_urls:
+            if u.group_id is None:
+                continue
+            if u.group_id not in group_url_counts:
+                group_url_counts[u.group_id] = 0
+            group_url_counts[u.group_id] += 1
+            if u.url not in url_merge_map:
+                url_merge_map[u.url] = u.id
+
+        clustered_url_groups: set[str] = set()
+        for gid, count in group_url_counts.items():
+            if count > top_n:
+                cluster_node = {
+                    "id": f"cluster:url:{gid}",
+                    "type": "cluster",
+                    "label": f"URL x {count}",
+                    "data": {"cluster_type": "url", "count": count, "group_id": gid},
+                }
+                nodes.append(cluster_node)
+                edges.append({
+                    "source": gid, "target": cluster_node["id"],
+                    "type": "targets", "confidence": 1.0,
+                })
+                clustered_url_groups.add(gid)
+
+        added_url_nodes: set[str] = set()
+        for u in all_urls:
+            if u.group_id is None or u.group_id in clustered_url_groups:
+                continue
+            canonical_id = url_merge_map[u.url]
+            if canonical_id not in added_url_nodes:
+                nodes.append({
+                    "id": canonical_id,
+                    "type": "url",
+                    "label": u.host or u.url[:40],
+                    "data": {
+                        "url": u.url,
+                        "url_type": u.url_type,
+                        "status": u.status,
+                        "source": u.source,
+                    },
+                })
+                added_url_nodes.add(canonical_id)
+            edges.append({
+                "source": u.group_id,
+                "target": canonical_id,
+                "type": "targets",
+                "confidence": u.confidence,
             })
 
     # Apply confidence filter
@@ -1887,11 +2053,53 @@ async def run_expiry_sweep(session: AsyncSession) -> dict[str, int]:
         await session.delete(run)
         deleted_runs += 1
 
+    # 5. Auto-inactive URLs not seen in 180 days (Gap 8)
+    result = await session.execute(
+        select(ThreatInfraURL).where(
+            and_(
+                ThreatInfraURL.status == "active",
+                ThreatInfraURL.last_seen < now - timedelta(days=180),
+            )
+        )
+    )
+    auto_inactive_urls = 0
+    for url in result.scalars():
+        url.status = "inactive"
+        auto_inactive_urls += 1
+
+    # 6. Archive inactive URLs not seen in 90 days (Gap 8)
+    result = await session.execute(
+        select(ThreatInfraURL).where(
+            and_(
+                ThreatInfraURL.status == "inactive",
+                ThreatInfraURL.last_seen < now - timedelta(days=90),
+            )
+        )
+    )
+    archived_urls = 0
+    for url in result.scalars():
+        url.status = "archived"
+        archived_urls += 1
+
+    # 7. Delete old ransomware events (>1 year) (Gap 8)
+    result = await session.execute(
+        select(RansomwareEvent).where(
+            RansomwareEvent.breach_date < now - timedelta(days=365)
+        )
+    )
+    deleted_ransomware = 0
+    for event in result.scalars():
+        await session.delete(event)
+        deleted_ransomware += 1
+
     return {
         "auto_inactive_ips": auto_inactive_ips,
         "archived_ips": archived_ips,
         "deleted_maritime": deleted_maritime,
         "deleted_runs": deleted_runs,
+        "auto_inactive_urls": auto_inactive_urls,
+        "archived_urls": archived_urls,
+        "deleted_ransomware": deleted_ransomware,
     }
 
 
@@ -1969,6 +2177,36 @@ async def get_review_queue(
                 "source_refs": event.source_refs or [],
                 "review_action": "confirm_event",
             })
+    elif entity_type == "url":
+        # Low-confidence URL group attribution (Gap 9)
+        stmt = (
+            select(ThreatInfraURL, ThreatGroup.name)
+            .outerjoin(ThreatGroup, ThreatInfraURL.group_id == ThreatGroup.id)
+            .where(ThreatInfraURL.confidence < max_confidence)
+            .where(ThreatInfraURL.status != "archived")
+            .order_by(ThreatInfraURL.confidence.asc())
+        )
+        count_stmt = select(func.count()).select_from(
+            select(ThreatInfraURL)
+            .where(ThreatInfraURL.confidence < max_confidence)
+            .where(ThreatInfraURL.status != "archived")
+            .subquery()
+        )
+        total = (await session.execute(count_stmt)).scalar() or 0
+
+        result = await session.execute(stmt.limit(limit).offset(offset))
+        for url, group_name in result:
+            items.append({
+                "id": url.id,
+                "entity_type": "url",
+                "label": url.url,
+                "confidence": url.confidence,
+                "group_id": url.group_id,
+                "group_name": group_name,
+                "source": url.source,
+                "source_refs": url.source_refs or [],
+                "review_action": "confirm_mapping",
+            })
     else:
         total = 0
 
@@ -2013,6 +2251,34 @@ async def apply_review_action(
 
         return {"id": item_id, "action": action, "updated": True}
 
+    elif entity_type == "url":
+        # URL review actions (Gap 9)
+        result = await session.execute(
+            select(ThreatInfraURL).where(ThreatInfraURL.id == item_id)
+        )
+        url = result.scalar_one_or_none()
+        if url is None:
+            return None
+
+        if action == "confirm_mapping":
+            url.confidence = max(url.confidence, 0.8)
+        elif action == "remap":
+            new_group_id = body.get("new_group_id")
+            if not new_group_id:
+                return {"id": item_id, "action": action, "updated": False,
+                        "error": "new_group_id is required for remap"}
+            grp = (await session.execute(
+                select(ThreatGroup.id).where(ThreatGroup.id == new_group_id)
+            )).scalar_one_or_none()
+            if grp is None:
+                return None
+            url.group_id = new_group_id
+            url.confidence = 0.8
+        elif action == "dismiss":
+            url.status = "archived"
+
+        return {"id": item_id, "action": action, "updated": True}
+
     elif entity_type == "maritime":
         result = await session.execute(
             select(MaritimeEvent).where(MaritimeEvent.id == item_id)
@@ -2036,14 +2302,517 @@ async def apply_review_action(
 # Table creation (for tests / first-run without Alembic)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Threat Infrastructure URL
+# ---------------------------------------------------------------------------
+
+async def upsert_threat_infra_url(
+    session: AsyncSession,
+    *,
+    url: str,
+    source: str = "urlhaus",
+    source_ref: Optional[str] = None,
+    group_id: Optional[str] = None,
+    url_type: str = "other",
+    malware_family: Optional[str] = None,
+    threat_type: Optional[str] = None,
+    geo_country: Optional[str] = None,
+    host: Optional[str] = None,
+    first_seen: Optional[datetime] = None,
+    last_seen: Optional[datetime] = None,
+    status: str = "active",
+    confidence: float = 0.7,
+    source_refs: Optional[list] = None,
+    tags: Optional[list] = None,
+) -> tuple[ThreatInfraURL, bool]:
+    """Upsert by (source, source_ref) or (source, url)."""
+    if source_ref:
+        result = await session.execute(
+            select(ThreatInfraURL).where(
+                and_(
+                    ThreatInfraURL.source == source,
+                    ThreatInfraURL.source_ref == source_ref,
+                )
+            )
+        )
+    else:
+        result = await session.execute(
+            select(ThreatInfraURL).where(
+                and_(
+                    ThreatInfraURL.source == source,
+                    ThreatInfraURL.url == url,
+                )
+            )
+        )
+    existing = result.scalar_one_or_none()
+
+    if existing is not None:
+        if malware_family is not None:
+            existing.malware_family = malware_family
+        if threat_type is not None:
+            existing.threat_type = threat_type
+        if geo_country is not None:
+            existing.geo_country = geo_country
+        if host is not None:
+            existing.host = host
+        if first_seen is not None and (
+            existing.first_seen is None or first_seen < _ensure_utc(existing.first_seen)
+        ):
+            existing.first_seen = first_seen
+        if last_seen is not None and (
+            existing.last_seen is None or last_seen > _ensure_utc(existing.last_seen)
+        ):
+            existing.last_seen = last_seen
+        existing.status = status
+        existing.confidence = max(existing.confidence, confidence)
+        if source_refs is not None:
+            existing.source_refs = source_refs
+        if group_id is not None:
+            existing.group_id = group_id
+        existing.last_ingested_at = _utcnow()
+        return existing, False
+
+    record = ThreatInfraURL(
+        id=generate_ulid(),
+        group_id=group_id,
+        url=url,
+        url_type=url_type,
+        malware_family=malware_family,
+        threat_type=threat_type,
+        geo_country=geo_country,
+        host=host,
+        first_seen=first_seen,
+        last_seen=last_seen,
+        status=status,
+        source=source,
+        source_ref=source_ref,
+        confidence=confidence,
+        source_refs=source_refs,
+        tags=tags,
+    )
+    session.add(record)
+    await session.flush()
+    return record, True
+
+
+async def list_threat_infra_urls(
+    session: AsyncSession,
+    *,
+    group_id: Optional[str] = None,
+    url_type: Optional[str] = None,
+    source: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    """List threat infrastructure URLs with pagination and filters."""
+    limit, offset = _paginate(page, page_size)
+    stmt = select(ThreatInfraURL)
+
+    if group_id:
+        stmt = stmt.where(ThreatInfraURL.group_id == group_id)
+    if url_type:
+        stmt = stmt.where(ThreatInfraURL.url_type == url_type)
+    if source:
+        stmt = stmt.where(ThreatInfraURL.source == source)
+    if status:
+        stmt = stmt.where(ThreatInfraURL.status == status)
+    else:
+        stmt = stmt.where(ThreatInfraURL.status != "archived")
+    if q:
+        stmt = stmt.where(ThreatInfraURL.url.like(f"%{q}%"))
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await session.execute(count_stmt)).scalar() or 0
+
+    stmt = stmt.order_by(ThreatInfraURL.last_ingested_at.desc()).limit(limit).offset(offset)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+
+    items = [
+        {
+            "id": u.id,
+            "group_id": u.group_id,
+            "url": u.url,
+            "url_type": u.url_type,
+            "malware_family": u.malware_family,
+            "threat_type": u.threat_type,
+            "geo_country": u.geo_country,
+            "host": u.host,
+            "first_seen": u.first_seen.isoformat() if u.first_seen else None,
+            "last_seen": u.last_seen.isoformat() if u.last_seen else None,
+            "status": u.status,
+            "source": u.source,
+            "confidence": u.confidence,
+        }
+        for u in rows
+    ]
+    return {"items": items, "page": page, "page_size": page_size, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Ransomware Event
+# ---------------------------------------------------------------------------
+
+async def upsert_ransomware_event(
+    session: AsyncSession,
+    *,
+    group_name: str,
+    victim_name: str,
+    source: str = "ransomware_live",
+    source_ref: Optional[str] = None,
+    victim_industry: Optional[str] = None,
+    victim_country: Optional[str] = None,
+    description: Optional[str] = None,
+    post_url: Optional[str] = None,
+    breach_date: Optional[datetime] = None,
+    data_leaked: bool = False,
+    severity: str = "high",
+    source_refs: Optional[list] = None,
+    tags: Optional[list] = None,
+) -> tuple[RansomwareEvent, bool]:
+    """Upsert by (source, source_ref)."""
+    if source_ref:
+        result = await session.execute(
+            select(RansomwareEvent).where(
+                and_(
+                    RansomwareEvent.source == source,
+                    RansomwareEvent.source_ref == source_ref,
+                )
+            )
+        )
+        existing = result.scalar_one_or_none()
+    elif breach_date is not None:
+        # Fallback: match by group + victim + breach_date
+        result = await session.execute(
+            select(RansomwareEvent).where(
+                and_(
+                    RansomwareEvent.group_name == group_name,
+                    RansomwareEvent.victim_name == victim_name,
+                    RansomwareEvent.breach_date == breach_date,
+                )
+            )
+        )
+        existing = result.scalar_one_or_none()
+    else:
+        existing = None
+
+    if existing is not None:
+        if victim_industry is not None:
+            existing.victim_industry = victim_industry
+        if victim_country is not None:
+            existing.victim_country = victim_country
+        if description is not None:
+            existing.description = description
+        if post_url is not None:
+            existing.post_url = post_url
+        if data_leaked:
+            existing.data_leaked = True
+        existing.severity = severity
+        if source_refs is not None:
+            existing.source_refs = source_refs
+        if tags is not None:
+            existing.tags = tags
+        existing.last_ingested_at = _utcnow()
+        return existing, False
+
+    record = RansomwareEvent(
+        id=generate_ulid(),
+        group_name=group_name,
+        victim_name=victim_name,
+        victim_industry=victim_industry,
+        victim_country=victim_country,
+        description=description,
+        post_url=post_url,
+        breach_date=breach_date,
+        data_leaked=data_leaked,
+        severity=severity,
+        source=source,
+        source_ref=source_ref,
+        source_refs=source_refs,
+        tags=tags,
+    )
+    session.add(record)
+    await session.flush()
+    return record, True
+
+
+async def list_ransomware_events(
+    session: AsyncSession,
+    *,
+    group_name: Optional[str] = None,
+    victim_industry: Optional[str] = None,
+    victim_country: Optional[str] = None,
+    severity: Optional[str] = None,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any]:
+    """List ransomware events with pagination and filters."""
+    limit, offset = _paginate(page, page_size)
+    stmt = select(RansomwareEvent)
+
+    if group_name:
+        stmt = stmt.where(RansomwareEvent.group_name == group_name)
+    if victim_industry:
+        stmt = stmt.where(RansomwareEvent.victim_industry == victim_industry)
+    if victim_country:
+        stmt = stmt.where(RansomwareEvent.victim_country == victim_country)
+    if severity:
+        stmt = stmt.where(RansomwareEvent.severity == severity)
+    if from_date:
+        stmt = stmt.where(RansomwareEvent.breach_date >= from_date)
+    if to_date:
+        stmt = stmt.where(RansomwareEvent.breach_date <= to_date)
+
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = (await session.execute(count_stmt)).scalar() or 0
+
+    stmt = stmt.order_by(RansomwareEvent.breach_date.desc()).limit(limit).offset(offset)
+    result = await session.execute(stmt)
+    rows = result.scalars().all()
+
+    items = [
+        {
+            "id": r.id,
+            "group_name": r.group_name,
+            "victim_name": r.victim_name,
+            "victim_industry": r.victim_industry,
+            "victim_country": r.victim_country,
+            "description": r.description,
+            "post_url": r.post_url,
+            "breach_date": r.breach_date.isoformat() if r.breach_date else None,
+            "data_leaked": r.data_leaked,
+            "severity": r.severity,
+            "source": r.source,
+        }
+        for r in rows
+    ]
+    return {"items": items, "page": page, "page_size": page_size, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Table creation (for tests / first-run without Alembic)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# API Key configuration — CRUD for feed API keys stored in DB
+# ---------------------------------------------------------------------------
+
+# Default config entries for feeds that use API keys.
+_DEFAULT_API_KEY_CONFIGS = [
+    {
+        "feed_source": "urlhaus",
+        "description": "abuse.ch URLhaus API key (required)",
+        "is_required": True,
+    },
+    {
+        "feed_source": "nvd",
+        "description": "NVD API key (optional, accelerates rate limits)",
+        "is_required": False,
+    },
+    {
+        "feed_source": "otx",
+        "description": "AlienVault OTX API key (optional, avoids 403 errors)",
+        "is_required": False,
+    },
+]
+
+
+def _mask_api_key(key: Optional[str]) -> Optional[str]:
+    """Mask an API key for display, showing only first 4 and last 4 chars.
+
+    Keys shorter than 17 characters are fully masked to avoid excessive
+    information leakage (a 9-char key would otherwise expose 8 of 9 chars).
+    """
+    if not key:
+        return None
+    if len(key) <= 16:
+        return "****"
+    return f"{key[:4]}...{key[-4:]}"
+
+
+async def get_api_key(session: AsyncSession, feed_source: str) -> Optional[str]:
+    """Read and decrypt the API key for a feed source from the config table.
+
+    Returns ``None`` if no key is configured.  Stored values are encrypted
+    with Fernet; legacy plaintext values are returned as-is for backward
+    compatibility.
+    """
+    from secbot.threat_intel.crypto import decrypt_api_key
+
+    result = await session.execute(
+        select(ThreatIntelConfig.api_key).where(
+            ThreatIntelConfig.feed_source == feed_source
+        )
+    )
+    key = result.scalar_one_or_none()
+    return decrypt_api_key(key or None)  # type: ignore[arg-type]
+
+
+async def has_api_key(session: AsyncSession, feed_source: str) -> bool:
+    """Check whether an API key is configured for the given feed source."""
+    key = await get_api_key(session, feed_source)
+    return bool(key)
+
+
+async def get_all_api_keys(session: AsyncSession) -> list[dict[str, Any]]:
+    """List all API key configurations with masked key values.
+
+    Relies on migrations or :func:`create_tables` to seed default rows.
+    Returns an empty list if the table is empty (fresh DB without migrations).
+    """
+    from secbot.threat_intel.crypto import decrypt_api_key
+
+    result = await session.execute(select(ThreatIntelConfig))
+    rows = result.scalars().all()
+
+    return [
+        {
+            "feed_source": row.feed_source,
+            "api_key_masked": _mask_api_key(decrypt_api_key(row.api_key)),
+            "has_key": bool(row.api_key),
+            "description": row.description,
+            "is_required": row.is_required,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
+
+
+async def set_api_key(
+    session: AsyncSession,
+    feed_source: str,
+    api_key: str,
+    description: Optional[str] = None,
+    is_required: Optional[bool] = None,
+) -> dict[str, Any]:
+    """Set or update an API key for a feed source.
+
+    Uses SQLite upsert (``INSERT ... ON CONFLICT DO UPDATE``) to eliminate
+    the TOCTOU race between concurrent callers.  The key is encrypted with
+    Fernet before storage.
+    """
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    from secbot.threat_intel.crypto import encrypt_api_key
+
+    encrypted = encrypt_api_key(api_key)
+    desc = description or f"{feed_source} API key"
+    req = is_required if is_required is not None else False
+
+    stmt = sqlite_insert(ThreatIntelConfig).values(
+        id=generate_ulid(),
+        feed_source=feed_source,
+        api_key=encrypted,
+        description=desc,
+        is_required=req,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["feed_source"],
+        set_={
+            "api_key": encrypted,
+            **({"description": description} if description is not None else {}),
+            **({"is_required": is_required} if is_required is not None else {}),
+        },
+    )
+    await session.execute(stmt)
+    await session.flush()
+
+    return {
+        "feed_source": feed_source,
+        "api_key_masked": _mask_api_key(api_key),
+        "has_key": True,
+        "description": desc,
+        "is_required": req,
+    }
+
+
+async def delete_api_key(session: AsyncSession, feed_source: str) -> bool:
+    """Clear the API key for a feed source (sets api_key to NULL).
+
+    Returns ``True`` if a row was updated, ``False`` if no config row exists.
+    """
+    result = await session.execute(
+        select(ThreatIntelConfig).where(
+            ThreatIntelConfig.feed_source == feed_source
+        )
+    )
+    config = result.scalar_one_or_none()
+    if config is None:
+        return False
+    config.api_key = None
+    await session.flush()
+    return True
+
+
+async def migrate_env_api_keys_to_db(session: AsyncSession) -> dict[str, bool]:
+    """One-time migration: import API keys from environment variables.
+
+    Checks ``URLHAUS_API_KEY``, ``NVD_API_KEY``, ``OTX_API_KEY`` env vars.
+    If a var is set and the corresponding DB config has no key, imports it.
+    Returns a dict mapping feed_source → True if a key was imported.
+    """
+    import os
+
+    env_map = {
+        "urlhaus": "URLHAUS_API_KEY",
+        "nvd": "NVD_API_KEY",
+        "otx": "OTX_API_KEY",
+    }
+    imported: dict[str, bool] = {}
+    for feed_source, env_name in env_map.items():
+        env_val = os.environ.get(env_name, "").strip()
+        if not env_val:
+            continue
+        existing = await get_api_key(session, feed_source)
+        if existing:
+            continue  # DB already has a key — don't overwrite
+        await set_api_key(session, feed_source, env_val)
+        imported[feed_source] = True
+        _logger.warning(
+            "Migrated %s from env var %s to DB config. "
+            "The environment variable is deprecated and can be removed.",
+            feed_source,
+            env_name,
+        )
+    return imported
+
+
+async def _seed_default_api_key_configs(session: AsyncSession) -> None:
+    """Insert default API key config rows using INSERT OR IGNORE.
+
+    Uses SQLite's ``ON CONFLICT DO NOTHING`` to avoid race conditions when
+    multiple concurrent sessions attempt to seed simultaneously.
+    """
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    for cfg in _DEFAULT_API_KEY_CONFIGS:
+        stmt = sqlite_insert(ThreatIntelConfig).values(
+            id=generate_ulid(),
+            feed_source=cfg["feed_source"],
+            api_key=None,
+            description=cfg["description"],
+            is_required=cfg["is_required"],
+        ).on_conflict_do_nothing(index_elements=["feed_source"])
+        await session.execute(stmt)
+    await session.flush()
+
+
 async def create_tables() -> None:
     """Create all tables (for first-run or tests without Alembic).
 
     In production, use Alembic migrations instead.
     """
-    from secbot.threat_intel.db import get_engine
+    from secbot.threat_intel.db import get_engine, get_session
     from secbot.threat_intel.models import Base
 
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Seed default API key config entries on fresh databases.
+    async with get_session() as session:
+        await _seed_default_api_key_configs(session)
