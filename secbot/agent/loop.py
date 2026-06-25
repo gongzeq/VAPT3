@@ -16,6 +16,7 @@ from secbot.agent.asset_feed import AssetFeed, AssetFeedRegistry
 from secbot.agent.autocompact import AutoCompact
 from secbot.agent.blackboard import Blackboard, BlackboardRegistry
 from secbot.agent.context import ContextBuilder
+from secbot.agent.fast_sec_qa import fast_sec_qa, is_knowledge_question
 from secbot.agent.hook import AgentHook, CompositeHook
 from secbot.agent.memory import Consolidator, Dream
 from secbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
@@ -74,6 +75,28 @@ UNIFIED_SESSION_KEY = "unified:default"
 
 
 _LoopHook = TurnEventHook
+
+
+async def _emit_agent_status(channel: str, chat_id: str, agent_name: str, status: str) -> None:
+    """Best-effort emit of an ``agent_status`` event to the WebSocket channel.
+
+    Uses the same ``_active_instance`` pattern as ``SubagentManager`` so the
+    sidebar agent chip transitions without a full subagent spawn.
+    """
+    if channel != "websocket":
+        return
+    try:
+        from secbot.channels.websocket import WebSocketChannel
+        ws = WebSocketChannel._active_instance
+        if ws is None:
+            return
+        await ws.broadcast_agent_event(
+            chat_id=chat_id,
+            type="agent_status",
+            payload={"agent_name": agent_name, "status": status},
+        )
+    except Exception:
+        logger.debug("agent_status emit failed", exc_info=True)
 
 
 class AgentLoop:
@@ -1389,6 +1412,50 @@ class AgentLoop:
                 isinstance(msg.metadata, dict)
                 and msg.metadata.get("injected_event") == "subagent_result"
             )
+
+            # ── Direct forward: sec_qa results bypass orchestrator ──
+            # When ``_direct_forward=True``, the subagent (sec_qa) has
+            # already generated the final answer via ``fast_sec_qa``.
+            # Forward it to the user verbatim — no orchestrator LLM call,
+            # no reformatting.  This ensures the same answer quality
+            # (quotes, KB sources, agent name) as the fast path.
+            if (
+                is_subagent
+                and isinstance(msg.metadata, dict)
+                and msg.metadata.get("_direct_forward")
+            ):
+                direct_content = msg.metadata.get("_direct_content", "")
+                if not direct_content:
+                    direct_content = msg.content
+                kb_sources = msg.metadata.get("_kb_sources", [])
+                kb_search_mode = msg.metadata.get("_kb_search_mode", "")
+                agent_name = msg.sender_id or "sec_qa"
+
+                session.add_message(
+                    "assistant", direct_content,
+                    sender_id=agent_name,
+                    kb_sources=kb_sources,
+                    kb_search_mode=kb_search_mode,
+                )
+                self.sessions.save(session)
+                self._clear_pending_user_turn(session)
+
+                logger.info(
+                    "[direct-forward] {} result forwarded directly ({} chars)",
+                    agent_name, len(direct_content),
+                )
+
+                return OutboundMessage(
+                    channel=channel,
+                    chat_id=chat_id,
+                    content=direct_content,
+                    metadata={
+                        "_agent_name": agent_name,
+                        "_kb_sources": kb_sources,
+                        "_kb_search_mode": kb_search_mode,
+                    },
+                )
+
             if is_subagent and self._persist_subagent_followup(session, msg):
                 logger.debug("Subagent result persisted for session {}", key)
                 self.sessions.save(session)
@@ -1479,6 +1546,63 @@ class AgentLoop:
         ctx = CommandContext(msg=msg, session=session, key=key, raw=raw, loop=self)
         if result := await self.commands.dispatch(ctx):
             return result
+
+        # ── Fast path: security knowledge Q&A ──
+        # Pure knowledge questions (no targets, no scan actions) bypass
+        # the orchestrator entirely: knowledge-search runs directly, then
+        # a single LLM call synthesises the answer with the sec_qa prompt.
+        # Falls back to the orchestrator on any error or misclassification.
+        if (
+            self.is_orchestrator
+            and not msg.media
+            and not pending_ask_user_call(session.get_history(max_messages=10))
+            and is_knowledge_question(raw)
+        ):
+            logger.info("[fast-sec-qa] routing knowledge question: {}", raw[:80])
+            # Persist the user message so session history stays consistent.
+            session.add_message("user", raw)
+            self._mark_pending_user_turn(session)
+            self.sessions.save(session)
+
+            # Emit agent_status so the sidebar shows “安全知识问答” running.
+            await _emit_agent_status(msg.channel, msg.chat_id, "sec_qa", "running")
+
+            result = await fast_sec_qa(
+                raw,
+                self.provider,
+                self.model,
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                metadata=msg.metadata,
+                on_stream=on_stream,
+            )
+            # Do NOT call on_stream_end here — it clears the frontend's
+            # stream buffer, which prevents the subsequent ``message`` event
+            # from replacing the streaming placeholder (causing duplicate
+            # content).  The ``message`` event handles the replacement, and
+            # ``turn_end`` (sent by the caller) resets isStreaming.
+            # Sidebar: mark sec_qa as completed regardless of success/failure.
+            await _emit_agent_status(msg.channel, msg.chat_id, "sec_qa", "completed")
+            if result is not None:
+                # Persist the assistant response with fast-path metadata so
+                # the frontend can restore agent name, kb sources and search
+                # mode when the session is reloaded from disk.
+                session.add_message(
+                    "assistant", result.content,
+                    sender_id="sec_qa",
+                    kb_sources=result.metadata.get("_kb_sources", []),
+                    kb_search_mode=result.metadata.get("_kb_search_mode", ""),
+                )
+                self.sessions.save(session)
+                self._clear_pending_user_turn(session)
+                return result
+            # Fast path failed — fall through to the orchestrator.
+            logger.info("[fast-sec-qa] fell back to orchestrator for: {}", raw[:80])
+            # Rewind: remove the early-persisted user message so the
+            # normal flow can persist it with proper metadata.
+            if session.messages and session.messages[-1].get("role") == "user":
+                session.messages.pop()
+                self.sessions.save(session)
 
         await self.consolidator.maybe_consolidate_by_tokens(
             session,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, ImageIcon, PlaySquare, User } from "lucide-react";
+import { BrainCircuit, Check, ChevronRight, Copy, FileIcon, FileText, ImageIcon, PlaySquare, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { AgentAvatar, AgentMeta } from "@/components/AgentAvatar";
@@ -124,6 +124,8 @@ export function MessageBubble({ message, defaultExpanded = false }: MessageBubbl
     return null;
   }
   const showAssistantActions = message.role === "assistant" && !message.isStreaming && !empty;
+  const kbSources = extractKbSources(message);
+  const kbSearchMode = message.kbSearchMode;
   return (
     <div className={cn("flex gap-3", baseAnim)}>
       <AgentAvatar agentName={message.agentName} size="md" />
@@ -133,10 +135,11 @@ export function MessageBubble({ message, defaultExpanded = false }: MessageBubbl
           <TypingDots />
         ) : (
           <>
+            <KbSourcesBar sources={kbSources} searchMode={kbSearchMode} />
             <div
               className={cn(
                 "text-sm leading-relaxed",
-                "break-words whitespace-pre-wrap",
+                "break-words",
               )}
             >
               {!empty ? <MarkdownText>{message.content}</MarkdownText> : null}
@@ -427,6 +430,81 @@ function UserImageCell({
           {image.name ?? placeholderLabel}
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Extract knowledge-base source file paths from either the fast-path
+ * metadata (``kbSources``) or the normal-path tool call results
+ * (``toolCalls`` with ``tool_result_sources``). */
+function extractKbSources(message: UIMessage): string[] {
+  const raw: string[] =
+    message.kbSources && message.kbSources.length > 0
+      ? message.kbSources
+      : message.toolCalls
+          ?.filter((tc) => tc.tool_name === "knowledge-search" && tc.tool_result_sources)
+          .flatMap((tc) => tc.tool_result_sources ?? []) ?? [];
+  // Deduplicate and keep order.
+  return [...new Set(raw)];
+}
+
+/** Extract a clean display name from a source path.
+ * ``regulations/一、法律/5.《数据安全法》.md`` → ``《数据安全法》``
+ * ``web-security/sql-injection.md`` → ``sql-injection``
+ * Strips: directory path, leading ``\d+.`` prefix, ``.md`` extension. */
+function sourceDisplayName(source: string): string {
+  const parts = source.split("/");
+  let name = parts[parts.length - 1] || source;
+  // Remove .md / .markdown extension
+  name = name.replace(/\.(md|markdown)$/i, "");
+  // Remove leading number prefix like "5." or "12."
+  name = name.replace(/^\d+\./, "");
+  return name.trim() || source;
+}
+
+/** Collapsible bar of knowledge-base source files rendered above the answer
+ * content. Collapsed by default; click to expand and see full file names. */
+function KbSourcesBar({ sources, searchMode }: { sources: string[]; searchMode?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  if (sources.length === 0) return null;
+  const modeLabel =
+    searchMode === "keyword" ? "关键词检索"
+    : searchMode === "vector" ? "语义检索"
+    : searchMode === "hybrid" ? "混合检索"
+    : "";
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/20 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-3 py-2 text-left transition-colors hover:bg-accent/30"
+      >
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200",
+            expanded && "rotate-90",
+          )}
+          aria-hidden
+        />
+        <FileText className="h-3 w-3 shrink-0 text-muted-foreground/70" aria-hidden />
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground/70">
+          参考文件{modeLabel ? `（${modeLabel}）` : ""} · {sources.length} 个
+        </span>
+      </button>
+      {expanded && (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5">
+          {sources.map((source, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-400"
+              title={sourceDisplayName(source)}
+            >
+              <FileText className="h-2.5 w-2.5 shrink-0" aria-hidden />
+              <span>{sourceDisplayName(source)}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

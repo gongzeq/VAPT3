@@ -102,6 +102,8 @@ export interface AgentEventPayload {
   reason?: string;
   /** Granular tool_call status (discriminated from generic status). */
   tool_status?: ToolCallStatus;
+  /** Source files returned by knowledge-search tool (for UI display). */
+  tool_result_sources?: string[];
 
   // ── blackboard_entry event fields ─────────────────────────────────
   /** Kind extracted from the leading ``[tag]`` prefix on ``text``. ``null``
@@ -295,6 +297,10 @@ export interface UIMessage {
   /** Per-turn LLM token usage, attached to the last assistant message of
    * the turn when the backend reports it via ``turn_end``. */
   turnUsage?: TurnUsage;
+  /** Knowledge-base source files cited by the fast-sec-qa path. */
+  kbSources?: string[];
+  /** Search mode: "keyword" | "vector" | "hybrid". */
+  kbSearchMode?: string;
 }
 
 export interface ChatSummary {
@@ -489,6 +495,12 @@ export type InboundEvent =
       /** Structured tool lifecycle payloads mirrored from agent progress
        * metadata. Present on tool_hint/progress frames when available. */
       tool_events?: unknown[];
+      /** Knowledge-base source files from the fast-sec-qa path. */
+      kb_sources?: string[];
+      /** Search mode used: "keyword" | "vector" | "hybrid". */
+      kb_search_mode?: string;
+      /** Agent name for the fast-sec-qa path (e.g. “sec_qa”). */
+      agent_name?: string;
     }
   | {
       event: "delta";

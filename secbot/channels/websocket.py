@@ -3159,6 +3159,15 @@ class WebSocketChannel(BaseChannel):
         tool_events = msg.metadata.get("_tool_events")
         if isinstance(tool_events, list):
             payload["tool_events"] = tool_events
+        kb_sources = msg.metadata.get("_kb_sources")
+        if isinstance(kb_sources, list) and kb_sources:
+            payload["kb_sources"] = kb_sources
+        kb_search_mode = msg.metadata.get("_kb_search_mode")
+        if isinstance(kb_search_mode, str) and kb_search_mode:
+            payload["kb_search_mode"] = kb_search_mode
+        agent_name = msg.metadata.get("_agent_name")
+        if isinstance(agent_name, str) and agent_name:
+            payload["agent_name"] = agent_name
         # Mark intermediate agent breadcrumbs (tool-call hints, generic
         # progress strings) so WS clients can render them as subordinate
         # trace rows rather than conversational replies.

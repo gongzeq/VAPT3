@@ -1992,5 +1992,156 @@ def _login_github_copilot() -> None:
         raise typer.Exit(1)
 
 
+# ============================================================================
+# Knowledge Base Management
+# ============================================================================
+
+_knowledge_app = typer.Typer(
+    name="knowledge",
+    help="Manage the cybersecurity knowledge base (index, search).",
+)
+app.add_typer(_knowledge_app, name="knowledge")
+
+
+@_knowledge_app.command("index")
+def knowledge_index(
+    docs_dir: str = typer.Option(
+        None, "--docs-dir", "-d",
+        help="Path to knowledge docs directory (default: secbot/knowledge/docs/)",
+    ),
+    model: str = typer.Option(
+        None, "--model", "-m",
+        help="Embedding model name. Default: text-embedding-3-small (remote) or BAAI/bge-small-zh-v1.5 (--local)",
+    ),
+    local: bool = typer.Option(
+        False, "--local", "-L",
+        help="Use a local sentence-transformers model instead of a remote API. "
+             "No API key required. Default local model: BAAI/bge-small-zh-v1.5",
+    ),
+    rebuild: bool = typer.Option(
+        False, "--rebuild",
+        help="Force full rebuild (ignore incremental cache)",
+    ),
+    api_key: str | None = typer.Option(
+        None, "--api-key", "-k",
+        help="API key for the embedding endpoint (overrides config)",
+    ),
+    base_url: str | None = typer.Option(
+        None, "--base-url", "-u",
+        help="Base URL for the embedding API (e.g. https://api.openai.com/v1)",
+    ),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Path to config file",
+    ),
+):
+    """Build or update the vector index for the knowledge base.
+
+    Scans all .md files under the docs directory, chunks them by heading,
+    generates embeddings, and persists the index to secbot/knowledge/vector_cache.json.
+
+    Two backends are supported:
+      • Remote (default): OpenAI-compatible /embeddings endpoint.
+        API key can be provided via --api-key or config file.
+      • Local (--local): sentence-transformers model loaded in-process.
+        No API key required. Requires: pip install sentence-transformers
+    """
+    import asyncio
+    from pathlib import Path as _Path
+
+    from secbot.config.loader import load_config as _load_cfg
+    from secbot.knowledge.vector_index import SimpleVectorIndex, DEFAULT_LOCAL_MODEL
+
+    # Resolve default model based on backend
+    resolved_model = model or (DEFAULT_LOCAL_MODEL if local else "text-embedding-3-small")
+
+    # Resolve docs directory
+    project_root = _Path(__file__).resolve().parents[2]
+    if docs_dir:
+        docs_path = _Path(docs_dir).expanduser().resolve()
+    else:
+        docs_path = project_root / "secbot" / "knowledge" / "docs"
+
+    cache_path = project_root / "secbot" / "knowledge" / "vector_cache.json"
+
+    if not docs_path.is_dir():
+        console.print(f"[red]Error: docs directory not found: {docs_path}[/red]")
+        raise typer.Exit(1)
+
+    # Count markdown files
+    md_files = list(docs_path.rglob("*.md"))
+    if not md_files:
+        console.print(f"[yellow]No .md files found under {docs_path}[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[cyan]Found {len(md_files)} markdown files under {docs_path}[/cyan]")
+
+    # Resolve API key and base URL (only needed for remote backend)
+    resolved_key = api_key
+    resolved_base = base_url
+
+    if not local and not resolved_key:
+        # Try loading from config
+        cfg_path = _Path(config).expanduser().resolve() if config else None
+        if cfg_path:
+            from secbot.config.loader import set_config_path
+            set_config_path(cfg_path)
+
+        try:
+            cfg = _load_cfg()
+        except Exception:
+            from secbot.config.schema import Config
+            cfg = Config()
+
+        provider = cfg.get_provider()
+        if provider and provider.api_key:
+            resolved_key = provider.api_key
+            if not resolved_base and provider.api_base:
+                resolved_base = provider.api_base
+
+    if not local and not resolved_key:
+        console.print(
+            "[red]Error: No embedding API key configured.\n"
+            "Provide one via:\n"
+            "  --api-key <key>            CLI flag\n"
+            "  config.json                providers.<name>.apiKey\n\n"
+            "Or use a local model instead:\n"
+            "  secbot knowledge index --local\n"
+            "  (requires: pip install sentence-transformers)[/red]"
+        )
+        raise typer.Exit(1)
+
+    if local:
+        console.print(
+            f"[cyan]Using local embedding model: {resolved_model}[/cyan]\n"
+            f"[dim]First run will download the model weights (~100 MB for bge-small-zh-v1.5)[/dim]"
+        )
+
+    # Build the index
+    idx = SimpleVectorIndex(cache_path)
+
+    async def _run():
+        if rebuild:
+            console.print("[cyan]Full rebuild requested, clearing old cache...[/cyan]")
+            count = await idx.rebuild(
+                docs_path, api_key=resolved_key or "",
+                base_url=resolved_base, model=resolved_model, local=local,
+            )
+        else:
+            count = await idx.build(
+                docs_path, api_key=resolved_key or "",
+                base_url=resolved_base, model=resolved_model, local=local,
+            )
+        return count
+
+    with console.status("[bold cyan]Building vector index...[/bold cyan]"):
+        count = asyncio.run(_run())
+
+    cache_size_mb = cache_path.stat().st_size / (1024 * 1024) if cache_path.exists() else 0
+    console.print(
+        f"[green]✓ Vector index built: {count} chunks, "
+        f"cache {cache_size_mb:.1f} MB at {cache_path}[/green]"
+    )
+
+
 if __name__ == "__main__":
     app()

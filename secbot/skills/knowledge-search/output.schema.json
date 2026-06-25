@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "const": "search",
+      "description": "Always 'search' for this skill."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "true on success (including empty results), false on error."
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The original query that was searched."
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text", "source"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The matched text chunk from the knowledge base."
+              },
+              "source": {
+                "type": "string",
+                "description": "Relative path of the source document (e.g. 'web-security/xss.md')."
+              },
+              "heading": {
+                "type": "string",
+                "description": "Nearest markdown heading above the match."
+              },
+              "score": {
+                "type": "number",
+                "description": "Relevance score (0-1 for vector, hit-density for keyword)."
+              },
+              "match_type": {
+                "type": "string",
+                "enum": ["keyword", "vector"],
+                "description": "How this result was found."
+              }
+            }
+          },
+          "description": "List of matching knowledge chunks, ordered by relevance."
+        },
+        "total_hits": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of results returned."
+        },
+        "search_mode": {
+          "type": "string",
+          "enum": ["keyword", "vector", "hybrid"],
+          "description": "Which search strategy produced the final results."
+        }
+      },
+      "required": ["query", "results", "total_hits", "search_mode"]
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error message when ok=false."
+    },
+    "elapsed_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock time spent on the search in milliseconds."
+    }
+  },
+  "required": ["action", "ok", "elapsed_ms"]
+}

@@ -1,0 +1,52 @@
+name: sec_qa
+display_name: 安全知识问答
+description: |
+  Cybersecurity knowledge Q&A expert. Routes here when the user asks about:
+  - Security concepts or principles (XSS, SQLi, SSRF, CSRF, etc.)
+  - Vulnerability details or CVE information
+  - Attack methodologies, techniques, or payloads
+  - Defensive best practices, hardening, or mitigation strategies
+  - Security testing checklists or pentesting methodology
+  - "What is...", "How to...", "Explain..." type security questions
+
+  DO NOT route here for:
+  - Active scanning, exploitation, or target-based testing (use vuln_scan/vuln_detec)
+  - Asset discovery or port scanning (use asset_discovery/port_scan)
+  - Report generation (use report)
+  - Non-security programming questions
+
+system_prompt_file: ./prompts/sec_qa.md
+
+scoped_skills:
+  - knowledge-search
+
+max_iterations: 5
+emit_plan_steps: false
+
+legacy_input_schema:
+  type: object
+  required: [question]
+  properties:
+    question:
+      type: string
+      description: The security knowledge question to answer.
+    context:
+      type: string
+      description: Optional additional context (e.g. target technology stack, specific CVE).
+
+output_schema:
+  type: object
+  required: [answer]
+  properties:
+    answer:
+      type: string
+      description: The comprehensive security knowledge answer.
+    sources:
+      type: array
+      items:
+        type: string
+      description: List of knowledge base sources referenced.
+    confidence:
+      type: string
+      enum: [high, medium, low]
+      description: Confidence level of the answer based on knowledge base coverage.
