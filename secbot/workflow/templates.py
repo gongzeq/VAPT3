@@ -65,6 +65,8 @@ _PHISHING_LLM_USER = (
     "- 链接数量：${steps.step1.result.parsed.features.url_count}\n"
     "- 可疑链接域：${steps.step1.result.parsed.features.suspicious_domains}\n"
     "- rspamd 评分：${inputs.rspamd_score}\n"
+    "- 附件数量：${steps.step1.result.parsed.features.attachment_count}\n"
+    "- 附件分析：${steps.step1.result.parsed.features.attachment_summary}\n"
 )
 
 
@@ -119,6 +121,18 @@ def _phishing_email_template() -> dict[str, Any]:
                 required=True,
                 description="字符串保留精度，例如 \"6.5\"",
             ),
+            WorkflowInput(
+                name="attachments",
+                label="附件 JSON",
+                type="string",
+                required=False,
+                default="[]",
+                description=(
+                    'JSON 字符串列表，每个元素含 filename/content_type/'
+                    'content_base64/original_size。Lua 插件按 head+tail '
+                    '截断后 base64 编码。'
+                ),
+            ),
         ],
         steps=[
             WorkflowStep(
@@ -136,15 +150,16 @@ def _phishing_email_template() -> dict[str, Any]:
                         # ``_sub`` JSON-escape rule in ``expr.py`` this
                         # tolerates ``\n``, quotes, backslashes and
                         # empty values without breaking ``stdin`` JSON.
-                        # ``urls`` is also wrapped: lua sends it as a
-                        # JSON-encoded string and step1 ``json.loads``
-                        # it again (dual-shape — see scripts.py).
+                        # ``urls`` and ``attachments`` are also wrapped:
+                        # lua sends them as JSON-encoded strings and
+                        # step1 ``json.loads`` them again (dual-shape).
                         '{"sender": "${inputs.sender}",'
                         ' "subject": "${inputs.subject}",'
                         ' "body": "${inputs.body}",'
                         ' "urls": "${inputs.urls}",'
                         ' "recipient": "${inputs.recipient}",'
-                        ' "rspamd_score": "${inputs.rspamd_score}"}'
+                        ' "rspamd_score": "${inputs.rspamd_score}",'
+                        ' "attachments": "${inputs.attachments}"}'
                     ),
                 },
                 on_error="continue",

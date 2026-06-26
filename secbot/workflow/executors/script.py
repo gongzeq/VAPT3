@@ -33,6 +33,7 @@ import base64
 import json
 import re
 import shlex
+import sys
 from math import ceil
 from typing import Any
 
@@ -147,7 +148,9 @@ def _build_command(kind: str, code: str, stdin: str | None) -> str:
     else:
         # python: source goes through argv so stdin stays free for the
         # caller-supplied data payload.
-        body = f"python3 -c {shlex.quote(code)}"
+        # Use sys.executable (not bare "python3") so the script inherits
+        # secbot's virtualenv and all installed dependencies (e.g. magika).
+        body = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
 
     if stdin is None:
         return body

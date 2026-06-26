@@ -272,19 +272,26 @@ export interface ListWorkflowsOptions {
 }
 
 export interface WorkflowClientConfig {
-  token: string;
+  /** Bearer token, or a getter returning the latest token. Passing a
+   * getter lets the client always read a fresh token (e.g. after a 401
+   * refresh) WITHOUT being rebuilt — callers can then memoize the
+   * client on a stable dependency instead of the token string, which
+   * avoids tearing down page state every time the token rotates. */
+  token: string | (() => string);
   /** HTTP base, default "" (same-origin). */
   baseUrl?: string;
 }
 
-/** Thin stateless REST façade. Instantiate per-render-cycle or memoize
- * via ``useMemo(() => new WorkflowClient({ token }), [token])``. */
+/** Thin stateless REST façade. Memoize on a STABLE dependency (e.g.
+ * ``baseUrl``) and pass ``token`` as a getter so token rotation does not
+ * force a rebuild:
+ * ``useMemo(() => new WorkflowClient({ token: () => tokenRef.current, baseUrl }), [baseUrl])``. */
 export class WorkflowClient {
-  private readonly token: string;
+  private readonly getToken: () => string;
   private readonly base: string;
 
   constructor({ token, baseUrl = "" }: WorkflowClientConfig) {
-    this.token = token;
+    this.getToken = typeof token === "function" ? token : () => token;
     this.base = baseUrl;
   }
 
@@ -293,20 +300,20 @@ export class WorkflowClient {
   list(opts: ListWorkflowsOptions = {}): Promise<WorkflowListResponse> {
     return wfRequest<WorkflowListResponse>(
       `${this.base}/api/workflows${qs(opts)}`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   get(id: string): Promise<Workflow> {
     return wfRequest<Workflow>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   create(draft: WorkflowDraft): Promise<Workflow> {
     return wfRequest<Workflow>(`${this.base}/api/workflows`, {
-      token: this.token,
+      token: this.getToken(),
       method: "POST",
       body: JSON.stringify(draft),
     });
@@ -316,7 +323,7 @@ export class WorkflowClient {
     return wfRequest<Workflow>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}`,
       {
-        token: this.token,
+        token: this.getToken(),
         method: "PUT",
         body: JSON.stringify(draft),
       },
@@ -327,7 +334,7 @@ export class WorkflowClient {
     return wfRequest<Workflow>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}`,
       {
-        token: this.token,
+        token: this.getToken(),
         method: "PATCH",
         body: JSON.stringify(patch),
       },
@@ -337,7 +344,7 @@ export class WorkflowClient {
   remove(id: string): Promise<void> {
     return wfRequest<void>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}`,
-      { token: this.token, method: "DELETE" },
+      { token: this.getToken(), method: "DELETE" },
     );
   }
 
@@ -347,7 +354,7 @@ export class WorkflowClient {
     return wfRequest<RunStartResponse>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/run?async=true`,
       {
-        token: this.token,
+        token: this.getToken(),
         method: "POST",
         body: JSON.stringify({ inputs }),
       },
@@ -357,7 +364,7 @@ export class WorkflowClient {
   cancel(id: string): Promise<{ runId: string; status: RunStatus }> {
     return wfRequest(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/cancel`,
-      { token: this.token, method: "POST" },
+      { token: this.getToken(), method: "POST" },
     );
   }
 
@@ -366,21 +373,21 @@ export class WorkflowClient {
       `${this.base}/api/workflows/${encodeURIComponent(id)}/runs${qs({
         limit,
       })}`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   getRun(id: string, runId: string): Promise<WorkflowRun> {
     return wfRequest<WorkflowRun>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   listFailedRuns(limit = 50): Promise<FailedRunsResponse> {
     return wfRequest<FailedRunsResponse>(
       `${this.base}/api/workflows/_failed-runs${qs({ limit })}`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
@@ -390,7 +397,7 @@ export class WorkflowClient {
     return wfRequest<Workflow>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/schedule`,
       {
-        token: this.token,
+        token: this.getToken(),
         method: "POST",
         body: JSON.stringify(payload),
       },
@@ -400,7 +407,7 @@ export class WorkflowClient {
   detachSchedule(id: string): Promise<Workflow> {
     return wfRequest<Workflow>(
       `${this.base}/api/workflows/${encodeURIComponent(id)}/schedule`,
-      { token: this.token, method: "DELETE" },
+      { token: this.getToken(), method: "DELETE" },
     );
   }
 
@@ -409,21 +416,21 @@ export class WorkflowClient {
   listTools(): Promise<ToolListResponse> {
     return wfRequest<ToolListResponse>(
       `${this.base}/api/workflows/_tools`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   listAgents(): Promise<AgentListResponse> {
     return wfRequest<AgentListResponse>(
       `${this.base}/api/workflows/_agents`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 
   listTemplates(): Promise<TemplateListResponse> {
     return wfRequest<TemplateListResponse>(
       `${this.base}/api/workflows/_templates`,
-      { token: this.token },
+      { token: this.getToken() },
     );
   }
 }

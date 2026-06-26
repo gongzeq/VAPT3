@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
@@ -51,9 +51,17 @@ export function WorkflowListPage() {
   const { t } = useTranslation();
   const { token, workflowApiBase } = useClient();
   const navigate = useNavigate();
+  // Token rotates (~every 5min on 401 refresh); read it via a ref so the
+  // memoized client isn't rebuilt on rotation (avoids needless refetch).
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
   const client = useMemo(
-    () => new WorkflowClient({ token, baseUrl: workflowApiBase }),
-    [token, workflowApiBase],
+    () =>
+      new WorkflowClient({
+        token: () => tokenRef.current,
+        baseUrl: workflowApiBase,
+      }),
+    [workflowApiBase],
   );
 
   const [data, setData] = useState<WorkflowListResponse | null>(null);
