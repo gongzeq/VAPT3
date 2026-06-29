@@ -56,6 +56,10 @@ _PHISHING_LLM_USER = (
     '  "risk_factors": ["可疑特征 1", "可疑特征 2"],\n'
     '  "suggested_action": "拒绝|隔离|标记|放行"\n'
     "}\n\n"
+    "【附件判定规则】附件分析中的 Magika 结果是客观检测：\n"
+    "- 标注了“扩展名不匹配”或“宏文件”的附件才存在附件风险，应列入 risk_factors\n"
+    "- 正常附件（类型匹配、无宏标记，如 csv/pdf/png 等）不应作为 risk_factors\n"
+    "- 不要凭附件类型推测“可能含注入”等主观判断\n\n"
     "${steps.step1.result.parsed.features.domain_whitelist_hint}\n\n"
     "邮件特征（已脱敏）：\n"
     "- 发件人域名：${steps.step1.result.parsed.features.sender_domain}\n"
