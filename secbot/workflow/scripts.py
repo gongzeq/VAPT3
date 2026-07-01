@@ -32,6 +32,7 @@ from __future__ import annotations
 
 
 PHISHING_STEP1_CODE = r'''
+import base64
 import email
 import email.policy
 import hashlib
@@ -151,7 +152,7 @@ def _extract_plain_text(raw: str) -> str:
     return re.sub(r"<[^>]+>", " ", raw)
 
 
-def _content_hash(sender: str, subject: str, body: str) -> str:
+def _content_hash(sender: str, subject: str, body: str, attachments_info: str = "") -> str:
     h = hashlib.sha256()
     h.update((sender or "").strip().lower().encode("utf-8", "replace"))
     h.update(b"|")
@@ -161,6 +162,11 @@ def _content_hash(sender: str, subject: str, body: str) -> str:
     plain = _extract_plain_text(body or "")
     normalized = re.sub(r"\s+", " ", plain).strip().lower()
     h.update(normalized.encode("utf-8", "replace"))
+    # Include attachment features (filename + Magika label) so that
+    # emails with different attachments get different hashes.
+    if attachments_info:
+        h.update(b"|")
+        h.update(attachments_info.encode("utf-8", "replace"))
     return h.hexdigest()
 
 
@@ -186,6 +192,219 @@ def _suspicious_url(url: str) -> bool:
     if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", host):
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Magika attachment analysis
+# ---------------------------------------------------------------------------
+
+_magika_instance = None
+_magika_error = None
+
+
+def _init_magika():
+    """Lazy-init Magika singleton. Returns (instance, error_str)."""
+    global _magika_instance, _magika_error
+    if _magika_instance is not None:
+        return _magika_instance, None
+    if _magika_error is not None:
+        return None, _magika_error
+    try:
+        from magika import Magika, PredictionMode
+        _magika_instance = Magika(
+            prediction_mode=PredictionMode.HIGH_CONFIDENCE
+        )
+        return _magika_instance, None
+    except ImportError:
+        _magika_error = "not_installed"
+        return None, _magika_error
+    except Exception as exc:
+        _magika_error = f"init_failed: {exc}"
+        return None, _magika_error
+
+
+# Magika label -> set of expected file extensions (lowercase, no dot)
+_MAGIKA_LABEL_EXTENSIONS = {
+    "pebin": {"exe", "dll"},
+    "elf": {"so", ""},
+    "macho": {""},
+    "pdf": {"pdf"},
+    "doc": {"doc"},
+    "docx": {"docx", "docm"},
+    "xls": {"xls"},
+    "xlsx": {"xlsx", "xlsm"},
+    "ppt": {"ppt"},
+    "pptx": {"pptx", "pptm"},
+    "javascript": {"js", "mjs"},
+    "powershell": {"ps1", "psm1"},
+    "vba": {"vba", "bas"},
+    "batch": {"bat", "cmd"},
+    "shell": {"sh", "bash"},
+    "python": {"py", "pyw"},
+    "zip": {"zip"},
+    "rar": {"rar"},
+    "sevenzip": {"7z"},
+    "gzip": {"gz", "gzip"},
+    "tar": {"tar"},
+    "html": {"html", "htm"},
+    "xml": {"xml"},
+    "json": {"json"},
+    "csv": {"csv"},
+    "txt": {"txt", "log"},
+    "markdown": {"md", "markdown"},
+    "yaml": {"yaml", "yml"},
+    "ini": {"ini", "cfg", "conf"},
+    "java": {"java"},
+    "c": {"c", "h"},
+    "cpp": {"cpp", "cc", "cxx", "hpp"},
+    "rust": {"rs"},
+    "go": {"go"},
+    "ruby": {"rb"},
+    "php": {"php"},
+    "sql": {"sql"},
+    "onnx": {"onnx"},
+    "png": {"png"},
+    "jpeg": {"jpg", "jpeg"},
+    "gif": {"gif"},
+    "bmp": {"bmp"},
+    "ico": {"ico"},
+    "svg": {"svg"},
+    "woff": {"woff"},
+    "woff2": {"woff2"},
+    "ttf": {"ttf"},
+    "otf": {"otf"},
+    "mp3": {"mp3"},
+    "mp4": {"mp4"},
+    "wav": {"wav"},
+    "flac": {"flac"},
+    "ogg": {"ogg"},
+    "webm": {"webm"},
+    "webp": {"webp"},
+    "epub": {"epub"},
+    "rtf": {"rtf"},
+    "latex": {"tex"},
+    "iso": {"iso"},
+    "apk": {"apk"},
+    "jar": {"jar"},
+    "dex": {"dex"},
+    "smali": {"smali"},
+    "lnk": {"lnk"},
+    "torrent": {"torrent"},
+    "sqlite": {"sqlite", "db"},
+    "pcap": {"pcap", "cap"},
+    "postscript": {"ps", "eps"},
+    "eml": {"eml"},
+    "mht": {"mht"},
+    "wasm": {"wasm"},
+}
+
+# Extensions that indicate macro-capable files
+_MACRO_OLD_EXTENSIONS = {"doc", "xls", "ppt"}
+_MACRO_EXPLICIT_EXTENSIONS = {"docm", "xlsm", "pptm", "dot", "dotm"}
+
+
+def _get_extension(filename: str) -> str:
+    """Extract lowercase extension without dot from filename."""
+    if not filename:
+        return ""
+    dot_idx = filename.rfind(".")
+    if dot_idx < 0 or dot_idx == len(filename) - 1:
+        return ""
+    return filename[dot_idx + 1:].lower()
+
+
+def _check_extension_mismatch(filename: str, magika_label: str) -> bool:
+    """Check if declared extension is inconsistent with Magika label."""
+    declared_ext = _get_extension(filename)
+    if not declared_ext or not magika_label:
+        return False
+    expected_exts = _MAGIKA_LABEL_EXTENSIONS.get(magika_label)
+    if expected_exts is None:
+        return False
+    return declared_ext not in expected_exts
+
+
+def _check_macro_capable(filename: str, magika_label: str) -> bool:
+    """Check if file is macro-capable (old format or explicit macro file)."""
+    declared_ext = _get_extension(filename)
+    if declared_ext in _MACRO_OLD_EXTENSIONS:
+        return True
+    if declared_ext in _MACRO_EXPLICIT_EXTENSIONS:
+        return True
+    if magika_label in ("doc", "xls", "ppt"):
+        return True
+    return False
+
+
+def _analyze_attachments(attachments_raw):
+    """Analyze attachments with Magika. Returns (results_list, attachments_info_str)."""
+    if not attachments_raw:
+        return [], ""
+
+    if isinstance(attachments_raw, str):
+        try:
+            attachments = json.loads(attachments_raw or "[]")
+        except Exception:
+            attachments = []
+    elif isinstance(attachments_raw, list):
+        attachments = attachments_raw
+    else:
+        attachments = []
+
+    if not attachments:
+        return [], ""
+
+    magika, magika_err = _init_magika()
+
+    results = []
+    info_pairs = []
+
+    for att in attachments:
+        if not isinstance(att, dict):
+            continue
+        filename = str(att.get("filename") or "unknown")
+        content_type = str(att.get("content_type") or "")
+        content_b64 = str(att.get("content_base64") or "")
+        original_size = int(att.get("original_size") or 0)
+
+        result = {
+            "filename": filename,
+            "content_type": content_type,
+            "original_size": original_size,
+            "magika_label": "",
+            "magika_score": 0.0,
+            "extension_mismatch": False,
+            "is_macro_capable": False,
+        }
+
+        if magika_err:
+            result["magika_error"] = magika_err
+        elif not content_b64:
+            result["magika_error"] = "empty_content"
+        else:
+            try:
+                raw_bytes = base64.b64decode(content_b64)
+                mr = magika.identify_bytes(raw_bytes)
+                label = str(mr.output.label)
+                score = float(mr.score)
+                result["magika_label"] = label
+                result["magika_score"] = round(score, 4)
+                result["extension_mismatch"] = _check_extension_mismatch(
+                    filename, label
+                )
+                result["is_macro_capable"] = _check_macro_capable(
+                    filename, label
+                )
+            except Exception as exc:
+                result["magika_error"] = f"identify_failed: {exc}"
+
+        results.append(result)
+        info_pairs.append(f"{filename}|{result['magika_label']}")
+
+    info_pairs.sort()
+    attachments_info = ";".join(info_pairs)
+
+    return results, attachments_info
 
 
 def _emit(payload: dict) -> None:
@@ -219,6 +438,12 @@ def main() -> int:
         urls_in = []
     urls = [str(u) for u in urls_in[:50]]
 
+    # Parse attachments (dual-shape: JSON string or list, same as urls)
+    attachments_raw = data.get("attachments") or "[]"
+
+    # Analyze attachments with Magika
+    attachment_results, attachments_info = _analyze_attachments(attachments_raw)
+
     sender_local, _, sender_domain = sender.partition("@")
     body_excerpt = re.sub(r"\s+", " ", body).strip()[:600]
     suspicious_domains = sorted({
@@ -227,7 +452,7 @@ def main() -> int:
         if _suspicious_url(u)
     } - {""})
 
-    chash = _content_hash(sender, subject, body)
+    chash = _content_hash(sender, subject, body, attachments_info)
 
     cache_hit = False
     cached_result = None
@@ -243,6 +468,22 @@ def main() -> int:
         rspamd_score = 0.0
 
     whitelist_hint = _load_whitelist_hint()
+
+    # Build attachment summary for LLM prompt
+    attachment_count = len(attachment_results)
+    macro_count = sum(1 for a in attachment_results if a.get("is_macro_capable"))
+    mismatch_count = sum(1 for a in attachment_results if a.get("extension_mismatch"))
+    att_summary_parts = []
+    for a in attachment_results:
+        parts = [f"{a['filename']}({a.get('magika_label') or 'unknown'})"]
+        if a.get("extension_mismatch"):
+            parts.append("扩展名不匹配!")
+        if a.get("is_macro_capable"):
+            parts.append("宏文件")
+        if a.get("magika_error"):
+            parts.append(f"错误:{a['magika_error']}")
+        att_summary_parts.append(" ".join(parts))
+    attachment_summary = "; ".join(att_summary_parts) if att_summary_parts else "无附件"
 
     _emit({
         "cache_hit": cache_hit,
@@ -260,6 +501,11 @@ def main() -> int:
             "suspicious_domains": suspicious_domains[:10],
             "recipient": str(data.get("recipient") or ""),
             "domain_whitelist_hint": whitelist_hint,
+            "attachment_count": attachment_count,
+            "attachment_summary": attachment_summary,
+            "attachment_details": attachment_results,
+            "macro_capable_count": macro_count,
+            "extension_mismatch_count": mismatch_count,
         },
     })
     return 0
@@ -384,6 +630,7 @@ def _ensure_table(conn: sqlite3.Connection) -> None:
         ("rspamd_score", "REAL"),
         ("final_score", "REAL"),
         ("rspamd_action", "TEXT"),
+        ("attachments_json", "TEXT"),
     ]:
         try:
             conn.execute(
@@ -441,8 +688,9 @@ def _persist_sqlite(row: dict) -> bool:
             INSERT INTO detection_results
                 (content_hash, sender, subject, ai_confidence,
                  ai_reason, action, created_at, processed_time_ms,
-                 risk_factors, rspamd_score, final_score, rspamd_action)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 risk_factors, rspamd_score, final_score, rspamd_action,
+                 attachments_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row.get("content_hash"),
@@ -457,6 +705,7 @@ def _persist_sqlite(row: dict) -> bool:
                 float(row.get("rspamd_score") or 0.0) if row.get("rspamd_score") is not None else None,
                 float(row.get("final_score") or 0.0) if row.get("final_score") is not None else None,
                 row.get("rspamd_action") or "",
+                row.get("attachments_json") or "",
             ),
         )
         conn.commit()
@@ -589,6 +838,10 @@ def main() -> int:
                 "rspamd_action": _rspamd_action(float(rspamd_score or 0.0)),
                 "processed_time_ms": early_processed,
                 "created_at": early_created_at,
+                "attachments_json": json.dumps(
+                    features.get("attachment_details") or [],
+                    ensure_ascii=False
+                ),
             }
             # Persist to SQLite even for LLM-skipped path
             if chash:
@@ -601,6 +854,29 @@ def main() -> int:
         suggested_action = str(parsed.get("suggested_action") or "")
         risk_factors = list(parsed.get("risk_factors") or [])
         add_score = _add_score_for(confidence)
+
+    # --- Attachment scoring (macro-capable bonus) ---
+    # PRD 06-01-magika-attachment-detect §R9: each macro-capable file
+    # adds +2.0 to add_score, regardless of LLM judgement.
+    attachment_details = features.get("attachment_details") or []
+    macro_capable_count = int(features.get("macro_capable_count") or 0)
+    mismatch_count = int(features.get("extension_mismatch_count") or 0)
+    macro_bonus = macro_capable_count * 2.0
+    if macro_bonus > 0:
+        add_score = round(float(add_score) + macro_bonus, 2)
+        risk_factors.append(
+            f"含 {macro_capable_count} 个宏能力附件 (+{macro_bonus:.1f})"
+        )
+    if mismatch_count > 0:
+        mismatch_names = [
+            a.get("filename", "?")
+            for a in attachment_details
+            if a.get("extension_mismatch")
+        ]
+        risk_factors.append(
+            f"附件扩展名不匹配: {', '.join(mismatch_names[:3])}"
+        )
+    attachments_json = json.dumps(attachment_details, ensure_ascii=False)
 
     # Calculate total workflow processing time (from step1 start to now)
     now_ms = int(time.time() * 1000)
@@ -628,6 +904,7 @@ def main() -> int:
         "rspamd_action": rspamd_action,
         "processed_time_ms": processed_ms,
         "created_at": created_at,
+        "attachments_json": attachments_json,
     }
 
     # Always persist to SQLite for dashboard visibility.

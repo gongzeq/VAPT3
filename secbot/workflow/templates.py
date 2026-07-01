@@ -56,6 +56,10 @@ _PHISHING_LLM_USER = (
     '  "risk_factors": ["可疑特征 1", "可疑特征 2"],\n'
     '  "suggested_action": "拒绝|隔离|标记|放行"\n'
     "}\n\n"
+    "【附件判定规则】附件分析中的 Magika 结果是客观检测：\n"
+    "- 标注了“扩展名不匹配”或“宏文件”的附件才存在附件风险，应列入 risk_factors\n"
+    "- 正常附件（类型匹配、无宏标记，如 csv/pdf/png 等）不应作为 risk_factors\n"
+    "- 不要凭附件类型推测“可能含注入”等主观判断\n\n"
     "${steps.step1.result.parsed.features.domain_whitelist_hint}\n\n"
     "邮件特征（已脱敏）：\n"
     "- 发件人域名：${steps.step1.result.parsed.features.sender_domain}\n"
@@ -65,6 +69,8 @@ _PHISHING_LLM_USER = (
     "- 链接数量：${steps.step1.result.parsed.features.url_count}\n"
     "- 可疑链接域：${steps.step1.result.parsed.features.suspicious_domains}\n"
     "- rspamd 评分：${inputs.rspamd_score}\n"
+    "- 附件数量：${steps.step1.result.parsed.features.attachment_count}\n"
+    "- 附件分析：${steps.step1.result.parsed.features.attachment_summary}\n"
 )
 
 
@@ -119,6 +125,18 @@ def _phishing_email_template() -> dict[str, Any]:
                 required=True,
                 description="字符串保留精度，例如 \"6.5\"",
             ),
+            WorkflowInput(
+                name="attachments",
+                label="附件 JSON",
+                type="string",
+                required=False,
+                default="[]",
+                description=(
+                    'JSON 字符串列表，每个元素含 filename/content_type/'
+                    'content_base64/original_size。Lua 插件按 head+tail '
+                    '截断后 base64 编码。'
+                ),
+            ),
         ],
         steps=[
             WorkflowStep(
@@ -136,15 +154,16 @@ def _phishing_email_template() -> dict[str, Any]:
                         # ``_sub`` JSON-escape rule in ``expr.py`` this
                         # tolerates ``\n``, quotes, backslashes and
                         # empty values without breaking ``stdin`` JSON.
-                        # ``urls`` is also wrapped: lua sends it as a
-                        # JSON-encoded string and step1 ``json.loads``
-                        # it again (dual-shape — see scripts.py).
+                        # ``urls`` and ``attachments`` are also wrapped:
+                        # lua sends them as JSON-encoded strings and
+                        # step1 ``json.loads`` them again (dual-shape).
                         '{"sender": "${inputs.sender}",'
                         ' "subject": "${inputs.subject}",'
                         ' "body": "${inputs.body}",'
                         ' "urls": "${inputs.urls}",'
                         ' "recipient": "${inputs.recipient}",'
-                        ' "rspamd_score": "${inputs.rspamd_score}"}'
+                        ' "rspamd_score": "${inputs.rspamd_score}",'
+                        ' "attachments": "${inputs.attachments}"}'
                     ),
                 },
                 on_error="continue",

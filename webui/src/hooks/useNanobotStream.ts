@@ -494,6 +494,9 @@ export function useNanobotStream(
               ...(ev.tool_name ? { toolName: ev.tool_name } : {}),
               ...(ev.prompt_kind ? { promptKind: ev.prompt_kind } : {}),
               ...(media && media.length > 0 ? { media } : {}),
+              ...(ev.kb_sources && ev.kb_sources.length > 0 ? { kbSources: ev.kb_sources } : {}),
+              ...(ev.kb_search_mode ? { kbSearchMode: ev.kb_search_mode } : {}),
+              ...(ev.agent_name ? { agentName: ev.agent_name } : {}),
             },
           ];
         });

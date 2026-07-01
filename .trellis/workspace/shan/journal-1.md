@@ -949,3 +949,36 @@ Refactored Orchestrator prompt toward dynamic planning, moved routing knowledge 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 钓鱼邮件工作流附件检测修复与WebUI跳顶bug
+
+**Date**: 2026-06-26
+**Task**: 钓鱼邮件工作流附件检测修复与WebUI跳顶bug
+**Branch**: `main`
+
+### Summary
+
+修复钓鱼邮件工作流: (1) script executor 由 python3 改为 sys.executable 使脚本继承 secbot venv, 解决 magika 依赖 not_installed 导致附件检测全部失败; (2) 修复 WebUI client 重建 bug, token 每5分钟过期刷新时旧实现重建 WorkflowClient 触发页面重载跳顶, 改为通过 tokenRef getter 读取最新 token 使 client memo 解耦 token. 另排查并解决了 Dovecot IMAP 未安装、Postfix vmailbox 未 postmap、Rspamd 多 Lua 插件同名符号覆盖等运维问题.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `553d5faca` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

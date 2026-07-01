@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-06-24
+- **Total Sessions**: 21
+- **Last Active**: 2026-06-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~951 | Active |
+| `journal-1.md` | ~1050 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-06-26 | 钓鱼邮件工作流附件检测修复与WebUI跳顶bug | `553d5faca` | `main` |
 | 20 | 2026-06-24 | 威胁情报模块全面Gap审计与修复（10个Gap） | `7fbd3341f`, `51d4d8328`, `c8dccee26` | `main` |
 | 19 | 2026-06-22 | 威胁情报模块13个Gap功能完整交付 | `815764603`, `cd10cedeb`, `abd442162`, `c688850e4` | `main` |
 | 18 | 2026-06-13 | Orchestrator prompt refactor | `7fe3bacc0`, `abe277ac7` | `main` |

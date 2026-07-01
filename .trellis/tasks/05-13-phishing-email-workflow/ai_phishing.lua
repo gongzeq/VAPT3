@@ -15,11 +15,11 @@ local ucl = require "ucl"
 local ai_config = {
     enabled = true,
     -- secbot workflow run 端点。``<wf_id>`` 必须替换为实际工作流 ID。
-    workflow_run_url = "http://127.0.0.1:18791/api/workflows/wf_20ced59c/run",
+    workflow_run_url = "http://127.0.0.1:18791/api/workflows/wf_7d5f9008/run",
     request_timeout = 120,
     min_score = -1,
     max_score = 15.0,
-    internal_domains = { "gdmsa.cn" },
+    internal_domains = {  },
 }
 
 -- 检查内部域名
@@ -64,6 +64,74 @@ local function extract_urls(task)
     end
 
     return urls
+end
+
+-- 提取邮件附件（非文本 MIME parts）
+-- PRD: 06-01-magika-attachment-detect §R1 §R2
+-- 截断策略：head 4096B + tail 4096B = 8192B（Magika standard_v3_3 采样要求）
+local function extract_attachments(task)
+    local parts = task:get_parts()
+    if not parts then
+        return '[]'
+    end
+
+    local attachments = {}
+    for _, part in ipairs(parts) do
+        if #attachments >= 5 then
+            break
+        end
+
+        -- 防御性检查：部分方法可能不存在于所有 part 类型
+        local part_filename = "unknown"
+        local ok_skip = pcall(function()
+            -- 跳过 multipart 容器和 text 正文
+            if part.is_multipart and part:is_multipart() then return end
+            if part.is_text and part:is_text() then return end
+
+            local filename = part:get_filename()
+            if not filename or filename == "" then
+                return
+            end
+            part_filename = filename
+
+            -- get_content() 返回 MIME 解码后的实际字节 (rspamd_text)
+            local content_raw = part:get_content()
+            if not content_raw then
+                return
+            end
+            local content = tostring(content_raw)
+            local total_len = #content
+            if total_len == 0 then
+                return
+            end
+
+            -- head + tail 截断策略
+            local sample
+            if total_len <= 8192 then
+                sample = content
+            else
+                sample = content:sub(1, 4096) .. content:sub(total_len - 4095)
+            end
+
+            local b64 = tostring(rspamd_util.encode_base64(sample, 0))
+            local content_type = ""
+            if part.get_type then
+                content_type = part:get_type() or ""
+            end
+
+            table.insert(attachments, {
+                filename = filename,
+                content_type = content_type,
+                content_base64 = b64,
+                original_size = total_len,
+            })
+        end)
+        if not ok_skip then
+            rspamd_logger.warnx(task, "附件提取失败，跳过该 part: %s", part_filename)
+        end
+    end
+
+    return ucl.to_format(attachments, "json-compact")
 end
 
 -- 安全解析 step3 stdout 的 JSON。secbot workflow run 响应结构：
@@ -132,6 +200,8 @@ local function call_ai_service(task)
     -- secbot workflow run 协议：``{"inputs": {...}}``
     -- urls 以 JSON 字符串传入（WorkflowInput 类型为 string）
     local urls_json = ucl.to_format(urls, "json-compact")
+    local attachments_json = extract_attachments(task)
+    rspamd_logger.infox(task, "AI检测：附件提取完成: %s", attachments_json == '[]' and '无附件' or '有附件')
     local recipient = ""
     local recipients = task:get_recipients("smtp")
     if recipients and recipients[1] and recipients[1]["addr"] then
@@ -145,6 +215,7 @@ local function call_ai_service(task)
             urls = urls_json,
             recipient = recipient,
             rspamd_score = string.format("%.2f", rspamd_score),
+            attachments = attachments_json,
         },
     }
 

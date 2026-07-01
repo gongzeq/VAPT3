@@ -52,9 +52,20 @@ export function WorkflowDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token, workflowApiBase } = useClient();
+  // Keep the latest token in a ref so the memoized WorkflowClient can read
+  // a fresh token on every request WITHOUT being rebuilt when the token
+  // rotates (token rotates ~every 5min on 401 refresh). Rebuilding the
+  // client would re-run the load effect and reset page state — that was
+  // the cause of the page "jumping back to top" while in the foreground.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
   const client = useMemo(
-    () => new WorkflowClient({ token, baseUrl: workflowApiBase }),
-    [token, workflowApiBase],
+    () =>
+      new WorkflowClient({
+        token: () => tokenRef.current,
+        baseUrl: workflowApiBase,
+      }),
+    [workflowApiBase],
   );
   const isNew = id === "new";
 

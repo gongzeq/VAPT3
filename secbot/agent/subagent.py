@@ -183,6 +183,26 @@ class _SubagentHook(AgentHook):
             detail = event.get("detail")
             if detail:
                 payload["detail"] = detail
+            # For knowledge-search, extract source files so the UI can
+            # display which knowledge base documents were referenced.
+            if (
+                tool_call.name == "knowledge-search"
+                and status == "ok"
+                and isinstance(tool_result, str)
+            ):
+                try:
+                    parsed_result = json.loads(tool_result)
+                    sources = [
+                        r["source"]
+                        for r in (
+                            parsed_result.get("summary", {}).get("data", {}).get("results", [])
+                        )
+                        if isinstance(r, dict) and r.get("source")
+                    ]
+                    if sources:
+                        payload["tool_result_sources"] = sources
+                except (json.JSONDecodeError, TypeError):
+                    pass
             await self._broadcast_fn("tool_call", payload)
 
     @staticmethod
@@ -548,6 +568,72 @@ class SubagentManager:
             )
 
         resolved_agent_name = spec.name if spec is not None else label
+
+        # ── Fast shortcut for sec_qa ──
+        # When the orchestrator dispatches to sec_qa via create_agent, use
+        # ``fast_sec_qa`` directly instead of the full agent loop.  This
+        # avoids exhausting tool iterations (max_iterations=5) and guarantees
+        # KB results are fetched via a single knowledge-search + single LLM
+        # call — same quality as the fast path in AgentLoop._process_message.
+        #
+        # The result is announced with ``_direct_forward=True`` metadata so
+        # the orchestrator loop can forward it to the user verbatim without
+        # reformatting through another LLM call.
+        if spec is not None and spec.name == "sec_qa":
+            from secbot.agent.fast_sec_qa import fast_sec_qa
+
+            logger.info("Subagent [{}]: using fast_sec_qa shortcut", task_id)
+            try:
+                qa_result = await fast_sec_qa(
+                    task,
+                    self.provider,
+                    self.model,
+                    channel=origin.get("channel", ""),
+                    chat_id=origin.get("chat_id", ""),
+                    metadata={},
+                )
+            except Exception:
+                logger.exception("Subagent [{}]: fast_sec_qa failed", task_id)
+                qa_result = None
+
+            status.phase = "done"
+            if qa_result is not None:
+                status.stop_reason = "completed"
+                kb_sources = qa_result.metadata.get("_kb_sources", [])
+                kb_search_mode = qa_result.metadata.get("_kb_search_mode", "")
+                await self._announce_result(
+                    task_id, label, task, qa_result.content,
+                    origin, "ok", origin_message_id,
+                    agent_name="sec_qa",
+                    extra_metadata={
+                        "_direct_forward": True,
+                        "_direct_content": qa_result.content,
+                        "_kb_sources": kb_sources,
+                        "_kb_search_mode": kb_search_mode,
+                    },
+                )
+                await self._broadcast_agent_status(
+                    origin=origin,
+                    agent_name="sec_qa",
+                    status="completed",
+                    current_task_id=None,
+                )
+            else:
+                status.stop_reason = "error"
+                await self._announce_result(
+                    task_id, label, task,
+                    "知识库检索失败，无法生成回答。",
+                    origin, "error", origin_message_id,
+                    agent_name="sec_qa",
+                )
+                await self._broadcast_agent_status(
+                    origin=origin,
+                    agent_name="sec_qa",
+                    status="error",
+                    current_task_id=None,
+                )
+            return
+
         try:
             # Build subagent tools (no message tool, no spawn tool)
             tools = ToolRegistry()
@@ -796,6 +882,7 @@ class SubagentManager:
         status: str,
         origin_message_id: str | None = None,
         agent_name: str | None = None,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> None:
         """Announce the subagent result to the main agent via the message bus."""
         if status == "ok":
@@ -825,6 +912,8 @@ class SubagentManager:
         }
         if origin_message_id:
             metadata["origin_message_id"] = origin_message_id
+        if extra_metadata:
+            metadata.update(extra_metadata)
         msg = InboundMessage(
             channel="system",
             sender_id=agent_name or label,

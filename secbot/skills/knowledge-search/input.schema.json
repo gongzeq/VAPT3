@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["query"],
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "The security question or search terms. Supports natural language (e.g. '什么是SQL注入') and technical terms (e.g. 'CVE-2024-1234')."
+    },
+    "top_k": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 5,
+      "description": "Maximum number of results to return."
+    },
+    "source_filter": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Limit results to a knowledge subdirectory (e.g. 'web-security', 'cve-archive', 'methodologies', 'ai-security')."
+    }
+  }
+}

@@ -29,7 +29,7 @@ export default function MarkdownTextRenderer({
         "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm",
         "prose-p:my-2",
         "prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5",
-        "prose-blockquote:my-3 prose-blockquote:border-l-2 prose-blockquote:font-normal",
+        "prose-blockquote:my-1 prose-blockquote:border-l-2 prose-blockquote:font-normal",
         "prose-blockquote:not-italic prose-blockquote:text-foreground/80",
         "prose-a:text-primary prose-a:underline-offset-2 hover:prose-a:opacity-80",
         "prose-hr:my-6",

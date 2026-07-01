@@ -83,6 +83,15 @@ const AGENT_REGISTRY: Record<string, AgentInfo> = {
     Icon: FileText,
     accent: "hsl(203 100% 62%)",
   },
+  sec_qa: {
+    key: "sec_qa",
+    label: "安全知识问答",
+    abbr: "QA",
+    type: "subagent",
+    gradient: "linear-gradient(135deg, hsl(168 76% 42%), hsl(168 60% 28%))",
+    Icon: ShieldAlert,
+    accent: "hsl(168 76% 42%)",
+  },
 };
 
 /** Resolve an agent key (snake_case) to its display metadata. Falls back to

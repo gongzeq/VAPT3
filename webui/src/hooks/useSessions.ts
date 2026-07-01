@@ -29,6 +29,9 @@ type RawHistoryMessage = {
   media_urls?: Array<{ url: string; name?: string }>;
   _kind?: string;
   agent_event?: Record<string, unknown>;
+  /** Fast-sec-qa persisted metadata. */
+  kb_sources?: string[];
+  kb_search_mode?: string;
 };
 
 /** Trim a tool result string to a compact one-line preview suitable for
@@ -359,6 +362,8 @@ function buildHistoryMessages(raw: RawHistoryMessage[]): UIMessage[] {
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
         createdAt: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
         ...(media ? { media } : {}),
+        ...(m.kb_sources && m.kb_sources.length > 0 ? { kbSources: m.kb_sources } : {}),
+        ...(m.kb_search_mode ? { kbSearchMode: m.kb_search_mode } : {}),
       });
       return;
     }

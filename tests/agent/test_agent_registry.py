@@ -37,6 +37,8 @@ REAL_SKILL_NAMES = {
     "vuln-detec-manual",
     # crawl_web
     "katana-crawl-web",
+    # sec_qa
+    "knowledge-search",
 }
 
 
@@ -55,6 +57,7 @@ def test_real_registry_loads_with_skill_set():
         "weak_password",
         "report",
         "vuln_detec",
+        "sec_qa",
     }
 
 
