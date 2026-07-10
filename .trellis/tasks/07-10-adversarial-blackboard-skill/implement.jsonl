@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply the repository's minimal, deterministic, structured-state, and untrusted-input rules."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Search for and reuse existing skill patterns before adding helpers."}

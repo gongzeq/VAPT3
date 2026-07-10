@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adversarial Blackboard"
+  short_description: "Run bounded evidence-driven adversarial reviews"
+  default_prompt: "Use $run-adversarial-blackboard to review this high-impact decision with frozen evidence and deterministic gates."
