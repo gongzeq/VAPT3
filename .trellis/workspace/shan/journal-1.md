@@ -982,3 +982,36 @@ Refactored Orchestrator prompt toward dynamic planning, moved routing knowledge 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Adversarial blackboard skill
+
+**Date**: 2026-07-10
+**Task**: Adversarial blackboard skill
+**Branch**: `main`
+
+### Summary
+
+Created and validated a project-local adversarial review skill with frozen evidence, A/B/A2/J roles, structured gates, ordered SHA-256 seals, signoff policy, injection status, deadline enforcement, forward tests, and independent review.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e91526598` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
